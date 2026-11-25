@@ -107,8 +107,9 @@ The tiled animation manifest therefore records `frames[].authoringMode` and `fra
 
 - The branch contains an isolated SparseTileCelStore and sparse tile codec with hashing, deduplication, copy-on-write, resource diffs and a bounded decoded-tile LRU cache.
 - The branch contains source-quality-aware video scaling and timeline-clock preview improvements.
-- The sparse store is not yet the canonical editor layer/cel model. Brush, selection, fill, history, project serialization, package import/export, Headless persistence and remote storage are not yet migrated to it.
-- Current v1 dense limits still apply. This document does not authorize larger default canvas dimensions, larger animation limits, or larger account quotas.
+- High-resolution/tiled projects now use `TiledRasterProjectDocument` as the live editor document. Brush/eraser, fill, gradient, geometric selection, shape outlines, layer metadata history, viewport compositing, project manifests and the live animation timeline use sparse tile resources.
+- The dense v1 model remains the compatibility path for existing small projects and legacy import/export. Dense-only features (including magic-wand selection, transform workflows, AI vision snapshots and scene workspaces) are not yet all available on tiled documents.
+- This milestone does not raise default canvas dimensions, frame/layer caps, account quotas or remove server-side limits outside the tiled manifest path.
 - No production Neon schema, R2 bucket, Render service, or account quota is changed by this architecture document.
 
 ## Incremental implementation: animation migration adapter
@@ -121,7 +122,7 @@ The branch now includes `public/pixelforge/src/animation-tiled-adapter.mjs` and 
 - `toManifest()` emits a tiled animation manifest without flattening cels; `fromManifest()` validates timeline/layer/frame structure and every tile hash before rebuilding the in-memory tiled model. `toLegacyAnimationJSON()` is an explicit compatibility export and intentionally materializes dense v1 cels.
 - `dispose()` releases the adapter's in-memory resource references.
 
-**Boundary:** this is a migration/working-model adapter, not yet the editor's canonical animation model. The current editor, undo/redo, brush pipeline, native project serializer, ZIP package, Headless and server persistence still use their existing paths. The initial v1-to-tile conversion reads dense cels once and therefore does not remove the current v1 memory/size limits during import. No higher default canvas size or quota is enabled by this adapter.
+**Current integration:** the tiled adapter is now connected to the live editor timeline for tiled raster projects. `TiledAnimationDocument.fromTiledProjectDocument()` seeds the first frame by sharing immutable cel references with the project's `SparseTileCelStore`; the editor does not create a dense animation copy. Frame switching swaps shared cel references into the active tiled project document. The one-time `fromAnimation()` compatibility migration still reads dense legacy cels once; it is not used to start a new tiled timeline.
 
 ## Project-persisted drawing modes and mid-project switching
 
@@ -208,7 +209,7 @@ The CodeLab structured ZIP v2 path now accepts a tiled raster project together w
 - Tiled animation stays sparse inside the ZIP. The exporter does not generate dense `Frames/frames.tscn` RGBA cels, and package metadata reports the actual tiled frame count.
 - A browser package regression covers two frames with different authoring modes, distinct durations, tile-backed pixel edits and import/export restoration.
 
-**Boundary:** this completes the package-format boundary only. The editor still rejects `ensureAnimation()` for tiled raster projects and does not yet expose a live tiled timeline, onion skin, frame editing, playback, or autosave of `TiledAnimationDocument`. Do not describe mixed-mode high-resolution animation as fully available in the UI until that editor integration and persistence path are implemented and tested end-to-end.
+**Editor integration now implemented on this branch:** tiled projects can start a live timeline, add/duplicate/delete/reorder frames, edit each frame with the normal tiled brush/history pipeline, use per-frame undo/redo, show sparse thumbnails and viewport-bounded onion skin, play the timeline, and autosave/restore the tiled animation manifest. ZIP animation and sprite-sheet exports composite bounded row batches rather than allocating a full RGBA frame buffer in JavaScript. The editor and browser E2E tests cover frame isolation, duplicate/delete, history separation and sparse persistence; final CI verification is still required before calling the stage complete.
 
 ### Structured package and agent-mode propagation
 
@@ -243,8 +244,21 @@ The CodeLab structured ZIP v2 path now accepts a tiled raster project together w
 - Every dab writes only its clipped brush region; selection masks are honored by the shared tiled brush primitive. No full-canvas RGBA surface is allocated for a shape.
 - If the path exceeds the dab cap, it is rejected before drawing. If the undo byte budget is exceeded during rasterization, the active history stroke rolls back before the error is returned. Undo/redo treats the complete shape as one operation.
 - Editor shape gestures are serialized with tiled pointer gestures so two operations cannot claim the same history transaction concurrently. Symmetry is expanded in document coordinates and is covered by tests.
-- **Scope limit:** this does not yet implement tiled gradients, magic-wand/color selection, transforms, full animation-cel metadata history or tiled animation cels. The visited bitset is bounded by the existing maximum canvas area; staged RGBA history, scanline queue and shape dab count have explicit caps. Do not raise canvas or history limits based on these tools alone.
+- **Scope limit:** magic-wand/color selection and dense transform workflows remain unavailable for tiled projects. Tiled animation now stores per-frame/per-layer cels, preserves cel metadata and uses independent bounded tiled stroke histories per frame. The visited bitset is bounded by the existing maximum canvas area; staged RGBA history, scanline queue and shape dab count have explicit caps. Do not raise canvas or history limits based on these tools alone.
 
 ### Tiled layer management and metadata history
 
 The sparse editor layer panel now enables add, duplicate, delete, rename, visibility, lock, opacity and stack reordering. These operations are wrapped in bounded metadata-history snapshots. Snapshots retain shared immutable cel references rather than copying canvas pixels; undo/redo restores layer order, active-layer identity and metadata while preserving copy-on-write tile ownership. Snapshot metadata is charged against the same history byte budget, and a rejected operation is rolled back rather than left applied without an undo command. The editor still enforces the 64-layer cap and the tiled document's existing geometry limits.
+
+
+### Live tiled animation timeline integration
+
+The editor now uses `TiledAnimationDocument` as the animation model when the active project is tiled.
+
+- The project and animation share the same `SparseTileCelStore`. Frame/layer cels are immutable references with copy-on-write; frame switches replace the active document's cel references rather than copying width × height RGBA buffers.
+- Each frame retains its own tiled stroke-history object. Switching frames parks the current history and restores the destination frame's history, so undo/redo in one frame cannot roll back another frame's paint.
+- Frame add, duplicate, delete and reorder preserve stable frame IDs, cel ownership, per-frame durations and drawing-mode metadata. Layer add/duplicate/delete/reorder is synchronized across frames; deleted layer cels are retained only while an undo/redo snapshot can restore them.
+- The timeline uses region compositing for 48 px thumbnails and viewport-only onion skin. Thumbnail cache entries are invalidated when a frame's cel or visible layer metadata changes.
+- Playback selects frames from their durations and the timeline clock. Autosave writes `pixelforge-tiled-animation` manifests beside the tiled project manifest; restore validates canvas geometry, layer IDs/order, frame limits and cel resource hashes before swapping the active frame into the editor.
+- ZIP frame and sprite-sheet exports composite 16-row batches into the required output canvas. This bounds transient JavaScript pixel buffers; the final image/export canvas still necessarily has the requested output dimensions.
+- The browser regression exercises the visible timeline on a 1024 × 1024 tiled document, including blank-frame isolation, frame-local undo, duplicate/reorder/delete, onion skin and sparse animation autosave. Contract tests separately cover shared-store ownership, orphan layer-cel restoration and per-frame history swaps.
