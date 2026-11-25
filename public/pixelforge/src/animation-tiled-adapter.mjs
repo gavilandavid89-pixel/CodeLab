@@ -116,6 +116,7 @@ export class TiledAnimationDocument {
           const pixels = animation.getLayerPixels(frameIndex, layerId);
           cels.set(layerId, await store.createCelFromPixels(pixels, {
             width: animation.width, height: animation.height, tileSize,
+            ownershipTiles: animation.getLayerOwnershipTiles?.(frameIndex, layerId),
           }));
           layerMetadata[layerId] = normalizeCelMetadata(animation.getLayerMetadata?.(frameIndex, layerId), frameAuthoringMode);
         }
