@@ -157,8 +157,10 @@ test('rejects ZIP payload corruption even when its central directory remains int
 
 test('constant-FPS resampling follows variable-duration source frames and preserves total duration', async () => {
   const { buildConstantFrameRateSequence } = await import('../public/pixelforge/src/video-composer-core.mjs');
+  const mixedLayers = [{ blob: new Blob(['pixel-cel']), authoringMode: 'pixel-art' },
+    { blob: new Blob(['illustration-cel']), authoringMode: 'illustration' }];
   const source = [
-    { id: 'a', durationMs: 100, blob: new Blob(['a']) },
+    { id: 'a', durationMs: 100, blob: new Blob(['a']), layers: mixedLayers, width: 1000, height: 1000 },
     { id: 'b', durationMs: 200, blob: new Blob(['b']) },
     { id: 'c', durationMs: 100, blob: new Blob(['c']) },
   ];
@@ -169,6 +171,9 @@ test('constant-FPS resampling follows variable-duration source frames and preser
   assert.deepEqual(output.map(frame => frame.timestampMs), [0, 100, 200, 300]);
   assert.equal(output.reduce((sum, frame) => sum + frame.durationMs, 0), 400);
   assert.ok(output.every(frame => frame.blob instanceof Blob));
+  assert.equal(output[0].layers, mixedLayers, 'CFR resampling must retain per-layer render sources and mode metadata');
+  assert.equal(output[0].width, 1000);
+  assert.equal(output[0].height, 1000);
 
   const lowCadence = buildConstantFrameRateSequence([
     { id: 'pose-a', durationMs: 1000 / 12, blob: new Blob(['a']) },
@@ -264,6 +269,15 @@ test('native video composition scales mixed illustration and pixel-art layers in
   const outputScale = scales[0];
   assert.ok(Math.abs(outputScale[0] - outputScale[1]) < 1e-12,
     'cover must use the same scale on both axes and crop instead of stretching');
+
+  scales.length = 0;
+  const contained = drawLayeredFrameToCanvas(context, [pixelLayer, illustrationLayer], 1000, 1000, 1920, 1080, {
+    fitMode: 'contain',
+  });
+  assert.equal(contained.fitMode, 'contain');
+  assert.ok(Math.abs(scales[0][0] - scales[0][1]) < 1e-12,
+    'contain must use uniform scaling and preserve the full source');
+  assert.equal(contained.offsetX, 420);
 });
 
 test('Video Composer resolves per-cel mode before frame, layer and project defaults for native exports', () => {
@@ -276,4 +290,8 @@ test('Video Composer resolves per-cel mode before frame, layer and project defau
   assert.match(encoder, /layers: Array\.isArray\(frame\.layers\)/);
   assert.match(worker, /drawLayeredFrameToCanvas/);
   assert.match(worker, /layer\.blob/);
+  assert.match(js, /layers: layerBitmaps/);
+  const layout = fs.readFileSync(new URL('../public/pixelforge/src/video-capture-layout.mjs', import.meta.url), 'utf8');
+  assert.match(layout, /Array\.isArray\(options\.layers\)/);
+  assert.match(layout, /drawLayeredFrameToCanvas\(context, options\.layers/);
 });
