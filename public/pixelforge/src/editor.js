@@ -983,22 +983,73 @@ function markAnimationChanged() { doc.revision++; doc.saveVersion++; doc.dirty =
 function canGrowAnimationLayer() {
   return !animation || animation.memoryBytes + doc.width * doc.height * 4 * animation.frameCount <= 64 * 1024 * 1024;
 }
+function syncTiledAnimationFrame() {
+  if (!(animation instanceof TiledAnimationDocument) || !doc.isTiled) return false;
+  const index = animation.activeFrameIndex;
+  for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
+    const layer = doc.layers[layerIndex];
+    const celId = doc.cloneLayerCelReference(layer.id);
+    animation.replaceFrameCelReference(index, layer.id, celId, { takeOwnership: true });
+    const metadata = { ...layer, index: layerIndex + 1, parentFrameId: animationFrameId(index) };
+    delete metadata.celId;
+    animation.setLayerMetadata(index, layer.id, metadata);
+  }
+  animation.setFrameAuthoringMode(index, drawingConfiguration.activeMode);
+  return true;
+}
+function syncTiledAnimationLayerStack(copyFromByNewId = new Map()) {
+  if (!(animation instanceof TiledAnimationDocument) || !doc.isTiled) return;
+  const currentIds = doc.layerIds;
+  for (const oldId of animation.layerIds) if (!currentIds.includes(oldId)) animation.removeLayer(oldId);
+  for (const layer of doc.layers) {
+    if (animation.layerIds.includes(layer.id)) continue;
+    const sourceId = copyFromByNewId.get(layer.id) || null;
+    const activeCelId = doc.cloneLayerCelReference(layer.id);
+    animation.addLayer(layer.id, { activeCelId, copyFromLayerId: sourceId, metadata: layer });
+  }
+  animation.reorderLayers(currentIds);
+}
+function applyTiledAnimationFrame(index, { resetHistory = false } = {}) {
+  if (!(animation instanceof TiledAnimationDocument) || !doc.isTiled) return false;
+  const frame = animation.getFrame(index);
+  const references = new Map();
+  try {
+    for (const layerId of animation.layerIds) references.set(layerId, animation.getFrameCelReference(index, layerId));
+    doc.replaceLayerCelReferences(references, { takeOwnership: true });
+  } catch (error) {
+    for (const celId of references.values()) animation.releaseCelReference(celId);
+    throw error;
+  }
+  for (const layerId of animation.layerIds) {
+    const metadata = animation.getLayerMetadata(index, layerId);
+    doc.updateLayer(layerId, metadata);
+  }
+  if (resetHistory) {
+    for (const history of tiledAnimationHistory.values()) history.dispose();
+    tiledAnimationHistory.clear();
+    doc.strokeHistory.clear();
+  }
+  if (drawingConfiguration.activeMode !== frame.authoringMode) setDrawingMode(frame.authoringMode, { persist: false });
+  clearSelectionState();
+  renderLayers(); renderAnimationTimeline(); render(); updateTitle();
+  return true;
+}
 function captureAnimationFrame() {
   if (!animation) return;
+  if (animation instanceof TiledAnimationDocument) { syncTiledAnimationLayerStack(); syncTiledAnimationFrame(); return; }
   syncAnimationLayerStack();
   const index = animation.activeFrameIndex;
   for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
     const layer = doc.layers[layerIndex];
     animation.setLayerPixels(index, layer.id, layer.pixels);
     animation.setLayerMetadata(index, layer.id, {
-      ...layer,
-      parentFrameId: animationFrameId(index), index: layerIndex + 1,
-      id: layer.id, name: layer.name,
+      ...layer, parentFrameId: animationFrameId(index), index: layerIndex + 1, id: layer.id, name: layer.name,
     });
   }
 }
 function applyAnimationFramePixels(index) {
   if (!animation) return;
+  if (animation instanceof TiledAnimationDocument) { applyTiledAnimationFrame(index); return; }
   const frameId = animationFrameId(index);
   const frameAuthoringMode = animation.getFrame(index).authoringMode || PIXELFORGE_DRAWING_MODES.PIXEL_ART;
   const previousRevision = doc.revision, previousSaveVersion = doc.saveVersion;
@@ -1019,55 +1070,58 @@ function applyAnimationFramePixels(index) {
       layer.rotation = Number.isFinite(Number(metadata.rotation)) ? Number(metadata.rotation) : 0;
       layer.angle = metadata.angle ?? 0;
       layer.opacity = Number.isFinite(Number(metadata.opacity)) ? Math.max(0, Math.min(1, Number(metadata.opacity))) : 1;
-      layer.visible = metadata.visible !== false;
-      layer.locked = metadata.locked === true;
-      layer.blendMode = String(metadata.blendMode || 'normal');
-      layer.blur = metadata.blur ?? 0;
-      layer.brightness = metadata.brightness ?? 0;
-      layer.contrast = metadata.contrast ?? 0;
-      layer.saturation = metadata.saturation ?? 0;
-      layer.mask = structuredClone(metadata.mask ?? 'inexistente');
-      layer.clipping = structuredClone(metadata.clipping ?? 'inexistente');
-      layer.references = structuredClone(metadata.references || []);
-      layer.assets = structuredClone(metadata.assets || []);
+      layer.visible = metadata.visible !== false; layer.locked = metadata.locked === true;
+      layer.blendMode = String(metadata.blendMode || 'normal'); layer.blur = metadata.blur ?? 0;
+      layer.brightness = metadata.brightness ?? 0; layer.contrast = metadata.contrast ?? 0; layer.saturation = metadata.saturation ?? 0;
+      layer.mask = structuredClone(metadata.mask ?? 'inexistente'); layer.clipping = structuredClone(metadata.clipping ?? 'inexistente');
+      layer.references = structuredClone(metadata.references || []); layer.assets = structuredClone(metadata.assets || []);
       layer.metadata = structuredClone(metadata.metadata || {});
       layer.authoringMode = ['illustration', 'pixel-art'].includes(metadata.authoringMode) ? metadata.authoringMode : frameAuthoringMode;
-      layer.modeOverrides = metadata.modeOverrides && typeof metadata.modeOverrides === 'object' && !Array.isArray(metadata.modeOverrides)
-        ? structuredClone(metadata.modeOverrides) : {};
+      layer.modeOverrides = metadata.modeOverrides && typeof metadata.modeOverrides === 'object' && !Array.isArray(metadata.modeOverrides) ? structuredClone(metadata.modeOverrides) : {};
     }
     applyActiveLayerModeProfile(drawingConfiguration.activeMode);
-  } finally {
-    for (const [layer, locked] of locks) layer.locked = locked;
-  }
+  } finally { for (const [layer, locked] of locks) layer.locked = locked; }
   const history = animationFrameHistory.get(frameId);
-  doc.history = history ? [...history.history] : [];
-  doc.future = history ? [...history.future] : [];
+  doc.history = history ? [...history.history] : []; doc.future = history ? [...history.future] : [];
   doc.historyBytes = history?.historyBytes ?? 0;
   if (doc.revision === previousRevision) doc.revision++;
   if (doc.saveVersion === previousSaveVersion) doc.saveVersion++;
-  doc.dirty = true;
-  clearSelectionState();
-  renderLayers();
-  renderAnimationTimeline();
-  render();
-  updateTitle();
-  syncAIWorkspaceFromUser();
+  doc.dirty = true; clearSelectionState(); renderLayers(); renderAnimationTimeline(); render(); updateTitle(); syncAIWorkspaceFromUser();
 }
 function switchAnimationFrame(index, { autosave = true } = {}) {
   if (!animation || index === animation.activeFrameIndex) return false;
+  if (doc.isTiled && animation instanceof TiledAnimationDocument) {
+    if (doc.strokeHistory.isStrokeActive) throw new Error('Finish the current stroke before switching animation frames.');
+    const previousId = animationFrameId(animation.activeFrameIndex);
+    syncTiledAnimationLayerStack(); syncTiledAnimationFrame();
+    const detached = doc.swapStrokeHistory(doc.createStrokeHistory());
+    const previousHistory = tiledAnimationHistory.get(previousId);
+    previousHistory?.dispose(); tiledAnimationHistory.set(previousId, detached);
+    animation.setActiveFrame(index);
+    const nextId = animationFrameId(index);
+    const nextHistory = tiledAnimationHistory.get(nextId) || doc.createStrokeHistory();
+    tiledAnimationHistory.delete(nextId);
+    doc.swapStrokeHistory(nextHistory).dispose();
+    applyTiledAnimationFrame(index);
+    if (autosave) scheduleAutosave();
+    return true;
+  }
   void settleActiveInput();
   const previousId = animationFrameId(animation.activeFrameIndex);
-  captureAnimationFrame();
-  saveAnimationFrameHistory(previousId);
-  animation.setActiveFrame(index);
-  applyAnimationFramePixels(index);
+  captureAnimationFrame(); saveAnimationFrameHistory(previousId);
+  animation.setActiveFrame(index); applyAnimationFramePixels(index);
   if (autosave) scheduleAutosave();
   return true;
 }
 function ensureAnimation() {
-  if (doc.isTiled) throw new Error('Animation editing is not yet available for sparse tiled projects.');
   if (!animation) {
     if (cropPreview || transformPreview) throw new Error('Finish or cancel the active preview before starting an animation timeline.');
+    if (doc.isTiled) {
+      animation = TiledAnimationDocument.fromTiledProjectDocument(doc, { fps: Number($('#animation-fps').value) || 12 });
+      tiledAnimationHistory.clear();
+      renderAnimationTimeline();
+      return animation;
+    }
     animation = PixelForgeAnimation.fromDocument(doc, { fps: Number($('#animation-fps').value) || 12 });
     animation.setFrameAuthoringMode(0, drawingConfiguration.activeMode);
     for (const layer of doc.layers) animation.setLayerMetadata(0, layer.id, { ...animation.getLayerMetadata(0, layer.id), authoringMode: layer.authoringMode || drawingConfiguration.activeMode });
