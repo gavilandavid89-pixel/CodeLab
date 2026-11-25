@@ -860,7 +860,7 @@ function scheduleAutosave() {
   }, 800);
 }
 async function settleActiveInput() {
-  if (activeStroke || (doc.isTiled && tiledPointerController?.active)) await finishActiveStroke(true);
+  if (activeStroke || (doc.isTiled && tiledPointerController && pointerId !== null)) await finishActiveStroke(true);
   drawHeld = false; drawHoldPointerId = null; updateDrawHoldUI();
 }
 async function flushAutosave({ force = false } = {}) {
@@ -1451,7 +1451,7 @@ function beginStroke(event) {
   startStrokeAt(point, event.pointerId);
 }
 function moveStroke(event) {
-  if (doc.isTiled && tiledPointerController?.active && event.pointerId === pointerId) {
+  if (doc.isTiled && tiledPointerController && event.pointerId === pointerId) {
     const point = docPoint(event);
     if (point.inside) {
       const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
@@ -1502,7 +1502,7 @@ function moveStroke(event) {
   render();
 }
 function finishActiveStroke(commit = true) {
-  if (doc.isTiled && tiledPointerController?.active) {
+  if (doc.isTiled && tiledPointerController && pointerId !== null) {
     const id = pointerId, gestureToken = activeTiledGestureToken;
     const controller = tiledPointerController, targetDocument = doc;
     const operation = tiledGestureTail.then(() => {
