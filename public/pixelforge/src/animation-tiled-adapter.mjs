@@ -225,6 +225,8 @@ export class TiledAnimationDocument {
     return this.getLayerMetadata(frameIndex, layerId);
   }
 
+  releaseCelReference(celId) { return this.#store.releaseCel(celId); }
+
   getFrameCelReference(frameIndex, layerId) {
     const frame = this.#frame(frameIndex);
     return this.#store.cloneCel(this.#cel(frame, layerId));
@@ -287,8 +289,7 @@ export class TiledAnimationDocument {
       }
       if (settings.size !== this.#layerIds.length) throw new TypeError('Composite settings are missing a raster layer.');
     }
-    const base = this.#store.readRegion(this.#cel(frame, this.#layerIds[0]), region);
-    const output = new Uint8ClampedArray(base.length);
+    const output = new Uint8ClampedArray(region.width * region.height * 4);
     for (const layerId of this.#layerIds) {
       const layer = settings.get(layerId) ?? { visible: true, opacity: 1 };
       if (!layer.visible || layer.opacity <= 0) continue;
@@ -307,7 +308,7 @@ export class TiledAnimationDocument {
     return { ...region, pixels: output };
   }
 
-  async compositeThumbnail(frameIndex, layerSettings = null, size = 48) {
+  compositeThumbnail(frameIndex, layerSettings = null, size = 48) {
     if (!Number.isInteger(size) || size < 1 || size > 256) throw new RangeError('Thumbnail size must be 1–256 pixels.');
     const scale = Math.min(size / this.#width, size / this.#height);
     const width = Math.max(1, Math.round(this.#width * scale));
