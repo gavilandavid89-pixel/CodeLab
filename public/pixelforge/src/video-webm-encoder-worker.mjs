@@ -2,7 +2,7 @@ import { encodeWebMFromChunks } from './video-webm-encoder.mjs';
 import { drawFrameToCanvas } from './video-capture-layout.mjs';
 
 self.onmessage = async (event) => {
-  const { frames, width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null, scalingMode = 'smooth' } = event.data || {};
+  const { frames, width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null, scalingMode = 'smooth', fitMode = 'contain' } = event.data || {};
   try {
     if (!Array.isArray(frames) || !frames.length) throw new Error('El codificador no recibió fotogramas.');
     if (!self.OffscreenCanvas || !self.VideoEncoder || !self.VideoFrame) {
@@ -40,7 +40,8 @@ self.onmessage = async (event) => {
         const durationUs = Math.max(1000, Math.round(frame.durationMs * 1000));
         drawFrameToCanvas(context, bitmap, width, height, {
           backgroundColor,
-          scalingMode: ['smooth', 'pixelated'].includes(frame.scalingMode) ? frame.scalingMode : scalingMode
+          scalingMode: ['smooth', 'pixelated'].includes(frame.scalingMode) ? frame.scalingMode : scalingMode,
+          fitMode
         });
         const vf = new VideoFrame(canvas, { timestamp: timestampUs, duration: durationUs });
         encoder.encode(vf, { keyFrame: index === 0 || index % Math.max(1, Math.round(fps * 2)) === 0 });
