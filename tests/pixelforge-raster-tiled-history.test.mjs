@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
 import { TiledRasterStrokeHistory } from '../public/pixelforge/src/raster-tiled-history.mjs';
+import { drawTiledShape } from '../public/pixelforge/src/raster-tiled-shapes.mjs';
 
 const whole = (doc, layerId) => doc.readRegion(layerId, { x: 0, y: 0, width: doc.width, height: doc.height });
 
@@ -156,5 +157,45 @@ test('tiled fill handles checker pattern and avoids history entries for an ident
     color: '#ff0000', secondaryColor: '#0000ff', pattern: 'checker', scale: 1,
   }), 0);
   assert.equal(doc.history.length, historyLength);
+  doc.dispose();
+});
+
+
+test('tiled shape paths apply symmetry as one undoable operation', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 20, height: 12, tileSize: 32 });
+  const layerId = doc.activeLayerId;
+  const before = whole(doc, layerId);
+  const points = [{ x: 2, y: 3 }, { x: 3, y: 3 }, { x: 4, y: 3 }];
+  const result = await drawTiledShape(doc, layerId, points, {
+    color: '#ff8800', size: 1, mode: 'draw', opacity: 1, shape: 'square', hardness: 1,
+  }, {
+    mapPoint: point => [point, { x: doc.width - 1 - point.x, y: point.y }],
+  });
+  assert.equal(result.changed, true);
+  assert.equal(result.changedDabs, 6);
+  const painted = whole(doc, layerId);
+  assert.notDeepEqual(painted, before);
+  assert.deepEqual([...painted.slice((3 * doc.width + 2) * 4, (3 * doc.width + 2) * 4 + 4)], [255, 136, 0, 255]);
+  assert.deepEqual([...painted.slice((3 * doc.width + 17) * 4, (3 * doc.width + 17) * 4 + 4)], [255, 136, 0, 255]);
+  assert.equal(doc.history.length, 1);
+  assert.equal(await doc.undo(), true);
+  assert.deepEqual(whole(doc, layerId), before);
+  assert.equal(await doc.redo(), true);
+  assert.deepEqual(whole(doc, layerId), painted);
+  doc.dispose();
+});
+
+test('tiled shape dab cap rejects before drawing and history budget rolls back the whole outline', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 16, height: 8, tileSize: 32 });
+  const layerId = doc.activeLayerId;
+  const before = whole(doc, layerId);
+  const settings = { color: '#00cc88', size: 1, mode: 'draw', opacity: 1, shape: 'square', hardness: 1 };
+  await assert.rejects(() => drawTiledShape(doc, layerId, [{ x: 1, y: 1 }, { x: 2, y: 1 }], settings, { maxDabs: 1 }), /dab limit/);
+  assert.deepEqual(whole(doc, layerId), before);
+  const constrainedHistory = new TiledRasterStrokeHistory(doc, { maxBytes: 8 });
+  await assert.rejects(() => drawTiledShape(doc, layerId, [{ x: 1, y: 1 }, { x: 2, y: 1 }], settings, { history: constrainedHistory }), /byte budget/);
+  assert.deepEqual(whole(doc, layerId), before);
+  assert.equal(constrainedHistory.canUndo, false);
+  constrainedHistory.dispose();
   doc.dispose();
 });
