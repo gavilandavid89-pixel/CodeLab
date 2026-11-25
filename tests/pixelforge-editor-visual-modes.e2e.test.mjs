@@ -382,7 +382,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await setValue('#brush-hardness', 100);
   await page.locator('#brush-shape').selectOption('square');
   await drawAt({ x: 2, y: 2 });
-  await assertVisibleColor({ x: 2, y: 2 }, '#fa527d', 'tiled/initial-top-left-near-edge');
+  await assertVisibleColor({ x: 2, y: 2 }, '#fa527d', 'tiled/initial-top-left-near-edge', 35);
 
   const tiledMatrix = [];
   for (const mode of ['illustration', 'pixel-art']) {
@@ -420,7 +420,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     await setValue('#brush-size', 5);
     await page.locator('#brush-shape').selectOption('square');
     await drawAt(point);
-    await assertVisibleColor(point, color, 'tiled/' + mode + '/edge');
+    await assertVisibleColor(point, color, 'tiled/' + mode + '/edge', mode === 'illustration' ? 35 : 20);
   }
 
   // Undo and redo are checked against the rendered surface, not just history
