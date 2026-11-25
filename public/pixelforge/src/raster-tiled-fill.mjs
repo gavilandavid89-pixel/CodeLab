@@ -72,6 +72,11 @@ export async function fillTiledLayer(document, layerId, x, y, options = {}) {
     const tileX = Math.floor(px / tileSize) * tileSize;
     const tileY = Math.floor(py / tileSize) * tileSize;
     const key = tileX + ':' + tileY;
+    const replacement = settings.pattern === 'checker' &&
+      (Math.floor(px / settings.scale) + Math.floor(py / settings.scale)) % 2 === 1 ? secondary : primary;
+    const sourceOffset = px * 4, sourceRow = readRow(py);
+    if (sourceRow[sourceOffset] === replacement[0] && sourceRow[sourceOffset + 1] === replacement[1] &&
+        sourceRow[sourceOffset + 2] === replacement[2] && sourceRow[sourceOffset + 3] === replacement[3]) return;
     let tile = staged.get(key);
     if (!tile) {
       const width = Math.min(tileSize, document.width - tileX);
@@ -86,10 +91,6 @@ export async function fillTiledLayer(document, layerId, x, y, options = {}) {
       stagedBytes += bytes;
     }
     const offset = ((py - tileY) * tile.width + px - tileX) * 4;
-    const replacement = settings.pattern === 'checker' &&
-      (Math.floor(px / settings.scale) + Math.floor(py / settings.scale)) % 2 === 1 ? secondary : primary;
-    if (tile.after[offset] === replacement[0] && tile.after[offset + 1] === replacement[1] &&
-        tile.after[offset + 2] === replacement[2] && tile.after[offset + 3] === replacement[3]) return;
     tile.after.set(replacement, offset);
     changedPixels++;
   };
