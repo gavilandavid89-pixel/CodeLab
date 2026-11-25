@@ -75,5 +75,9 @@ test('dense animation frame cloning and JSON retain each layer pixel ownership p
   animation.addFrame({ duplicate: true });
   assert.equal(animation.getLayerOwnershipTiles(1, layer.id).get('0:0')[9], 1);
   const restored = PixelForgeAnimation.fromJSON(animation.toJSON());
-  assert.equal(restored.getLayerOwnershipTiles(1, layer.id).get('0:0')[9], 1);
+  const frameOwners = restored.getLayerOwnershipTiles(1, layer.id);
+  assert.equal(frameOwners.get('0:0')[9], 1);
+  const framePixels = restored.getLayerPixels(1, layer.id);
+  doc.replaceLayerPixelsBatch([{ layerId: layer.id, pixels: framePixels }], { restore: true, ownershipByLayer: new Map([[layer.id, frameOwners]]) });
+  assert.equal(doc.activeLayer.ownershipTiles.get('0:0')[9], 1);
 });
