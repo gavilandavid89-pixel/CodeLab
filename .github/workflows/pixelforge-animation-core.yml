@@ -8,7 +8,9 @@ on:
       - "public/pixelforge/src/animation-tiles.mjs"
       - "public/pixelforge/src/raster-tiled-adapter.mjs"
       - "public/pixelforge/src/raster-tiled-brush.mjs"
+      - "public/pixelforge/src/raster-tiled-history.mjs"
       - "tests/pixelforge-raster-tiled-brush.test.mjs"
+      - "tests/pixelforge-raster-tiled-history.test.mjs"
       - "tests/pixelforge-raster-tiled-adapter.test.mjs"
       - "public/pixelforge/src/animation-tiled-adapter.mjs"
       - "public/pixelforge/src/drawing-mode-config.mjs"
@@ -70,6 +72,7 @@ jobs:
           node --check public/pixelforge/src/animation-tiles.mjs
           node --check public/pixelforge/src/raster-tiled-adapter.mjs
           node --check public/pixelforge/src/raster-tiled-brush.mjs
+          node --check public/pixelforge/src/raster-tiled-history.mjs
           node --check public/pixelforge/src/animation-tiled-adapter.mjs
           node --check public/pixelforge/src/drawing-mode-config.mjs
           node --check public/pixelforge/src/editor.js
@@ -87,6 +90,8 @@ jobs:
         run: node --experimental-default-type=module --test tests/pixelforge-raster-tiled-adapter.test.mjs
       - name: Test sparse tiled brush and eraser parity
         run: node --experimental-default-type=module --test tests/pixelforge-raster-tiled-brush.test.mjs
+      - name: Test sparse tiled stroke history transactions
+        run: node --experimental-default-type=module --test tests/pixelforge-raster-tiled-history.test.mjs
       - name: Test persisted drawing mode configuration
         run: node --experimental-default-type=module --test tests/pixelforge-drawing-mode-config.test.mjs
       - name: Test Headless drawing mode preservation
