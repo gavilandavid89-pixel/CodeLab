@@ -156,7 +156,7 @@ export class TiledRasterProjectDocument {
     saveVersion = 0,
     serverRevision = 0,
     dirty = false,
-    drawingModel = {},
+    drawingModel,
     vectorModel = null,
   } = {}) {
     validateGeometry(width, height);
@@ -297,6 +297,7 @@ export class TiledRasterProjectDocument {
       return { previousMode, activeMode: mode, pixelsChanged: false, celsRewritten: 0, preservedLayerIds: this.layerIds };
     }
     this.#drawingConfiguration = switchProjectDrawingMode(this.#drawingConfiguration, mode);
+    this.#markChanged();
     return {
       previousMode,
       activeMode: mode,
@@ -322,16 +323,8 @@ export class TiledRasterProjectDocument {
     this.#selectionMask = null;
   }
   clearHistory() { this.#strokeHistory.clear(); }
-  async undo() {
-    const changed = await this.#strokeHistory.undo();
-    if (changed) this.#markChanged();
-    return changed;
-  }
-  async redo() {
-    const changed = await this.#strokeHistory.redo();
-    if (changed) this.#markChanged();
-    return changed;
-  }
+  async undo() { return this.#strokeHistory.undo(); }
+  async redo() { return this.#strokeHistory.redo(); }
   getCompositeDirtyTiles() { return []; }
   clearCompositeDirtyTiles() {}
   composite() { return this.readCompositeRegion({ x: 0, y: 0, width: this.#width, height: this.#height }).pixels; }
