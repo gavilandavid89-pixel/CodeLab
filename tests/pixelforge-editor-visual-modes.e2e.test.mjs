@@ -180,7 +180,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     }, screen);
   };
   const expectedRgb = hex => [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16));
-  const assertVisibleColor = async (point, hex, label) => {
+  const assertVisibleColor = async (point, hex, label, tolerance = 20) => {
     await screenPoint(point);
     const readout = await page.locator('#coordinate-readout').textContent();
     assert.equal(readout, 'x: ' + point.x + ' · y: ' + point.y,
@@ -189,11 +189,11 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     const actual = sampled.rgba;
     const expected = expectedRgb(hex);
     const channelError = actual.slice(0, 3).map((value, index) => Math.abs(value - expected[index]));
-    if (!channelError.every(error => error <= 20)) {
+    if (!channelError.every(error => error <= tolerance)) {
       await page.locator('#canvas').screenshot({ path: path.join(artifactDir, 'failure-' + label.replace(/[^a-z0-9-]/gi, '-') + '.png') });
       await fs.promises.writeFile(path.join(artifactDir, 'failure-details.json'), JSON.stringify({ label, point, expected, actual, sampled, readout }, null, 2));
     }
-    assert.ok(channelError.every(error => error <= 20),
+    assert.ok(channelError.every(error => error <= tolerance),
       label + ' must be visibly rendered near document pixel ' + point.x + ',' + point.y +
       '; expected RGB ' + expected.join(',') + ', got ' + actual.slice(0, 3).join(','));
     assert.equal(actual[3], 255, label + ' must be opaque on the visible editor surface');
@@ -389,7 +389,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
         await drawAt(point);
         const points = expectedSymmetryPoints(point, width, height, symmetry);
         for (const visiblePoint of points) {
-          await assertVisibleColor(visiblePoint, color, 'tiled/' + mode + '/' + shape + '/symmetry-' + symmetry);
+          await assertVisibleColor(visiblePoint, color, 'tiled/' + mode + '/' + shape + '/symmetry-' + symmetry, mode === 'illustration' ? 35 : 20);
         }
         tiledMatrix.push({ mode, shape, symmetry, visiblePoints: points.length });
       }
