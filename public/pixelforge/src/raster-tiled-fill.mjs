@@ -46,8 +46,11 @@ export async function fillTiledLayer(document, layerId, x, y, options = {}) {
   const tileSize = typeof document.getLayerTileSize === 'function' ? document.getLayerTileSize(layerId) : document.tileSize;
   if (!Number.isInteger(tileSize) || tileSize < 1) throw new Error('Tiled document did not expose a valid tile size.');
 
+  const selectionMask = document.selectionMask;
+  if (selectionMask && !selectionMask[y * document.width + x]) return 0;
   const seed = document.readRegion(layerId, { x, y, width: 1, height: 1 });
-  const matches = (row, px) => {
+  const matches = (row, px, rowY) => {
+    if (selectionMask && !selectionMask[rowY * document.width + px]) return false;
     const offset = px * 4;
     if (seed[3] === 0 && row[offset + 3] === 0) return true;
     for (let channel = 0; channel < 4; channel++) {
@@ -96,11 +99,11 @@ export async function fillTiledLayer(document, layerId, x, y, options = {}) {
   };
 
   const seedRow = readRow(y);
-  if (!matches(seedRow, x)) return 0;
+  if (!matches(seedRow, x, y)) return 0;
   if (!settings.contiguous) {
     for (let rowY = 0; rowY < document.height; rowY++) {
       const row = readRow(rowY);
-      for (let px = 0; px < document.width; px++) if (matches(row, px)) stagePixel(px, rowY);
+      for (let px = 0; px < document.width; px++) if (matches(row, px, rowY)) stagePixel(px, rowY);
     }
   } else {
     // A scanline queue stores one seed per matching run, not one entry per pixel.
@@ -116,7 +119,7 @@ export async function fillTiledLayer(document, layerId, x, y, options = {}) {
       const startIndex = py * document.width + px;
       if (wasVisited(startIndex)) continue;
       const row = readRow(py);
-      if (!matches(row, px)) { markVisited(startIndex); continue; }
+      if (!matches(row, px, py)) { markVisited(startIndex); continue; }
       let left = px, right = px;
       while (left > 0 && !wasVisited(py * document.width + left - 1) && matches(row, left - 1)) left--;
       while (right + 1 < document.width && !wasVisited(py * document.width + right + 1) && matches(row, right + 1)) right++;
@@ -130,7 +133,7 @@ export async function fillTiledLayer(document, layerId, x, y, options = {}) {
         let inRun = false;
         for (let scanX = left; scanX <= right; scanX++) {
           const index = nextY * document.width + scanX;
-          const eligible = !wasVisited(index) && matches(nextRow, scanX);
+          const eligible = !wasVisited(index) && matches(nextRow, scanX, nextY);
           if (eligible && !inRun) enqueue(scanX, nextY);
           inRun = eligible;
         }
