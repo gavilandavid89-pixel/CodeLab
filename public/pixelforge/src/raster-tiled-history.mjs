@@ -88,6 +88,10 @@ export class TiledRasterStrokeHistory {
       entry.afterOwners = this.#document.readOwnershipRegion(layerId, region);
     }
     const ownerBytes = normalized.reduce((sum, entry) => sum + (entry.beforeOwners?.byteLength || 0) + (entry.afterOwners?.byteLength || 0), 0);
+    if (bytes + ownerBytes > this.#maxBytes) {
+      await this.#document.writeTileBatch(layerId, normalized.map(({ x, y, before, beforeOwners }) => ({ x, y, pixels: before, owners: beforeOwners })), { maxBytes: this.#maxBytes, allowLocked: true, restore: true });
+      throw new RangeError('Tile operation including ownership snapshots exceeded the sparse undo history byte budget and was rolled back.');
+    }
     this.#undo.push({ type, layerId, entries: normalized, bytes: bytes + ownerBytes });
     for (const command of this.#redo) this.#releaseCommand(command);
     this.#redo = [];
