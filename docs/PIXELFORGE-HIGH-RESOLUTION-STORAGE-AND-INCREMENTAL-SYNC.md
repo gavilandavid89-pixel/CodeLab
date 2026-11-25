@@ -257,3 +257,18 @@ CI uploads the screenshots and matrix evidence as the `pixelforge-editor-visual-
 
 
 **Defect found by the first real-browser run:** a new blank project displayed illustration as its active mode but retained the HTML pixel-art brush defaults (1 px square, 100% hardness). The mode metadata and pure configuration tests did not catch this startup-only visual mismatch. The editor bootstrap now applies the active drawing configuration to a fresh document before its first render; the browser matrix asserts the visible control defaults so this regression cannot return.
+
+
+## Visible editor sparse-project integration (November 2026)
+
+The editor now has an opt-in dense-to-tiled document factory at 1,048,576 pixels (1024×1024). New projects at or above that threshold use `TiledRasterProjectDocument`; smaller projects continue to use the legacy `RasterDocument`. Imported raster projects that cross the same threshold are migrated to the tiled manifest before they are saved and installed. Existing tiled manifests are restored through the tiled adapter, and project snapshots are asynchronous so sparse manifests are serialized without materializing a full-canvas RGBA buffer.
+
+The visible editor pointer lifecycle is connected for sparse brush and eraser gestures. Pointer-down, move, up, cancellation, and lost capture use the tile-aware controller and transactional history. The editor serializes gesture operations so a quick second tap cannot race the asynchronous commit of the previous stroke. Symmetry points are forwarded as one gesture, and the existing viewport renderer reads only the visible document rectangle. Illustration and pixel-art presentation settings continue to control smoothing and brush profiles independently.
+
+The visible sparse path is deliberately restricted to operations with a verified tile-aware implementation. Dense-only fill, selection, transforms, shape tools, layer authoring/reordering, animation editing, scene workspaces, AI proposals, and ZIP/sprite/video exports are disabled or report that migration is pending. Layer selection, brush, eraser, pan, eyedropper, save/load, undo, and redo are the current supported surface. This is a compatibility boundary, not a claim that every editor feature is sparse-native.
+
+### Browser-level visual evidence
+
+The Chromium editor E2E matrix now crosses the real 1024×1024 dense-to-tiled threshold and samples the rendered canvas after actual pointer gestures. It checks both illustration and pixel-art modes, square and circle brushes, symmetry 0/2/4/8, edge clipping, the final document pixel, and visible undo/redo restoration. It also sends rapid consecutive taps to exercise the async pointer-up/new-pointer-down race. These checks complement byte-level raster parity tests: a passing storage test alone does not establish that the user can see the expected pixels.
+
+The 4096px side, 16,777,216px area, 64-layer, 64MiB raster/animation memory, 96MiB project, 32MiB direct request, 6MiB chunk, 9MiB chunk request, 512MiB account storage, and 256MiB import/staging guards remain in force. The new editor threshold does not raise or remove any of them. Durable private tile-object storage and complete sparse-native tool/export/animation support remain future work.
