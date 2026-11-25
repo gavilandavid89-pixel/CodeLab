@@ -89,7 +89,7 @@ function frameLayers(frame, project, frameIndex) {
       throw new TypeError('Frame ' + (frameIndex + 1) + ' is missing pixels for layer ' + layer.id + '.');
     }
     const pixels = decodePixels(encoded, project.width * project.height * 4, 'Frame ' + (frameIndex + 1) + '/' + layer.id);
-    return { layer, pixels };
+    return { layer, cel, pixels };
   });
 }
 
@@ -268,7 +268,7 @@ function addAnimation(project, files) {
   frames.forEach((frame, index) => {
     const directory = 'Frames/frame-' + String(index + 1).padStart(4, '0');
     const layers = frameLayers(frame, project, source?.frames?.length ? index : -1);
-    const frameLayersMetadata = layers.map(({ layer, pixels }, layerIndex) => {
+    const frameLayersMetadata = layers.map(({ layer, cel, pixels }, layerIndex) => {
       totalBytes += pixels.length;
       if (totalBytes > 64 * 1024 * 1024) throw new RangeError('PixelForge animation exceeds the 64 MiB RGBA8 pixel-memory budget.');
       const layerToken = 'layer' + index + '-' + (layerIndex + 1);
@@ -277,6 +277,9 @@ function addAnimation(project, files) {
       return {
         id: String(layer.id), name: String(layer.name || layer.id),
         parentFrameId: String(frame.id || 'frame-' + (index + 1)), index: layerIndex + 1,
+        authoringMode: ['illustration', 'pixel-art'].includes(cel?.metadata?.authoringMode ?? cel?.authoringMode ?? layer.authoringMode)
+          ? (cel?.metadata?.authoringMode ?? cel?.authoringMode ?? layer.authoringMode) : 'pixel-art',
+        modeOverrides: structuredClone(cel?.metadata?.modeOverrides ?? layer.modeOverrides ?? {}),
         pixelsPath, position: { x: Number(layer.x ?? 0), y: Number(layer.y ?? 0) },
         x: Number(layer.x ?? 0), y: Number(layer.y ?? 0), scaleX: Number(layer.scaleX ?? 1), scaleY: Number(layer.scaleY ?? 1),
         rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1),
@@ -295,6 +298,7 @@ function addAnimation(project, files) {
       width: project.width,
       height: project.height,
       durationMs: Math.round(Math.max(1, Math.min(10000, Number(frame.durationMs || Math.round(1000 / (source?.fps || 12)))))),
+      authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
       layerCount: frameLayersMetadata.length,
       layers: frameLayersMetadata,
     }, null, 2), 'utf8'));
