@@ -225,6 +225,56 @@ export class TiledAnimationDocument {
     return { changed: result.changed, celId: result.celId, changedTiles: result.changedTiles, removedTiles: result.removedTiles };
   }
 
+  createBlankFrame({ afterIndex = this.#activeFrameIndex, durationMs = 100, authoringMode } = {}) {
+    if (!Number.isInteger(afterIndex) || afterIndex < -1 || afterIndex >= this.#frames.length) {
+      throw new RangeError('Frame insertion index is outside the timeline.');
+    }
+    if (this.#frames.length >= 240) throw new RangeError('A tiled animation cannot exceed 240 frames.');
+    if (!Number.isFinite(durationMs) || durationMs < 1 || durationMs > 10000) {
+      throw new RangeError('Frame duration must be between 1 and 10000 ms.');
+    }
+    const mode = normalizeAuthoringMode(authoringMode, this.#frames[this.#activeFrameIndex].authoringMode);
+    const cels = new Map();
+    try {
+      for (const layerId of this.#layerIds) {
+        cels.set(layerId, this.#store.createBlankCel({
+          width: this.#width, height: this.#height,
+          tileSize: this.#store.getCelTileSize(this.#frames[this.#activeFrameIndex].cels.get(layerId)),
+        }));
+      }
+      const layerMetadata = Object.fromEntries(this.#layerIds.map(layerId => [
+        layerId, normalizeCelMetadata({ authoringMode: mode }, mode),
+      ]));
+      const frame = { id: crypto.randomUUID(), durationMs, authoringMode: mode, layerMetadata, cels };
+      this.#frames.splice(afterIndex + 1, 0, frame);
+      this.#activeFrameIndex = afterIndex + 1;
+      return this.getFrame(this.#activeFrameIndex);
+    } catch (error) {
+      for (const celId of cels.values()) this.#store.releaseCel(celId);
+      throw error;
+    }
+  }
+
+  moveFrame(fromIndex, toIndex) {
+    assertFrameIndex(fromIndex, this.#frames.length);
+    assertFrameIndex(toIndex, this.#frames.length);
+    if (fromIndex === toIndex) return this.getFrame(this.#activeFrameIndex);
+    const [frame] = this.#frames.splice(fromIndex, 1);
+    this.#frames.splice(toIndex, 0, frame);
+    if (this.#activeFrameIndex === fromIndex) this.#activeFrameIndex = toIndex;
+    else if (fromIndex < this.#activeFrameIndex && toIndex >= this.#activeFrameIndex) this.#activeFrameIndex--;
+    else if (fromIndex > this.#activeFrameIndex && toIndex <= this.#activeFrameIndex) this.#activeFrameIndex++;
+    return this.getFrame(this.#activeFrameIndex);
+  }
+
+  setFps(fps) {
+    if (!Number.isInteger(fps) || fps < 1 || fps > 60) {
+      throw new RangeError('Animation FPS must be an integer between 1 and 60.');
+    }
+    this.#fps = fps;
+    return fps;
+  }
+
   cloneFrame(index, { afterIndex = index } = {}) {
     assertFrameIndex(index, this.#frames.length);
     if (!Number.isInteger(afterIndex) || afterIndex < -1 || afterIndex >= this.#frames.length) {
@@ -248,7 +298,8 @@ export class TiledAnimationDocument {
     const frame = this.#frame(index);
     for (const celId of frame.cels.values()) this.#store.releaseCel(celId);
     this.#frames.splice(index, 1);
-    this.#activeFrameIndex = Math.min(this.#activeFrameIndex, this.#frames.length - 1);
+    if (index < this.#activeFrameIndex) this.#activeFrameIndex--;
+    else if (index === this.#activeFrameIndex) this.#activeFrameIndex = Math.min(index, this.#frames.length - 1);
     return this.#frames.length;
   }
 
