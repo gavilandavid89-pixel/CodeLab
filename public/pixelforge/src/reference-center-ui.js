@@ -12,6 +12,7 @@ export function createReferenceCenterUI({
 } = {}) {
   const doc = () => getDocument();
   const animation = () => getAnimation();
+  let enabled = true;
 
   const host = document.createElement('section');
   host.className = 'inspector-section reference-center-section';
@@ -437,6 +438,7 @@ export function createReferenceCenterUI({
   }
 
   function refresh() {
+    if (!enabled) return;
     const model = normalizeDrawingModel(doc().getDrawingModel(), { width: doc().width, height: doc().height });
     list.replaceChildren();
     stateSummary.replaceChildren();
@@ -540,6 +542,16 @@ export function createReferenceCenterUI({
     }
   }
 
+  function setEnabled(value) {
+    enabled = Boolean(value);
+    host.hidden = !enabled;
+    if (!enabled) {
+      stopEnvironmentPreview();
+      return;
+    }
+    refresh();
+  }
+
   environmentPreviewButton.addEventListener('click', previewEnvironmentHistory);
   environmentStopButton.addEventListener('click', stopEnvironmentPreview);
   host.querySelector('#reference-package-current').addEventListener('click', packageCurrent);
@@ -547,5 +559,5 @@ export function createReferenceCenterUI({
   host.querySelector('#reference-record-environment').addEventListener('click', recordEnvironment);
   host.querySelector('#reference-refresh').addEventListener('click', refresh);
   refresh();
-  return { refresh, contextOpacity };
+  return { refresh, contextOpacity, setEnabled };
 }
