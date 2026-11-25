@@ -217,6 +217,7 @@ export function screenToDocument(point, viewport, dimensions) {
   return { x, y, inside: x >= 0 && y >= 0 && x < dimensions.width && y < dimensions.height };
 }
 
+function cloneOwnershipTiles(tiles = new Map()) { return new Map([...tiles].map(([key, bytes]) => [key, new Uint8Array(bytes)])); }
 function makeLayer(id, name, width, height) {
   return {
     id, name, visible: true, opacity: 1, locked: false,
@@ -224,13 +225,14 @@ function makeLayer(id, name, width, height) {
     blendMode: 'normal', blur: 0, brightness: 0, contrast: 0, saturation: 0,
     mask: 'inexistente', clipping: 'inexistente', references: [], assets: [], metadata: {}, authoringMode: 'pixel-art', modeOverrides: {},
     pixels: new Uint8ClampedArray(width * height * 4),
+    ownershipTiles: new Map(),
   };
 }
 function clonePixels(pixels) { return new Uint8ClampedArray(pixels); }
-function cloneLayer(layer) { return { ...layer, pixels: clonePixels(layer.pixels) }; }
+function cloneLayer(layer) { return { ...layer, pixels: clonePixels(layer.pixels), ownershipTiles: cloneOwnershipTiles(layer.ownershipTiles) }; }
 const TILE_SIZE = 64;
 function entryBytes(entry) {
-  if (entry.type === 'pixels') return entry.tiles.reduce((sum, tile) => sum + tile.before.byteLength + tile.after.byteLength, 64);
+  if (entry.type === 'pixels') return entry.tiles.reduce((sum, tile) => sum + tile.before.byteLength + tile.after.byteLength + (tile.before.owners?.byteLength || 0) + (tile.after.owners?.byteLength || 0), 64);
   if (entry.type === 'document-crop') return entry.before.layers.reduce((sum, layer) => sum + layer.pixels.byteLength, 256);
   if (entry.type === 'pixels-batch') return entry.layers.reduce((sum, layer) => sum + layer.tiles.reduce((tileSum, tile) => tileSum + tile.before.byteLength + tile.after.byteLength, 0), 64);
   if (entry.type === 'layer-add') return (entry.addedLayer?.pixels.byteLength ?? 0) + 128;
@@ -421,7 +423,7 @@ export class RasterDocument {
     if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new RangeError('Stroke opacity must be between 0 and 1.');
     if (!['square', 'circle'].includes(shape)) throw new TypeError('Brush shape must be square or circle.');
     if (!Number.isFinite(hardness) || hardness < 0 || hardness > 1) throw new RangeError('Brush hardness must be between 0 and 1.');
-    return { layerId: layer.id, tilesBefore: new Map(), color: parseHexColor(color), size: Math.round(size), mode, opacity, shape, hardness, last: null, changed: false };
+    return { layerId: layer.id, tilesBefore: new Map(), color: parseHexColor(color), size: Math.round(size), mode, opacity, shape, hardness, authoringMode: layer.authoringMode === 'illustration' ? 'illustration' : 'pixel-art', last: null, changed: false };
   }
   strokeTo(stroke, x, y) {
     if (!Number.isInteger(x) || !Number.isInteger(y)) throw new TypeError('Stroke coordinates must be integer document coordinates.');
