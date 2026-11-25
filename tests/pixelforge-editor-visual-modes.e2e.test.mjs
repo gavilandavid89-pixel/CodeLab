@@ -145,7 +145,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     await page.mouse.up();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   };
-  const sampleVisible = async point => {
+  const sampleVisible = async (point, hex) => {
     const screen = await screenPoint(point);
     return page.locator('#canvas').evaluate((canvas, p) => {
       const rect = canvas.getBoundingClientRect();
@@ -153,6 +153,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
       const centerX = Math.floor((p.x - rect.left) * dpr);
       const centerY = Math.floor((p.y - rect.top) * dpr);
       const context = canvas.getContext('2d');
+      const target = [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16));
       let best = null;
       // Sample a tiny screen-space neighborhood to tolerate the 1px artboard
       // outline and fractional zoom interpolation without masking missing dabs.
@@ -160,9 +161,8 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
         const x = Math.max(0, Math.min(canvas.width - 1, centerX + dx));
         const y = Math.max(0, Math.min(canvas.height - 1, centerY + dy));
         const rgba = Array.from(context.getImageData(x, y, 1, 1).data);
-        if (!best || rgba[0] + rgba[1] + rgba[2] > best.rgba[0] + best.rgba[1] + best.rgba[2]) {
-          best = { rgba, offset: { x: dx, y: dy } };
-        }
+        const error = rgba.slice(0, 3).reduce((sum, value, index) => sum + Math.abs(value - target[index]), 0);
+        if (!best || error < best.error) best = { rgba, offset: { x: dx, y: dy }, error };
       }
       return best;
     }, screen);
@@ -173,7 +173,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     const readout = await page.locator('#coordinate-readout').textContent();
     assert.equal(readout, 'x: ' + point.x + ' · y: ' + point.y,
       'screen-to-document mapping must identify the same pixel being visually sampled for ' + label);
-    const sampled = await sampleVisible(point);
+    const sampled = await sampleVisible(point, hex);
     const actual = sampled.rgba;
     const expected = expectedRgb(hex);
     const channelError = actual.slice(0, 3).map((value, index) => Math.abs(value - expected[index]));
