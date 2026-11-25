@@ -82,7 +82,16 @@ function buildAgentCompositionGuide() {
     schemaVersion: 1,
     purpose: 'PixelForge Video Composer composition constraints',
     sourceCanvas: guide.source,
+    sourceDrawingMode: packageData.manifest.sourceDrawingMode || null,
+    drawingModesPresent: [...new Set([
+      packageData.manifest.sourceDrawingMode,
+      ...packageData.frames.map(frame => frame.authoringMode),
+      ...packageData.frames.flatMap(frame => (frame.layerMetadata || []).map(item => item.authoringMode)),
+    ].filter(mode => mode === 'illustration' || mode === 'pixel-art'))],
     output: {
+      platform: $('#vc-aspect').value === '16:9' ? 'youtube-landscape' :
+        $('#vc-aspect').value === '9:16' ? 'shorts-or-tiktok' :
+        $('#vc-aspect').value === '1:1' ? 'square-social' : 'original-aspect',
       aspect: $('#vc-aspect').value,
       dimensions: guide.target,
       fitMode: $('#vc-fit-mode').value,
@@ -342,7 +351,8 @@ async function renderFrame(index) {
   if (guide) {
     const safe = guide.safeArea;
     context.save();
-    context.fillStyle = 'rgba(8, 10, 16, 0.42)';
+    context.fillStyle = $('#vc-fit-mode').value === 'cover'
+      ? 'rgba(8, 10, 16, 0.42)' : 'rgba(8, 10, 16, 0.14)';
     context.beginPath();
     context.rect(0, 0, width, height);
     context.rect(safe.x, safe.y, safe.width, safe.height);
