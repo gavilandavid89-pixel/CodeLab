@@ -187,3 +187,22 @@ test('creates a native large sparse project and edits only the touched tile with
   assert.equal(tiled.stats.celCount, 0);
   assert.equal(tiled.stats.resourceCount, 0);
 });
+
+
+test('composites only a bounded viewport from a large sparse project', async () => {
+  const tiled = TiledRasterProjectDocument.createBlank({
+    width: 4096,
+    height: 4096,
+    tileSize: 64,
+    maxDecodedCacheBytes: 64 * 1024,
+  });
+  const layerId = tiled.activeLayerId;
+  await tiled.writeRegion(layerId, { x: 2000, y: 2000, width: 1, height: 1 }, new Uint8Array([10, 20, 30, 255]));
+  const viewport = tiled.readCompositeRegion({ x: 1992, y: 1992, width: 16, height: 16 });
+  assert.equal(viewport.width, 16);
+  assert.equal(viewport.height, 16);
+  const offset = ((2000 - 1992) * 16 + (2000 - 1992)) * 4;
+  assert.deepEqual(Array.from(viewport.pixels.slice(offset, offset + 4)), [10, 20, 30, 255]);
+  assert.equal(viewport.pixels.length, 16 * 16 * 4);
+  tiled.dispose();
+});
