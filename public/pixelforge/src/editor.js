@@ -1238,7 +1238,9 @@ async function buildProjectSnapshot(targetDoc = doc) {
     targetDoc.drawingModel = withState.drawingModel;
   }
   if (targetDoc === doc && animation) {
-    snapshot.animation = { ...animation.toJSON(), loop: animationLoop, playbackSpeed: animationPlaybackSpeed };
+    snapshot.animation = animation instanceof TiledAnimationDocument
+      ? { ...await animation.toManifest(), loop: animationLoop, playbackSpeed: animationPlaybackSpeed }
+      : { ...animation.toJSON(), loop: animationLoop, playbackSpeed: animationPlaybackSpeed };
   }
   return snapshot;
 }
@@ -1271,7 +1273,7 @@ function restoreActiveSceneWorkspace() {
     };
     doc = RasterDocument.fromJSON(restoredSnapshot);
     applyDrawingConfiguration(restoredSnapshot);
-    animation = restoredSnapshot.animation ? PixelForgeAnimation.fromJSON(restoredSnapshot.animation) : null;
+    animation = restoredSnapshot.animation ? await restoreProjectAnimation(restoredSnapshot.animation) : null;
     animationLoop = restoredSnapshot.animation?.loop !== false;
     animationPlaybackSpeed = restoredSnapshot.animation?.playbackSpeed ?? 1;
   }
@@ -1308,7 +1310,7 @@ async function switchSceneWorkspace(nextSection) {
       drawingModel: { ...(targetSnapshot.drawingModel || {}), sceneWorkspaceState: state },
     };
     doc = RasterDocument.fromJSON(restoredSnapshot);
-    animation = restoredSnapshot.animation ? PixelForgeAnimation.fromJSON(restoredSnapshot.animation) : null;
+    animation = restoredSnapshot.animation ? await restoreProjectAnimation(restoredSnapshot.animation) : null;
     animationLoop = restoredSnapshot.animation?.loop !== false;
     animationPlaybackSpeed = restoredSnapshot.animation?.playbackSpeed ?? 1;
     activeSceneWorkspace = nextSection;
@@ -2817,7 +2819,7 @@ async function renderProjects() {
         const saved = await loadProjectById(project.id);
         if (!saved) throw new Error('That saved project no longer exists.');
         stopAnimationPlayback({ save: false });
-        installDocument(await restoreProjectDocument(saved)); applyDrawingConfiguration(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
+        installDocument(await restoreProjectDocument(saved)); applyDrawingConfiguration(saved); animation = saved.animation ? await restoreProjectAnimation(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
         animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
         $('#projects-dialog').close(); fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
         status('Opened saved project', 'success');
@@ -3015,7 +3017,7 @@ $('#import-file').addEventListener('change', async event => {
     const savedImport = await saveProject(importSnapshot);
     if (Number.isInteger(savedImport?.serverRevision)) importedDoc.serverRevision = savedImport.serverRevision;
     stopAnimationPlayback({ save: false });
-    installDocument(importedDoc); applyDrawingConfiguration(importSnapshot); animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
+    installDocument(importedDoc); applyDrawingConfiguration(importSnapshot); animation = importedDoc.animationData ? await restoreProjectAnimation(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
     fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); refreshReferenceCenterUI(); status('Import complete and saved to your CodeLab account', 'success');
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
@@ -3304,7 +3306,7 @@ async function boot() {
       if (existingSnapshot?.animation) {
         installDocument(await restoreProjectDocument(existingSnapshot));
         applyDrawingConfiguration(existingSnapshot);
-        animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
+        animation = await restoreProjectAnimation(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
         animationPlaybackSpeed = existingSnapshot.animation.playbackSpeed ?? 1;
         status('Demo caminata → agacharse recuperada · 60 fotogramas a 12 FPS', 'success');
@@ -3341,7 +3343,7 @@ async function boot() {
       if (!snapshot) throw new Error('No se encontró ese proyecto PixelForge.');
       installDocument(await restoreProjectDocument(snapshot));
       applyDrawingConfiguration(snapshot);
-      animation = snapshot.animation ? PixelForgeAnimation.fromJSON(snapshot.animation) : null;
+      animation = snapshot.animation ? await restoreProjectAnimation(snapshot.animation) : null;
       animationLoop = snapshot.animation?.loop !== false;
       restoreActiveSceneWorkspace();
       animationPlaybackSpeed = snapshot.animation?.playbackSpeed ?? 1;
@@ -3355,7 +3357,7 @@ async function boot() {
       if (saved) {
         installDocument(await restoreProjectDocument(saved));
         applyDrawingConfiguration(saved);
-        animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null;
+        animation = saved.animation ? await restoreProjectAnimation(saved.animation) : null;
         animationLoop = saved.animation?.loop !== false;
         restoreActiveSceneWorkspace();
         animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1;
