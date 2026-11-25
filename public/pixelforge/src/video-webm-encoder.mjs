@@ -136,6 +136,8 @@ export async function encodeWebMFrames(frames, options = {}) {
     const worker = new Worker(new URL('./video-webm-encoder-worker.mjs', import.meta.url), { type: 'module' });
     const transferableFrames = frames.map(frame => ({
     durationMs: frame.durationMs, blob: frame.blob,
+    width: frame.width, height: frame.height,
+    layers: Array.isArray(frame.layers) ? frame.layers.map(layer => ({ ...layer })) : undefined,
     scalingMode: ['smooth', 'pixelated'].includes(frame.scalingMode) ? frame.scalingMode : options.scalingMode
   }));
     return await new Promise((resolve, reject) => {
