@@ -6,6 +6,7 @@
  * full layer. Undo/history and editor pointer integration remain separate gates.
  */
 import { parseHexColor } from './core.js';
+import { guardStyleOwnedPixels } from './raster-style-ownership.mjs';
 
 function validateSettings(settings = {}) {
   const {
@@ -31,7 +32,7 @@ function validateSettings(settings = {}) {
  * RasterDocument.#dab, but read/write only the dab's clipped document region.
  */
 export async function applyTiledBrushDab(document, layerId, x, y, settings = {}) {
-  if (!document || typeof document.readRegion !== 'function' || typeof document.writeRegion !== 'function' ||
+  if (!document || typeof document.readRegion !== 'function' || typeof document.writeRegionWithOwnership !== 'function' || typeof document.readOwnershipRegion !== 'function' ||
       !Number.isInteger(document.width) || !Number.isInteger(document.height)) {
     throw new TypeError('A tile-aware raster project document is required.');
   }
@@ -42,6 +43,8 @@ export async function applyTiledBrushDab(document, layerId, x, y, settings = {})
   if (!layer) throw new Error('Unknown tiled brush layer.');
   if (layer.locked) throw new Error('The active layer is locked.');
   const brush = validateSettings(settings);
+  const authoringMode = settings.authoringMode ?? layer.authoringMode ?? document.drawingConfiguration?.activeMode;
+  if (!['illustration', 'pixel-art'].includes(authoringMode)) throw new TypeError('Tiled brush requires an explicit Illustration or Pixel Art authoringMode.');
   if (brush.opacity <= 0) return { changed: false, changedTiles: 0 };
 
   const offset = Math.floor((brush.size - 1) / 2);
@@ -51,7 +54,9 @@ export async function applyTiledBrushDab(document, layerId, x, y, settings = {})
     width: Math.min(document.width - 1, x - offset + brush.size - 1) - Math.max(0, x - offset) + 1,
     height: Math.min(document.height - 1, y - offset + brush.size - 1) - Math.max(0, y - offset) + 1,
   };
-  const pixels = document.readRegion(layerId, region);
+  const before = document.readRegion(layerId, region);
+  const pixels = new Uint8ClampedArray(before);
+  const owners = document.readOwnershipRegion(layerId, region);
   const selectionMask = document.selectionMask;
   let changedPixels = 0;
   for (let py = 0; py < region.height; py++) {
@@ -93,9 +98,11 @@ export async function applyTiledBrushDab(document, layerId, x, y, settings = {})
       changedPixels++;
     }
   }
-  if (!changedPixels) return { changed: false, changedTiles: 0, changedPixels: 0 };
-  const result = await document.writeRegion(layerId, region, pixels);
-  return { ...result, changedPixels };
+  if (!changedPixels) return { changed: false, changedTiles: 0, changedPixels: 0, blockedPixels: 0 };
+  const guarded = guardStyleOwnedPixels({ before, after: pixels, owners, authoringMode, operation: brush.mode === 'erase' ? 'erase' : 'draw' });
+  if (!guarded.changedPixels) return { changed: false, changedTiles: 0, changedPixels: 0, blockedPixels: guarded.blockedPixels };
+  const result = await document.writeRegionWithOwnership(layerId, region, guarded.pixels, guarded.owners);
+  return { ...result, changedPixels: guarded.changedPixels, blockedPixels: guarded.blockedPixels };
 }
 
 /**
