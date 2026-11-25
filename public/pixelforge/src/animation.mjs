@@ -129,6 +129,9 @@ function normalizeLayerMetadata(metadata = {}, layerId, index = 0, fallbackMode 
     authoringMode: ['illustration', 'pixel-art'].includes(value.authoringMode) ? value.authoringMode : fallbackMode,
     modeOverrides: value.modeOverrides && typeof value.modeOverrides === 'object' && !Array.isArray(value.modeOverrides)
       ? structuredClone(value.modeOverrides) : {},
+    ownershipTiles: value.ownershipTiles instanceof Map
+      ? [...value.ownershipTiles].map(([key, owners]) => { const [tileX, tileY] = key.split(':').map(Number); return { tileX, tileY, owners: encodeBase64(owners) }; })
+      : (Array.isArray(value.ownershipTiles) ? structuredClone(value.ownershipTiles) : []),
   };
 }
 
@@ -289,6 +292,22 @@ export class PixelForgeAnimation {
     frame.layerMetadata.set(layerId, normalizeLayerMetadata(metadata, layerId, index, frame.authoringMode || 'pixel-art'));
     return this.getLayerMetadata(frameIndex, layerId);
   }
+  getLayerOwnershipTiles(frameIndex, layerId) {
+    const metadata = this.getLayerMetadata(frameIndex, layerId);
+    const output = new Map();
+    for (const tile of metadata.ownershipTiles || []) {
+      if (!Number.isInteger(tile.tileX) || !Number.isInteger(tile.tileY) || tile.tileX < 0 || tile.tileY < 0) throw new TypeError('Animation ownership tile coordinate is invalid.');
+      const width = Math.min(64, this.#width - tile.tileX * 64), height = Math.min(64, this.#height - tile.tileY * 64);
+      if (width < 1 || height < 1) throw new TypeError('Animation ownership tile is outside the canvas.');
+      const owners = decodeBase64(tile.owners, width * height);
+      if (owners.some(owner => owner > 2) || !owners.some(owner => owner !== 0)) throw new TypeError('Animation ownership tile contains invalid owner data.');
+      const key = `${tile.tileX}:${tile.tileY}`;
+      if (output.has(key)) throw new TypeError('Animation contains duplicate ownership tiles.');
+      output.set(key, owners);
+    }
+    return output;
+  }
+
   compositeThumbnail(frameIndex, layerSettings = null, maxDimension = 48) {
     const frame = this.#frameAt(frameIndex);
     if (!Number.isInteger(maxDimension) || maxDimension < 8 || maxDimension > 256) {
