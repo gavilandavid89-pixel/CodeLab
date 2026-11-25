@@ -1208,6 +1208,8 @@ export class RasterDocument {
       const pixelIndex = py * this.width + px;
       if (this.selectionMask && !this.selectionMask[pixelIndex]) continue;
       if (stroke.opacity <= 0) continue;
+      const owner = this.#ownerAt(layer, px, py), styleOwner = stroke.authoringMode === 'illustration' ? 1 : 2;
+      if ((stroke.mode === 'erase' && owner !== styleOwner) || (stroke.mode === 'draw' && owner !== 0 && owner !== styleOwner)) continue;
       let coverage = 1;
       if (stroke.shape === 'circle') {
         const centerOffset = stroke.size % 2 === 0 ? 0.5 : 0;
@@ -1236,6 +1238,7 @@ export class RasterDocument {
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!stroke.tilesBefore.has(key)) stroke.tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       layer.pixels.set(next, i);
+      this.#setOwner(layer, px, py, next[3] === 0 ? 0 : (owner || styleOwner));
       this.compositeDirtyTiles.add(key);
     }
   }
