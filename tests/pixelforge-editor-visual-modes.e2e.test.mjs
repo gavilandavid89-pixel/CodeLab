@@ -213,6 +213,11 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.equal(await page.locator('#brush-size').inputValue(), '5');
   assert.equal(await page.locator('#brush-shape').inputValue(), 'circle');
   assert.equal(await page.locator('#brush-hardness').inputValue(), '55');
+  assert.equal(await page.locator('#fill-tolerance').inputValue(), '24', 'illustration mode should use a forgiving fill tolerance');
+  assert.equal(await page.locator('#magic-tolerance').inputValue(), '12', 'illustration mode should use a soft color-selection tolerance');
+  assert.equal(await page.locator('#transform-interpolation').inputValue(), 'bilinear');
+  await setValue('#fill-tolerance', 37);
+  await setValue('#magic-tolerance', 18);
   await setValue('#brush-size', 9);
   await setValue('#brush-hardness', 71);
   await setValue('#brush-opacity', 82);
@@ -220,15 +225,22 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.equal(await page.locator('#brush-size').inputValue(), '1');
   assert.equal(await page.locator('#brush-shape').inputValue(), 'square');
   assert.equal(await page.locator('#brush-hardness').inputValue(), '100');
+  assert.equal(await page.locator('#fill-tolerance').inputValue(), '0', 'pixel-art mode should require exact color matches for fill by default');
+  assert.equal(await page.locator('#magic-tolerance').inputValue(), '0', 'pixel-art mode should require exact color matches for magic selection by default');
+  assert.equal(await page.locator('#transform-interpolation').inputValue(), 'nearest');
+  await setValue('#fill-tolerance', 4);
   await setValue('#brush-size', 2);
   await setValue('#brush-opacity', 64);
   await setMode('illustration');
   assert.equal(await page.locator('#brush-size').inputValue(), '9', 'illustration custom size must survive a round trip');
   assert.equal(await page.locator('#brush-hardness').inputValue(), '71', 'illustration hardness must be restored');
   assert.equal(await page.locator('#brush-opacity').inputValue(), '82', 'illustration opacity must be restored');
+  assert.equal(await page.locator('#fill-tolerance').inputValue(), '37', 'illustration fill tolerance must survive mode switching');
+  assert.equal(await page.locator('#magic-tolerance').inputValue(), '18', 'illustration magic-selection tolerance must survive mode switching');
   await setMode('pixel-art');
   assert.equal(await page.locator('#brush-size').inputValue(), '2', 'pixel-art custom size must survive a round trip');
   assert.equal(await page.locator('#brush-opacity').inputValue(), '64', 'pixel-art opacity must be restored');
+  assert.equal(await page.locator('#fill-tolerance').inputValue(), '4', 'pixel-art fill tolerance must survive mode switching');
 
   const matrix = [];
   for (const mode of ['illustration', 'pixel-art']) {
