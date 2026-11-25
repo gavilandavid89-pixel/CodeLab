@@ -189,7 +189,8 @@ async function captureContentPng() {
       sourceWidth: packageData.manifest.width, sourceHeight: packageData.manifest.height,
       frameCount: packageData.frames.length, title: $('#vc-project-name').textContent,
       background: $('#vc-solid-bg').checked ? '#101116' : '#20232d',
-      scalingMode: $('#vc-scaling-mode').value
+      scalingMode: $('#vc-scaling-mode').value,
+      fitMode: $('#vc-fit-mode').value
     });
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('El navegador no pudo generar el PNG.');
