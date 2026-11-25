@@ -11,49 +11,78 @@ export class TiledRasterPointerStrokeController {
   #document;
   #pointerId = null;
   #layerId = null;
-  #lastPoint = null;
+  #lastPoints = [];
+  #ownsHistory = true;
   #disposed = false;
 
   constructor(document, historyOptions = {}) {
     this.#document = document;
-    this.#history = new TiledRasterStrokeHistory(document, historyOptions);
+    const sharedHistory = historyOptions.history || document.strokeHistory;
+    this.#history = sharedHistory || new TiledRasterStrokeHistory(document, historyOptions);
+    this.#ownsHistory = !sharedHistory;
   }
 
   get active() { return this.#pointerId !== null; }
   get history() { return this.#history; }
 
-  async pointerDown({ pointerId, layerId, point, settings }) {
+  async pointerDown({ pointerId, layerId, point, points, settings }) {
     this.#assertLive();
     if (this.active) throw new Error('A tiled pointer stroke is already active.');
-    if (pointerId === undefined || pointerId === null || !point ||
-        !Number.isInteger(point.x) || !Number.isInteger(point.y)) {
-      throw new TypeError('A pointer ID and integer document point are required.');
+    const initialPoints = Array.isArray(points) ? points : [point];
+    if (pointerId === undefined || pointerId === null ||
+        !initialPoints.some(candidate => candidate && Number.isInteger(candidate.x) && Number.isInteger(candidate.y))) {
+      throw new TypeError('A pointer ID and at least one integer document point are required.');
     }
     this.#history.beginStroke(layerId, settings);
     this.#pointerId = pointerId;
     this.#layerId = layerId;
-    this.#lastPoint = { x: point.x, y: point.y };
+    this.#lastPoints = initialPoints.map(candidate =>
+      candidate && Number.isInteger(candidate.x) && Number.isInteger(candidate.y)
+        ? { x: candidate.x, y: candidate.y } : null);
     try {
-      return await this.#history.dab(point.x, point.y);
+      let changed = false;
+      for (const candidate of this.#lastPoints) {
+        if (!candidate) continue;
+        const result = await this.#history.dab(candidate.x, candidate.y);
+        changed ||= result.changed;
+      }
+      return { changed };
     } catch (error) {
-      await this.#history.cancelStroke();
+      if (this.#history.isStrokeActive) await this.#history.cancelStroke();
       this.#reset();
       throw error;
     }
   }
 
-  async pointerMove({ pointerId, point }) {
+  async pointerMove({ pointerId, point, points }) {
     this.#assertLive();
     if (!this.active || pointerId !== this.#pointerId) return { changed: false, ignored: true };
-    if (!point || !Number.isInteger(point.x) || !Number.isInteger(point.y)) {
+    if (point && (!Number.isInteger(point.x) || !Number.isInteger(point.y))) {
       throw new TypeError('Pointer move requires an integer document point.');
     }
-    if (point.x < 0 || point.y < 0 || point.x >= this.#document.width || point.y >= this.#document.height) {
+    if (point && (point.x < 0 || point.y < 0 || point.x >= this.#document.width || point.y >= this.#document.height)) {
       return { changed: false, ignored: true, outside: true };
     }
-    const result = await this.#history.segment(this.#lastPoint, point);
-    this.#lastPoint = { x: point.x, y: point.y };
-    return result;
+    const nextPoints = Array.isArray(points) ? points : [point];
+    if (!nextPoints.length) return { changed: false, ignored: true };
+    let changed = false, changedDabs = 0, changedPixels = 0;
+    for (let index = 0; index < nextPoints.length; index++) {
+      const next = nextPoints[index];
+      const previous = this.#lastPoints[index] || null;
+      if (!next) continue;
+      if (!Number.isInteger(next.x) || !Number.isInteger(next.y)) {
+        throw new TypeError('Symmetry points must be integer document coordinates or null.');
+      }
+      if (next.x < 0 || next.y < 0 || next.x >= this.#document.width || next.y >= this.#document.height) continue;
+      const result = previous
+        ? await this.#history.segment(previous, next)
+        : await this.#history.dab(next.x, next.y);
+      if (result.changed) changed = true;
+      changedDabs += result.changedDabs || Number(Boolean(result.changed));
+      changedPixels += result.changedPixels || 0;
+    }
+    this.#lastPoints = nextPoints.map(candidate => candidate ? { x: candidate.x, y: candidate.y } : null);
+    return { changed, changedDabs, changedPixels };
   }
 
   async pointerUp({ pointerId, commit = true } = {}) {
@@ -77,14 +106,14 @@ export class TiledRasterPointerStrokeController {
     if (this.#disposed) return;
     if (this.active) await this.#history.cancelStroke();
     this.#reset();
-    this.#history.dispose();
+    if (this.#ownsHistory) this.#history.dispose();
     this.#disposed = true;
   }
 
   #reset() {
     this.#pointerId = null;
     this.#layerId = null;
-    this.#lastPoint = null;
+    this.#lastPoints = [];
   }
   #assertLive() {
     if (this.#disposed) throw new Error('Tiled pointer stroke controller has been disposed.');
