@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
+import { RasterDocument } from '../public/pixelforge/src/core.js';
 import { applyTiledBrushDab } from '../public/pixelforge/src/raster-tiled-brush.mjs';
 import { fillTiledLayer } from '../public/pixelforge/src/raster-tiled-fill.mjs';
 import { PixelForgeAnimation } from '../public/pixelforge/src/animation.mjs';
@@ -113,4 +114,14 @@ test('animation cels enforce style isolation and retain ownership across frame c
     try { assert.deepEqual([...restored.readOwnershipRegion(1, 'paint', region)], [2]); }
     finally { restored.dispose(); }
   } finally { animation.dispose(); }
+});
+
+test('dense-to-tiled migration preserves per-pixel ownership metadata', async () => {
+  const dense = new RasterDocument(8, 8);
+  dense.activeLayer.authoringMode = 'illustration';
+  const stroke = dense.beginStroke({ color: '#123456', size: 1 });
+  dense.strokeTo(stroke, 6, 5); dense.endStroke(stroke);
+  const tiled = await TiledRasterProjectDocument.fromDocument(dense, { tileSize: 32 });
+  try { assert.deepEqual([...tiled.readOwnershipRegion(tiled.activeLayerId, { x: 6, y: 5, width: 1, height: 1 })], [1]); }
+  finally { tiled.dispose(); }
 });
