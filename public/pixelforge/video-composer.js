@@ -488,7 +488,12 @@ async function parseComposerPackage(file) {
       const composed = await composeNativeFrame(project, frame);
       frames.push({ ...frame, ...composed });
     }
-    const drawingModesPresent = [...new Set(frames.flatMap(frame => frame.layers.map(layer => layer.authoringMode)))];
+    const drawingModesPresent = [...new Set(animation.frames.flatMap(frame =>
+      project.layers.map(layer => resolveDrawingMode({
+        cel: (frame.cels || []).find(cel => String(cel.layerId) === String(layer.id)),
+        frame, layer, project,
+      }))
+    ))];
     const totalDurationMs = frames.reduce((sum, frame) => sum + Number(frame.durationMs), 0);
     return {
       manifest: {
