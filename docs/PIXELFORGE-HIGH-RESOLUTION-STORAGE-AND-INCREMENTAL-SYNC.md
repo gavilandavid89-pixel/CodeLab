@@ -247,6 +247,7 @@ A Chromium end-to-end test now drives the actual visible PixelForge canvas with 
 
 The browser test also checks:
 - Odd, non-square 127 × 91 canvases with 2/4/8-way symmetry, including mirrored points that must be clipped outside the document.
+- Shape distinction (5px square versus circle diagonal coverage) and the maximum 128px brush clipped against a non-square canvas edge.
 - Mode-specific defaults and restoration of independent custom brush size, hardness and opacity after repeated mode switches.
 - Actual rendered edge sampling: illustration mode must show blended edge pixels at fractional zoom, while pixel-art must remain crisp without blended colors.
 - Dabs at the top-left and bottom-right canvas pixels, plus a pointer stroke that leaves and re-enters the canvas.
