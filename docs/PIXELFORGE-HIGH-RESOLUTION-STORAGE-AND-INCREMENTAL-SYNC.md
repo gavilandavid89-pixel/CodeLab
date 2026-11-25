@@ -265,7 +265,7 @@ The editor now has an opt-in dense-to-tiled document factory at 1,048,576 pixels
 
 The visible editor pointer lifecycle is connected for sparse brush and eraser gestures. Pointer-down, move, up, cancellation, and lost capture use the tile-aware controller and transactional history. The editor serializes gesture operations so a quick second tap cannot race the asynchronous commit of the previous stroke. Symmetry points are forwarded as one gesture, and the existing viewport renderer reads only the visible document rectangle. Illustration and pixel-art presentation settings continue to control smoothing and brush profiles independently.
 
-The visible sparse path is deliberately restricted to operations with a verified tile-aware implementation. Dense-only fill, selection, transforms, shape tools, layer authoring/reordering, animation editing, scene workspaces, AI proposals, and ZIP/sprite/video exports are disabled or report that migration is pending. Layer selection, brush, eraser, pan, eyedropper, save/load, undo, and redo are the current supported surface. This is a compatibility boundary, not a claim that every editor feature is sparse-native.
+The visible sparse path is deliberately restricted to operations with a verified tile-aware implementation. Dense-only fill, selection, transforms, shape tools, layer authoring/reordering, animation editing, scene workspaces, AI proposals, Reference Center authoring, and ZIP/sprite/video exports are disabled or report that migration is pending. Layer selection, brush, eraser, pan, eyedropper, save/load, undo, and redo are the current supported surface. This is a compatibility boundary, not a claim that every editor feature is sparse-native.
 
 ### Browser-level visual evidence
 
