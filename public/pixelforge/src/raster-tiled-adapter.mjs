@@ -289,10 +289,7 @@ export class TiledRasterProjectDocument {
     }
   }
   get selectionMask() { return this.#selectionMask; }
-  set selectionMask(value) {
-    if (value !== null) throw new Error('Sparse tiled projects do not support dense selection masks yet.');
-    this.#selectionMask = null;
-  }
+  set selectionMask(value) { this.setSelectionMask(value); }
   get strokeHistory() { return this.#strokeHistory; }
   get history() { return this.#strokeHistory.undoStack; }
   set history(value) { if (Array.isArray(value) && value.length === 0) this.#strokeHistory.clear(); }
@@ -333,8 +330,12 @@ export class TiledRasterProjectDocument {
     return true;
   }
   setSelectionMask(mask) {
-    if (mask !== null) throw new Error('Sparse tiled projects do not support dense selection masks yet.');
-    this.#selectionMask = null;
+    if (mask !== null && (!(mask instanceof Uint8Array) || mask.length !== this.#width * this.#height)) {
+      throw new TypeError('Selection mask must be a Uint8Array matching tiled project dimensions.');
+    }
+    // One byte per pixel is a bounded compatibility mask (maximum 16 MiB at
+    // current geometry limits); raster pixels themselves remain sparse.
+    this.#selectionMask = mask === null ? null : new Uint8Array(mask);
   }
   clearHistory() { this.#strokeHistory.clear(); }
   async undo() { return this.#strokeHistory.undo(); }
