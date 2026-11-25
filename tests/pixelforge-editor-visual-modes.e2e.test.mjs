@@ -406,7 +406,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   ]) {
     await setMode(mode);
     await setColor(color);
-    await setValue('#brush-size', 1);
+    await setValue('#brush-size', 5);
     await page.locator('#brush-shape').selectOption('square');
     await drawAt(point);
     await assertVisibleColor(point, color, 'tiled/' + mode + '/edge');
