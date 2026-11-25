@@ -349,12 +349,17 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.deepEqual(circleCorner.slice(0, 3), backgroundColor.split(',').map(Number),
     'circle brush must leave the square-only diagonal corner untouched');
 
-  // Maximum brush size must clip cleanly to a non-square canvas.
+  // The visible editor intentionally exposes a 32px maximum even though
+  // lower-level raster primitives can accept larger brush sizes.
   await setColor('#ffffff');
   await setValue('#brush-size', 128);
+  assert.equal(await page.locator('#brush-size').inputValue(), '32', 'the visible brush control must clamp to its documented 32px maximum');
   await page.locator('#brush-shape').selectOption('square');
-  await drawAt({ x: 63, y: 45 });
-  await assertVisibleColor({ x: 126, y: 90 }, '#ffffff', '128px brush clipped to bottom-right edge');
+  await drawAt({ x: 15, y: 15 });
+  await assertVisibleColor({ x: 0, y: 0 }, '#ffffff', '32px brush clipped to top-left edge');
+  await assertVisibleColor({ x: 31, y: 31 }, '#ffffff', '32px brush reaches its far top-left extent');
+  await drawAt({ x: 126, y: 90 });
+  await assertVisibleColor({ x: 126, y: 90 }, '#ffffff', '32px brush clipped to bottom-right edge');
 
   await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence }, null, 2));
   await page.close();
