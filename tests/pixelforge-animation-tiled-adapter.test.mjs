@@ -191,3 +191,39 @@ test('tiled animation layer removal returns retained cels and restores them by s
   assert.equal(removed.frames.every(item => item.celId === null), true);
   animation.dispose();
 });
+
+
+test('per-frame tiled stroke history remains isolated when the active cel references are swapped', async () => {
+  const project = TiledRasterProjectDocument.createBlank({ width: 64, height: 64, tileSize: 32 });
+  const animation = TiledAnimationDocument.fromTiledProjectDocument(project, { fps: 12 });
+  const layerId = project.activeLayerId;
+  const historyFrame0 = project.strokeHistory;
+  const before = project.readRegion(layerId, { x: 0, y: 0, width: 32, height: 32 });
+  const after = new Uint8ClampedArray(before);
+  after.set([80, 170, 240, 255], 0);
+  await historyFrame0.applyTileOperation(layerId, [{ x: 0, y: 0, before, after }], { type: 'test-frame-paint' });
+  const frame0Cel = project.cloneLayerCelReference(layerId);
+  animation.replaceFrameCelReference(0, layerId, frame0Cel, { takeOwnership: true });
+
+  const detachedFrame0History = project.swapStrokeHistory(project.createStrokeHistory());
+  animation.createBlankFrame({ durationMs: 80 });
+  const frame1References = new Map(animation.layerIds.map(id => [id, animation.getFrameCelReference(1, id)]));
+  project.replaceLayerCelReferences(frame1References, { takeOwnership: true });
+  project.swapStrokeHistory(project.createStrokeHistory()).dispose();
+  assert.equal(project.strokeHistory.canUndo, false);
+  assert.equal(project.readRegion(layerId, { x: 0, y: 0, width: 1, height: 1 })[3], 0);
+
+  const detachedFrame1History = project.swapStrokeHistory(project.createStrokeHistory());
+  animation.setActiveFrame(0);
+  const frame0References = new Map(animation.layerIds.map(id => [id, animation.getFrameCelReference(0, id)]));
+  project.replaceLayerCelReferences(frame0References, { takeOwnership: true });
+  project.swapStrokeHistory(detachedFrame0History).dispose();
+  assert.equal(project.strokeHistory.canUndo, true);
+  assert.equal(project.readRegion(layerId, { x: 0, y: 0, width: 1, height: 1 })[3], 255);
+  assert.equal(await project.undo(), true);
+  assert.equal(project.readRegion(layerId, { x: 0, y: 0, width: 1, height: 1 })[3], 0);
+
+  detachedFrame1History.dispose();
+  animation.dispose();
+  project.dispose();
+});
