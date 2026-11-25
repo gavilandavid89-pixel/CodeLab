@@ -164,7 +164,7 @@ Después de editar:
 | Modos illustration/pixel-art | Persistencia y propagación en documentos densos, Headless y paquetes estructurados | No significa que todas las herramientas tiled estén migradas |
 | Cambio de modo | No destructivo y basado en metadatos | No debe reescribir píxeles ni geometría |
 | Capas y cels tiled | Adaptadores sparse y operaciones regionales implementadas | Todavía no son el modelo canónico completo del editor |
-| Herramientas tiled | Brush/eraser y base de escritura regional | Fill, selección, máscaras y transforms requieren migración/paridad |
+| Herramientas tiled | Brush/eraser, fill transaccional, selecciones geométricas y contornos de línea/rectángulo/elipse | Gradientes, magic wand y transforms requieren migración/paridad |
 | Historia tiled | Historia de trazos en alcance limitado | Operaciones de metadatos de capa y operaciones generales aún requieren integración |
 | Animación tiled | Adaptador de migración/manifiesto | La ruta densa del editor sigue siendo la ruta integrada; no afirmar paridad completa |
 | Video nativo mixto | Compositor/exportador por capa conserva modo y sampling | Paquetes legacy aplanados no pueden recuperar metadatos por capa ausentes |
@@ -202,6 +202,11 @@ Este cuadro es una fotografía técnica y debe actualizarse con código y prueba
 - `raster-tiled-fill.mjs` performs scanline discovery and stages changes before committing. It enforces an explicit queue limit and history byte budget. The UI dispatches tiled documents to this path from `editor.js`.
 - This is a first tiled tool integration, not full editor parity. Selection masks, magic wand, transforms, layer metadata history and tiled animation remain separate migration gates.
 
+
+### Tiled shape outline boundary
+- `raster-tiled-shapes.mjs` rasterizes precomputed document-coordinate line/rectangle/ellipse outline paths through the shared tiled brush primitive.
+- A shape gesture preflights path coordinates and symmetry expansion against a bounded dab count, then uses one shared `TiledRasterStrokeHistory` transaction. The operation is serialized with tiled pointer gestures by the editor.
+- Selection masks are inherited from the brush primitive; undo-budget overflow cancels the complete shape. This is outline support only: do not claim filled vector shapes, gradients or transform support from this module.
 
 ### Tiled geometric selection boundary
 - `TiledRasterProjectDocument.setSelectionMask()` accepts a dimension-matched Uint8Array as a transient editor-owned reference (callers replace masks rather than mutating them). This avoids copying up to 16 MiB on every selection pointer update. Current mask storage is deliberately a bounded compatibility representation (one byte per pixel, up to 16 MiB under current canvas-area limits), not yet a packed sparse-mask resource format.
