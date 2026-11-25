@@ -220,7 +220,7 @@ export class TiledRasterStrokeHistory {
     if (command.entries[0]?.region) {
       for (let index = command.entries.length - 1; index >= 0; index--) {
         const entry = command.entries[index];
-        await this.#document.writeRegion(command.layerId, entry.region, entry.before);
+        await this.#document.writeRegion(command.layerId, entry.region, entry.before, { restore: true, owners: entry.beforeOwners });
       }
     } else {
       await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, before, beforeOwners }) => ({ x, y, pixels: before, owners: beforeOwners })), { maxBytes: this.#maxBytes, allowLocked: true, restore: true });
@@ -243,7 +243,7 @@ export class TiledRasterStrokeHistory {
     if (command.entries[0]?.region) {
       for (const entry of command.entries) await this.#document.writeRegion(command.layerId, entry.region, entry.after, { restore: true, owners: entry.afterOwners });
     } else {
-      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, after, afterOwners }) => ({ x, y, pixels: after, owners: afterOwners })), { maxBytes: this.#maxBytes, allowLocked: true });
+      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, after, afterOwners }) => ({ x, y, pixels: after, owners: afterOwners })), { maxBytes: this.#maxBytes, allowLocked: true, restore: true });
     }
     this.#undo.push(command);
     return true;
