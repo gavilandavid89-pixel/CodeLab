@@ -75,7 +75,10 @@ export class TiledAnimationDocument {
         throw new TypeError('Tiled animation frame metadata and cel references are invalid.');
       }
       frameIds.add(frame.id);
-      for (const layerId of layerIds) store.getCelTileSize(frame.cels.get(layerId));
+      for (const layerId of layerIds) {
+        const geometry = store.getCelDimensions(frame.cels.get(layerId));
+        if (geometry.width !== width || geometry.height !== height) throw new RangeError('Animation frame cel geometry does not match the timeline.');
+      }
     }
     this.#store = store;
     this.#width = width;
