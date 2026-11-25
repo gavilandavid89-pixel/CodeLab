@@ -433,11 +433,11 @@ export class TiledRasterProjectDocument {
     const owners = this.#store.readOwnershipRegion(previousCelId, region);
     const guarded = guardStyleOwnedPixels({ before, after: pixels, owners, authoringMode, operation });
     if (!guarded.changedPixels && guarded.owners.every((value, index) => value === owners[index])) {
-      return { changed: false, changedTiles: 0, celId: previousCelId, blockedPixels: guarded.blockedPixels };
+      return { changed: false, changedTiles: 0, celId: previousCelId, blockedPixels: guarded.blockedPixels, changedPixels: 0 };
     }
     const result = await this.#store.writeRegionWithOwnership(previousCelId, region, guarded.pixels, guarded.owners);
     if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
-    return { changed: result.changed, changedTiles: result.changedTiles, celId: result.celId, blockedPixels: guarded.blockedPixels };
+    return { changed: result.changed, changedTiles: result.changedTiles, celId: result.celId, blockedPixels: guarded.blockedPixels, changedPixels: guarded.changedPixels };
   }
 
   /**
@@ -498,7 +498,7 @@ export class TiledRasterProjectDocument {
     }
     const ownerMode = authoringMode;
     const previousCelId = layer.celId;
-    let workingCelId = previousCelId, changedTiles = 0, blockedPixels = 0;
+    let workingCelId = previousCelId, changedTiles = 0, blockedPixels = 0, changedPixels = 0;
     try {
       for (const patch of patches) {
         const width = Math.min(this.#store.getCelTileSize(workingCelId), this.#width - patch.x);
@@ -508,13 +508,14 @@ export class TiledRasterProjectDocument {
         const owners = this.#store.readOwnershipRegion(workingCelId, region);
         const guarded = guardStyleOwnedPixels({ before, after: patch.pixels, owners, authoringMode: ownerMode, operation: 'draw' });
         blockedPixels += guarded.blockedPixels;
+        changedPixels += guarded.changedPixels;
         if (!guarded.changedPixels && guarded.owners.every((value, index) => value === owners[index])) continue;
         const result = await this.#store.writeRegionWithOwnership(workingCelId, region, guarded.pixels, guarded.owners);
         if (result.changed) { if (workingCelId !== previousCelId) this.#store.releaseCel(workingCelId); workingCelId = result.celId; changedTiles += result.changedTiles; }
       }
-      if (workingCelId === previousCelId) return { changed: false, changedTiles: 0, removedTiles: 0, celId: previousCelId, blockedPixels };
+      if (workingCelId === previousCelId) return { changed: false, changedTiles: 0, removedTiles: 0, celId: previousCelId, blockedPixels, changedPixels: 0 };
       layer.celId = workingCelId; this.#markChanged(); this.#store.releaseCel(previousCelId);
-      return { changed: true, changedTiles, removedTiles: 0, celId: workingCelId, blockedPixels };
+      return { changed: true, changedTiles, removedTiles: 0, celId: workingCelId, blockedPixels, changedPixels };
     } catch (error) { if (workingCelId !== previousCelId) this.#store.releaseCel(workingCelId); throw error; }
   }
 
@@ -532,10 +533,10 @@ export class TiledRasterProjectDocument {
     const before = this.#store.readRegion(previousCelId, region);
     const owners = this.#store.readOwnershipRegion(previousCelId, region);
     const guarded = guardStyleOwnedPixels({ before, after: pixels, owners, authoringMode, operation });
-    if (!guarded.changedPixels && guarded.owners.every((value, index) => value === owners[index])) return { changed: false, changedTiles: 0, removedTiles: 0, celId: previousCelId, blockedPixels: guarded.blockedPixels };
+    if (!guarded.changedPixels && guarded.owners.every((value, index) => value === owners[index])) return { changed: false, changedTiles: 0, removedTiles: 0, celId: previousCelId, blockedPixels: guarded.blockedPixels, changedPixels: 0 };
     const result = await this.#store.writeRegionWithOwnership(previousCelId, region, guarded.pixels, guarded.owners);
     if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
-    return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: 0, celId: result.celId, blockedPixels: guarded.blockedPixels };
+    return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: 0, celId: result.celId, blockedPixels: guarded.blockedPixels, changedPixels: guarded.changedPixels };
   }
   setActiveLayer(layerId) {
     this.#cel(layerId);
