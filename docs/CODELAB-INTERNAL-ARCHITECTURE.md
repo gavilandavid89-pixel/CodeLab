@@ -203,6 +203,10 @@ Este cuadro es una fotografía técnica y debe actualizarse con código y prueba
 - This is a first tiled tool integration, not full editor parity. Selection masks, magic wand, transforms, layer metadata history and tiled animation remain separate migration gates.
 
 
+### Tiled linear gradient boundary
+- `raster-tiled-gradient.mjs` implements the tiled equivalent of the dense linear gradient: bounded row reads, tile-only staging, selection-mask clipping, alpha compositing and one tile-operation history command.
+- It shares `TiledRasterStrokeHistory.applyTileOperation`; the configured history byte budget is enforced before any cel replacement. Do not route tiled gradients through `RasterDocument.fillGradient()` or a full-canvas pixel buffer.
+
 ### Tiled shape outline boundary
 - `raster-tiled-shapes.mjs` rasterizes precomputed document-coordinate line/rectangle/ellipse outline paths through the shared tiled brush primitive.
 - A shape gesture preflights path coordinates and symmetry expansion against a bounded dab count, then uses one shared `TiledRasterStrokeHistory` transaction. The operation is serialized with tiled pointer gestures by the editor.
