@@ -229,6 +229,13 @@ The CodeLab structured ZIP v2 path now accepts a tiled raster project together w
 - Magic-wand/color selection remains unavailable in tiled mode because its current source path requires a dense full-layer pixel buffer.
 - Regression tests cover atomic fill/undo/redo, contiguous boundary behavior and budget rejection without pixel changes.
 
+### Transactional tiled linear gradients (implemented)
+
+- The linear gradient tool is now enabled for tiled documents and uses `raster-tiled-gradient.mjs` rather than the dense `RasterDocument.fillGradient()` path.
+- The operation scans one source row at a time, stages only changed tiles, and writes them as one `TiledRasterStrokeHistory` tile operation. It does not allocate a full-canvas RGBA buffer.
+- The active selection is a paint boundary; the gradient uses the same endpoint projection, color interpolation, alpha compositing and opacity semantics as the dense implementation.
+- The working/undo budget is checked before the first write. Budget rejection is atomic; identical gradients produce no history command; undo/redo treats the complete gradient as one operation.
+
 ### Transactional tiled shape outlines (implemented)
 
 - Line, rectangle-outline and ellipse-outline gestures now rasterize through the tiled brush/history path instead of being rejected by the tiled editor guard.
