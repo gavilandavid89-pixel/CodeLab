@@ -384,7 +384,8 @@ export class TiledRasterProjectDocument {
     return { ...normalized, pixels: output };
   }
 
-  get tileSize() { return this.#store.getCelTileSize(this.#cel(this.#activeLayerId).celId); }
+  get tileSize() { return this.getLayerTileSize(this.#activeLayerId); }
+  getLayerTileSize(layerId) { return this.#store.getCelTileSize(this.#cel(layerId).celId); }
 
   async writeTileBatch(layerId, patches, { allowLocked = false, ...options } = {}) {
     const layer = this.#cel(layerId);
