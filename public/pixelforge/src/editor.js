@@ -2727,7 +2727,6 @@ $('#animation-export-zip').addEventListener('click', async () => {
       notes: 'PNG frames are transparent composites. Import the .pforge project to retain independent editable layers and cels.',
     };
     if (animation?.frameCount) {
-      const layerSettings = doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
       const frameCanvas = document.createElement('canvas');
       frameCanvas.width = doc.width;
       frameCanvas.height = doc.height;
@@ -2735,8 +2734,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
       if (!frameContext) throw new Error('Could not create the frame export surface.');
       for (let index = 0; index < animation.frameCount; index++) {
         const frame = animation.getFrame(index);
-        const pixels = animation.compositeFrame(index, layerSettings);
-        frameContext.putImageData(new ImageData(pixels, doc.width, doc.height), 0, 0);
+        drawAnimationFrameToContext(index, frameContext);
         drawVectorOverlay(frameContext, vectorOverlay);
         const png = await new Promise((resolve, reject) => frameCanvas.toBlob(
           blob => blob ? resolve(blob) : reject(new Error('PNG encoder returned no data for frame ' + (index + 1) + '.')),
@@ -2760,7 +2758,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
       frameCanvas.height = doc.height;
       const frameContext = frameCanvas.getContext('2d', { alpha: true });
       if (!frameContext) throw new Error('Could not create the preview export surface.');
-      frameContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
+      drawProjectCompositeToContext(frameContext);
       drawVectorOverlay(frameContext, vectorOverlay);
       const preview = await new Promise((resolve, reject) => frameCanvas.toBlob(
         blob => blob ? resolve(blob) : reject(new Error('PNG preview encoder returned no data.')), 'image/png'
@@ -2801,8 +2799,7 @@ $('#animation-export-sheet').addEventListener('click', async () => {
     const context = sheet.getContext('2d', { alpha: true });
     if (!context) throw new Error('Could not create the animation sprite sheet surface.');
     const frames = layout.frames.map((frame, index) => {
-      const pixels = animation.compositeFrame(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })));
-      context.putImageData(new ImageData(pixels, doc.width, doc.height), frame.x, frame.y);
+      drawAnimationFrameToContext(index, context, frame.x, frame.y);
       drawVectorOverlay(context, vectorOverlay, doc.width, doc.height, frame.x, frame.y);
       return { ...frame, frame: index, durationMs: animation.getFrame(index).durationMs };
     });
@@ -3159,6 +3156,36 @@ async function createVectorOverlayImage(model = doc.getVectorModel()) {
     throw error;
   }
 }
+function getAnimationLayerSettings(frameIndex) {
+  if (animation instanceof TiledAnimationDocument) return animation.layerIds.map(id => {
+    const metadata = animation.getLayerMetadata(frameIndex, id);
+    return { id, visible: metadata.visible !== false, opacity: metadata.opacity ?? 1 };
+  });
+  return doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+}
+function drawAnimationFrameToContext(frameIndex, context, x = 0, y = 0) {
+  if (animation instanceof TiledAnimationDocument) {
+    const settings = getAnimationLayerSettings(frameIndex);
+    for (let row = 0; row < doc.height; row++) {
+      const pixels = animation.compositeRegion(frameIndex, { x: 0, y: row, width: doc.width, height: 1 }, settings).pixels;
+      context.putImageData(new ImageData(pixels, doc.width, 1), x, y + row);
+    }
+    return;
+  }
+  const pixels = animation.compositeFrame(frameIndex, getAnimationLayerSettings(frameIndex));
+  context.putImageData(new ImageData(pixels, doc.width, doc.height), x, y);
+}
+function drawProjectCompositeToContext(context, x = 0, y = 0) {
+  if (doc.isTiled) {
+    for (let row = 0; row < doc.height; row++) {
+      const pixels = doc.readCompositeRegion({ x: 0, y: row, width: doc.width, height: 1 }).pixels;
+      context.putImageData(new ImageData(pixels, doc.width, 1), x, y + row);
+    }
+    return;
+  }
+  context.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), x, y);
+}
+
 function drawVectorOverlay(context, overlay, width = doc.width, height = doc.height, x = 0, y = 0) {
   if (overlay) context.drawImage(overlay.image, x, y, width, height);
 }
