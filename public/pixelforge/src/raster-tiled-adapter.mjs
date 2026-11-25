@@ -502,6 +502,14 @@ export class TiledRasterProjectDocument {
       }
       return result;
     } catch (error) {
+      if (after) {
+        try { this.restoreLayerState(before); }
+        catch (rollbackError) {
+          this.releaseLayerState(before);
+          this.releaseLayerState(after);
+          throw new AggregateError([error, rollbackError], 'Tiled layer operation failed and rollback could not be completed.');
+        }
+      }
       this.releaseLayerState(before);
       if (after) this.releaseLayerState(after);
       throw error;
