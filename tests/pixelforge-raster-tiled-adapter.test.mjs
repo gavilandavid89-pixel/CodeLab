@@ -206,3 +206,11 @@ test('composites only a bounded viewport from a large sparse project', async () 
   assert.equal(viewport.pixels.length, 16 * 16 * 4);
   tiled.dispose();
 });
+
+
+test('rejects bounded composite regions outside the canvas', () => {
+  const tiled = TiledRasterProjectDocument.createBlank({ width: 64, height: 64, maxDecodedCacheBytes: 0 });
+  assert.throws(() => tiled.readCompositeRegion({ x: 60, y: 60, width: 8, height: 8 }), /outside canvas bounds/);
+  assert.throws(() => tiled.readCompositeRegion({ x: -1, y: 0, width: 1, height: 1 }), /outside canvas bounds/);
+  tiled.dispose();
+});
