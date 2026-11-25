@@ -198,9 +198,9 @@ test('browser CodeLab package preserves sparse tiled manifests without dense RGB
     tileSize: 64, maxDecodedCacheBytes: 0,
   });
   const layerId = tiled.activeLayerId;
-  await tiled.writeRegion(layerId, { x: 2049, y: 1027, width: 1, height: 1 }, new Uint8Array([91, 82, 73, 255]));
+  await tiled.writeRegion(layerId, { x: 2049, y: 1027, width: 1, height: 1 }, new Uint8ClampedArray([91, 82, 73, 255]));
   const overlay = tiled.duplicateLayer(layerId, 'Sparse overlay');
-  await tiled.writeRegion(overlay.id, { x: 2049, y: 1027, width: 1, height: 1 }, new Uint8Array([11, 22, 33, 255]));
+  await tiled.writeRegion(overlay.id, { x: 2049, y: 1027, width: 1, height: 1 }, new Uint8ClampedArray([11, 22, 33, 255]));
   const snapshot = await tiled.toManifest();
   snapshot.packageResourceFiles = [{
     path: 'assets/palette.txt', contentType: 'text/plain',
@@ -229,11 +229,11 @@ test('browser CodeLab package preserves sparse tiled manifests without dense RGB
   const restored = await TiledRasterProjectDocument.fromManifest(imported.project);
   assert.deepEqual(
     restored.readRegion(layerId, { x: 2049, y: 1027, width: 1, height: 1 }),
-    new Uint8Array([91, 82, 73, 255]),
+    new Uint8ClampedArray([91, 82, 73, 255]),
   );
   assert.deepEqual(
     restored.readRegion(overlay.id, { x: 2049, y: 1027, width: 1, height: 1 }),
-    new Uint8Array([11, 22, 33, 255]),
+    new Uint8ClampedArray([11, 22, 33, 255]),
   );
   assert.equal(restored.stats.resourceReferences, 2);
   const secondExport = await exportPixelForgeCodeLabPackage(await restored.toManifest().then(manifest => ({
@@ -244,7 +244,7 @@ test('browser CodeLab package preserves sparse tiled manifests without dense RGB
   const restoredAgain = await TiledRasterProjectDocument.fromManifest(secondImport.project);
   assert.deepEqual(
     restoredAgain.readRegion(overlay.id, { x: 2049, y: 1027, width: 1, height: 1 }),
-    new Uint8Array([11, 22, 33, 255]),
+    new Uint8ClampedArray([11, 22, 33, 255]),
   );
   restoredAgain.dispose();
   restored.dispose();
@@ -262,8 +262,12 @@ test('browser CodeLab tiled package importer rejects tampered project manifests'
   const tampered = [];
   for (const [path, entry] of entries) {
     const bytes = new Uint8Array(await entry.blob.arrayBuffer());
-    if (path === 'project.json') bytes[bytes.length - 2] ^= 1;
-    tampered.push({ name: path, data: bytes });
+    if (path === 'project.json') {
+      const text = new TextDecoder().decode(bytes).replace('Tamper proof', 'Tamper prOof');
+      tampered.push({ name: path, data: new TextEncoder().encode(text) });
+    } else {
+      tampered.push({ name: path, data: bytes });
+    }
   }
   const archive = await createZipBlob(tampered);
   await assert.rejects(() => importPixelForgeCodeLabPackage(archive), /Integrity verification failed/);
