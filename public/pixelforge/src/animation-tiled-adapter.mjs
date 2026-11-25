@@ -61,9 +61,21 @@ export class TiledAnimationDocument {
     if (!Array.isArray(layerIds) || !layerIds.length || new Set(layerIds).size !== layerIds.length) {
       throw new TypeError('Tiled animation requires unique layer IDs.');
     }
-    if (!Array.isArray(frames) || !frames.length) throw new TypeError('Tiled animation requires at least one frame.');
+    if (!Number.isInteger(fps) || fps < 1 || fps > 60) throw new RangeError('Animation FPS must be an integer between 1 and 60.');
+    if (!Array.isArray(frames) || !frames.length || frames.length > 240) throw new TypeError('Tiled animation requires 1–240 frames.');
     if (!Number.isInteger(activeFrameIndex) || activeFrameIndex < 0 || activeFrameIndex >= frames.length) {
       throw new RangeError('Active animation frame index is outside the timeline.');
+    }
+    const frameIds = new Set();
+    for (const frame of frames) {
+      if (!frame || typeof frame.id !== 'string' || !frame.id.trim() || frameIds.has(frame.id) ||
+          !Number.isFinite(frame.durationMs) || frame.durationMs < 1 || frame.durationMs > 10000 ||
+          !(frame.cels instanceof Map) || frame.cels.size !== layerIds.length ||
+          layerIds.some(layerId => !frame.cels.has(layerId))) {
+        throw new TypeError('Tiled animation frame metadata and cel references are invalid.');
+      }
+      frameIds.add(frame.id);
+      for (const layerId of layerIds) store.getCelTileSize(frame.cels.get(layerId));
     }
     this.#store = store;
     this.#width = width;
