@@ -43,7 +43,7 @@ export async function fillTiledLayer(document, layerId, x, y, options = {}) {
   const settings = validateOptions(options);
   const primary = parseColor(options.color ?? '#20202a', 'Fill color');
   const secondary = parseColor(options.secondaryColor ?? '#ffffff', 'Secondary fill color');
-  const tileSize = document.tileSize;
+  const tileSize = typeof document.getLayerTileSize === 'function' ? document.getLayerTileSize(layerId) : document.tileSize;
   if (!Number.isInteger(tileSize) || tileSize < 1) throw new Error('Tiled document did not expose a valid tile size.');
 
   const seed = document.readRegion(layerId, { x, y, width: 1, height: 1 });
