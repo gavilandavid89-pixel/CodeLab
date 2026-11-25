@@ -63,3 +63,16 @@ test('tiled brush no-op opacity does not allocate sparse tile resources', async 
   assert.equal(tiled.stats.resourceCount, 0);
   tiled.dispose();
 });
+
+test('tiled brush respects the active selection mask without painting outside it', async () => {
+  const tiled = TiledRasterProjectDocument.createBlank({ width: 12, height: 12, tileSize: 32 });
+  const layerId = tiled.activeLayerId;
+  const mask = new Uint8Array(12 * 12);
+  for (let y = 4; y < 8; y++) mask.fill(1, y * 12 + 4, y * 12 + 8);
+  tiled.setSelectionMask(mask);
+  await applyTiledBrushDab(tiled, layerId, 5, 5, { color: '#ff0000', size: 7, shape: 'square' });
+  const pixels = tiled.readRegion(layerId, { x: 0, y: 0, width: 12, height: 12 });
+  assert.deepEqual([...pixels.slice((5 * 12 + 5) * 4, (5 * 12 + 5) * 4 + 4)], [255, 0, 0, 255]);
+  assert.deepEqual([...pixels.slice((2 * 12 + 5) * 4, (2 * 12 + 5) * 4 + 4)], [0, 0, 0, 0]);
+  tiled.dispose();
+});
