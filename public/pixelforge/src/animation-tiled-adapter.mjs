@@ -392,7 +392,7 @@ export class TiledAnimationDocument {
     return fps;
   }
 
-  addLayer(layerId, { activeCelId, copyFromLayerId = null, metadata = {} } = {}) {
+  addLayer(layerId, { activeCelId, copyFromLayerId = null, metadata = {}, orphanFrames = null } = {}) {
     if (typeof layerId !== 'string' || !layerId.trim() || this.#layerIds.includes(layerId)) throw new TypeError('A new unique animation layer ID is required.');
     if (this.#layerIds.length >= 64) throw new RangeError('A tiled animation cannot exceed 64 layers.');
     if (!activeCelId) throw new TypeError('The active frame cel reference is required.');
@@ -401,22 +401,24 @@ export class TiledAnimationDocument {
     try {
       this.#store.getCelTileSize(activeCelId);
       for (let index = 0; index < this.#frames.length; index++) {
-        const frame = this.#frames[index];
-        let celId;
+        const frame = this.#frames[index], orphan = orphanFrames?.get(frame.id);
+        let celId, retainedOrphan = false;
         if (index === this.#activeFrameIndex) celId = activeCelId;
+        else if (orphan?.celId) { celId = orphan.celId; retainedOrphan = true; this.#store.getCelTileSize(celId); }
         else if (copyFromLayerId) celId = this.#store.cloneCel(this.#cel(frame, copyFromLayerId));
         else celId = this.#store.createBlankCel({ width: this.#width, height: this.#height, tileSize: this.#store.getCelTileSize(this.#cel(frame, this.#layerIds[0])) });
-        created.push({ frame, celId });
+        created.push({ frame, celId, retainedOrphan, orphan });
       }
       this.#layerIds.push(layerId);
-      for (const { frame, celId } of created) {
+      for (const { frame, celId, orphan } of created) {
         frame.cels.set(layerId, celId);
-        const source = copyFromLayerId ? frame.layerMetadata[copyFromLayerId] : null;
+        const source = orphan?.metadata || (copyFromLayerId ? frame.layerMetadata[copyFromLayerId] : null);
         frame.layerMetadata[layerId] = normalizeCelMetadata({ ...(source || metadata), ...metadata, id: layerId }, frame.authoringMode);
       }
+      for (const { orphan } of created) if (orphan?.celId && orphan.celId !== activeCelId) orphan.celId = null;
       return this.#layerIds.length;
     } catch (error) {
-      for (const { celId } of created) this.#store.releaseCel(celId);
+      for (const { celId, retainedOrphan } of created) if (!retainedOrphan) this.#store.releaseCel(celId);
       if (!created.some(item => item.celId === activeCelId)) this.#store.releaseCel(activeCelId);
       throw error;
     }
@@ -425,14 +427,13 @@ export class TiledAnimationDocument {
   removeLayer(layerId) {
     if (!this.#layerIds.includes(layerId)) throw new Error('Unknown animation layer ID.');
     if (this.#layerIds.length <= 1) throw new RangeError('A tiled animation must retain at least one raster layer.');
+    const frames = this.#frames.map(frame => {
+      const celId = frame.cels.get(layerId), metadata = structuredClone(frame.layerMetadata[layerId] || {});
+      frame.cels.delete(layerId); delete frame.layerMetadata[layerId];
+      return { frameId: frame.id, celId, metadata };
+    });
     this.#layerIds = this.#layerIds.filter(id => id !== layerId);
-    for (const frame of this.#frames) {
-      const celId = frame.cels.get(layerId);
-      frame.cels.delete(layerId);
-      delete frame.layerMetadata[layerId];
-      this.#store.releaseCel(celId);
-    }
-    return this.#layerIds.length;
+    return { layerId, frames };
   }
 
   reorderLayers(layerIds) {
