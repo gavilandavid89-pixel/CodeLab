@@ -2806,6 +2806,7 @@ $('#import-file').addEventListener('change', async event => {
         validateDimensions(bitmap.width, bitmap.height);
         const name = file.name.includes('.') ? file.name.slice(0, file.name.lastIndexOf('.')) : file.name;
         importedDoc = new RasterDocument(bitmap.width, bitmap.height, name || 'Imported artwork');
+        importedDoc.activeLayer.authoringMode = PIXELFORGE_DRAWING_MODES.ILLUSTRATION;
         const temp = document.createElement('canvas'); temp.width = bitmap.width; temp.height = bitmap.height;
         const tctx = temp.getContext('2d', { willReadFrequently: true });
         tctx.drawImage(bitmap, 0, 0);
