@@ -457,4 +457,8 @@ test('drawing mode is persisted independently on each dense animation frame and 
   assert.equal(restored.getLayerMetadata(0, 'ink').authoringMode, 'illustration');
   assert.equal(restored.getLayerMetadata(0, 'color').authoringMode, 'pixel-art');
   assert.equal(restored.getFrame(1).authoringMode, 'illustration');
+  restored.addFrame({ duplicate: false });
+  restored.setFrameAuthoringMode(2, 'illustration');
+  assert.equal(restored.getLayerMetadata(2, 'ink').authoringMode, 'illustration', 'blank cels inherit the newly selected frame mode');
+  assert.equal(restored.getLayerMetadata(2, 'color').authoringMode, 'illustration');
 });
