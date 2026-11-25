@@ -73,7 +73,7 @@ A UI warning or a disabled toolbar button is not sufficient protection.
 - Tiled ownership tiles are validated on manifest load (coordinates, dimensions, allowed values, canonical base64 and SHA-256); dense project JSON validates coordinates, dimensions, allowed values and canonical base64. Both formats export ownership metadata.
 - Cel copy-on-write clones ownership data; native tiled project and tiled animation manifests carry the ownership tiles. Legacy cels without the field load as unowned.
 - The shared tiled raster adapter guards both bounded region writes and tile-batch writes. The tiled animation adapter guards frame/layer cel region writes. Dense animation JSON preserves per-frame ownership in layer metadata and the editor restores it on frame switches.
-- Dense and tiled brush/eraser, bucket fill, gradient, shape outlines, color replacement, selection paste, transforms, and dense AI/batch layer replacement respect pixel ownership.
+- Dense and tiled brush/eraser, bucket fill, gradient, shape outlines, color replacement, selection paste, transforms, dense AI/batch layer replacement, and reference package copy/restore preserve pixel ownership.
 - Dense and tiled stroke/tile-operation history capture RGBA and ownership snapshots together and restore both on undo/redo/cancel.
 - Integration tests cover dense/tiled project round-trips, legacy unowned import, both cross-style directions, erasing, brush/fill/gradient/AI paths, undo/redo, and dense/tiled animation frame clone/manifest round-trip.
 
