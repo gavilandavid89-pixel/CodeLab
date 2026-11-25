@@ -216,3 +216,14 @@ The CodeLab structured ZIP v2 path now accepts a tiled raster project together w
 - Dense animation metadata normalization now retains modeOverrides through clone, duplicate, JSON save and restore; resolveDrawingMode() reads the canonical frame.layerMetadata[] record for the requested cel before falling back to frame, layer or project mode.
 - Headless agent raster edits stamp the project's active drawing mode onto the edited layer and active animation cel. This keeps agent-produced content tagged consistently with the editor's current project mode.
 - These additions close the structured-package and headless raster-edit propagation gaps; they do not yet provide independent interpolation per layer when a single composite video frame contains both pixel-art and illustration layers. Video Composer's scaling selector remains an export-wide choice until that rendering path is upgraded.
+
+
+### Transactional sparse tiled fill (implemented; editor integration in progress)
+
+- Added an atomic `SparseTileCelStore.writeTileBatch()`: it clones the source cel once, validates unique aligned tile coordinates and byte budget before mutation, writes every replacement tile into the private clone, and only returns the new cel after all tile updates succeed. On failure, the clone and its resource references are released; the source cel remains unchanged.
+- Exposed the batch operation through `TiledRasterProjectDocument.writeTileBatch()`, swapping the active layer's cel only after the store batch succeeds.
+- Extended `TiledRasterStrokeHistory` with bounded tile-operation commands. A fill is one undo/redo command and stores before/after tile buffers, not a canvas-sized RGBA snapshot. Undo/redo also apply one atomic batch.
+- Added `raster-tiled-fill.mjs`: scanline flood fill uses a one-bit-per-pixel visited map, a capped queue of run seeds, a three-row read cache, and staged changed tiles. The fill rejects before committing if the staged history byte budget or queue cap is exceeded. Global fill scans rows without allocating a full RGBA canvas. Transparent pixels use alpha-aware matching; checker fill and tolerance remain supported.
+- The editor's bucket-fill action now dispatches to this tiled path for tiled documents. It reports failure without presenting a partial fill as successful.
+- Regression tests cover atomic fill/undo/redo, contiguous boundary behavior and budget rejection without pixel changes.
+- **Scope limit:** this does not yet implement tiled selection masks, magic-wand selection, transforms, general layer-metadata history or tiled animation cels. The visited bitset is bounded by the existing maximum canvas area; staged RGBA history and scanline queue have explicit caps. Do not raise canvas or history limits based on this feature alone.
