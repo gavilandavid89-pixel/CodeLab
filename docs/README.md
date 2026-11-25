@@ -37,6 +37,7 @@ Leer en este orden:
 | Historial de resolución de transferencia | [Informe de transferencia inline (24-11-2026)](INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md) | Correcciones aplicadas y evidencia de importación real en ADMIN. |
 | Entender órdenes, Neon, LISTEN/NOTIFY y worker | [Arquitectura extremo a extremo](CodeLab_Neon_comunicacion_extremo_a_extremo.md) | Cola durable, activación, ejecución, resultados, revisiones y recuperación. |
 | Consultar resumen de arquitectura | [Arquitectura CodeLab–Neon](CODELAB-NEON-ARCHITECTURE.md) | Vista compacta de componentes y límites. |
+| Entender los componentes internos de CodeLab | [Arquitectura interna y mapa de componentes](CODELAB-INTERNAL-ARCHITECTURE.md) | Responsabilidades, fronteras, flujos, contratos y estado real de integración. |
 | Consultar la API nativa del agente | [Protocolo Headless nativo](native-headless-protocol.md) | Cliente, mailbox, acciones nativas y modo navegador explícito. |
 | Procesar/capturar vídeo | [Procesamiento A/B](VIDEO-PROCESSING-AB.md) | Única finalidad de A/B: una sesión A y una B procesadora por trabajo. |
 | Alta resolución, almacenamiento y sincronización incremental PixelForge | [Arquitectura de alta resolución y sincronización](PIXELFORGE-HIGH-RESOLUTION-STORAGE-AND-INCREMENTAL-SYNC.md) | Límites verificados, cels por tiles, almacenamiento privado, parches con revisiones y migración segura. |
