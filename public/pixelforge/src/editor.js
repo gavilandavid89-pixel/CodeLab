@@ -1088,20 +1088,26 @@ function applyAnimationFramePixels(index) {
   if (doc.saveVersion === previousSaveVersion) doc.saveVersion++;
   doc.dirty = true; clearSelectionState(); renderLayers(); renderAnimationTimeline(); render(); updateTitle(); syncAIWorkspaceFromUser();
 }
+function parkTiledFrameHistory(frameId) {
+  syncTiledAnimationLayerStack(); syncTiledAnimationFrame();
+  const detached = doc.swapStrokeHistory(doc.createStrokeHistory());
+  const previous = tiledAnimationHistory.get(frameId);
+  previous?.dispose(); tiledAnimationHistory.set(frameId, detached);
+}
+function restoreTiledFrameHistory(frameId) {
+  const next = tiledAnimationHistory.get(frameId) || doc.createStrokeHistory();
+  tiledAnimationHistory.delete(frameId);
+  doc.swapStrokeHistory(next).dispose();
+}
+
 function switchAnimationFrame(index, { autosave = true } = {}) {
   if (!animation || index === animation.activeFrameIndex) return false;
   if (doc.isTiled && animation instanceof TiledAnimationDocument) {
     if (doc.strokeHistory.isStrokeActive) throw new Error('Finish the current stroke before switching animation frames.');
     const previousId = animationFrameId(animation.activeFrameIndex);
-    syncTiledAnimationLayerStack(); syncTiledAnimationFrame();
-    const detached = doc.swapStrokeHistory(doc.createStrokeHistory());
-    const previousHistory = tiledAnimationHistory.get(previousId);
-    previousHistory?.dispose(); tiledAnimationHistory.set(previousId, detached);
+    parkTiledFrameHistory(previousId);
     animation.setActiveFrame(index);
-    const nextId = animationFrameId(index);
-    const nextHistory = tiledAnimationHistory.get(nextId) || doc.createStrokeHistory();
-    tiledAnimationHistory.delete(nextId);
-    doc.swapStrokeHistory(nextHistory).dispose();
+    restoreTiledFrameHistory(animationFrameId(index));
     applyTiledAnimationFrame(index);
     if (autosave) scheduleAutosave();
     return true;
@@ -2534,12 +2540,18 @@ $('#animation-add-frame').addEventListener('click', () => {
       return;
     }
     const currentId = animationFrameId(animation.activeFrameIndex);
-    captureAnimationFrame(); saveAnimationFrameHistory(currentId);
-    if (animation instanceof TiledAnimationDocument) animation.createBlankFrame({ durationMs: Math.max(1, Math.round(1000 / animation.fps)), authoringMode: drawingConfiguration.activeMode });
-    else animation.addFrame({ duplicate: false });
-    if (typeof animation.setFrameAuthoringMode === 'function') animation.setFrameAuthoringMode(animation.activeFrameIndex, drawingConfiguration.activeMode);
-    animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
-    applyAnimationFramePixels(animation.activeFrameIndex);
+    if (animation instanceof TiledAnimationDocument) {
+      parkTiledFrameHistory(currentId);
+      animation.createBlankFrame({ durationMs: Math.max(1, Math.round(1000 / animation.fps)), authoringMode: drawingConfiguration.activeMode });
+      restoreTiledFrameHistory(animationFrameId(animation.activeFrameIndex));
+      applyTiledAnimationFrame(animation.activeFrameIndex);
+    } else {
+      captureAnimationFrame(); saveAnimationFrameHistory(currentId);
+      animation.addFrame({ duplicate: false });
+      if (typeof animation.setFrameAuthoringMode === 'function') animation.setFrameAuthoringMode(animation.activeFrameIndex, drawingConfiguration.activeMode);
+      animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
+      applyAnimationFramePixels(animation.activeFrameIndex);
+    }
     scheduleAutosave();
     status('Blank animation frame added', 'success');
   } catch (error) { status(error.message, 'error'); }
@@ -2548,12 +2560,18 @@ $('#animation-duplicate-frame').addEventListener('click', () => {
   try {
     ensureAnimation();
     const currentId = animationFrameId(animation.activeFrameIndex);
-    captureAnimationFrame(); saveAnimationFrameHistory(currentId);
-    if (animation instanceof TiledAnimationDocument) animation.cloneFrame(animation.activeFrameIndex);
-    else animation.duplicateFrame();
-    animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
-    doc.history = []; doc.future = []; doc.historyBytes = 0;
-    doc.revision++; doc.saveVersion++; doc.dirty = true;
+    if (animation instanceof TiledAnimationDocument) {
+      parkTiledFrameHistory(currentId);
+      animation.cloneFrame(animation.activeFrameIndex);
+      restoreTiledFrameHistory(animationFrameId(animation.activeFrameIndex));
+      applyTiledAnimationFrame(animation.activeFrameIndex);
+    } else {
+      captureAnimationFrame(); saveAnimationFrameHistory(currentId);
+      animation.duplicateFrame();
+      animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
+      doc.history = []; doc.future = []; doc.historyBytes = 0;
+      doc.revision++; doc.saveVersion++; doc.dirty = true;
+    }
     renderAnimationTimeline(); render(); updateTitle(); scheduleAutosave();
     status('Animation frame duplicated', 'success');
   } catch (error) { status(error.message, 'error'); }
@@ -2562,11 +2580,19 @@ $('#animation-delete-frame').addEventListener('click', () => {
   try {
     if (!animation || animation.frameCount <= 1) return;
     const currentId = animationFrameId(animation.activeFrameIndex);
-    captureAnimationFrame(); saveAnimationFrameHistory(currentId);
-    animation.deleteFrame(animation.activeFrameIndex);
-    animationFrameHistory.delete(currentId);
-    tiledAnimationHistory.get(currentId)?.dispose(); tiledAnimationHistory.delete(currentId);
-    applyAnimationFramePixels(animation.activeFrameIndex);
+    if (animation instanceof TiledAnimationDocument) {
+      syncTiledAnimationLayerStack(); syncTiledAnimationFrame();
+      doc.swapStrokeHistory(doc.createStrokeHistory()).dispose();
+      animation.deleteFrame(animation.activeFrameIndex);
+      tiledAnimationHistory.get(currentId)?.dispose(); tiledAnimationHistory.delete(currentId);
+      restoreTiledFrameHistory(animationFrameId(animation.activeFrameIndex));
+      applyTiledAnimationFrame(animation.activeFrameIndex);
+    } else {
+      captureAnimationFrame(); saveAnimationFrameHistory(currentId);
+      animation.deleteFrame(animation.activeFrameIndex);
+      animationFrameHistory.delete(currentId);
+      applyAnimationFramePixels(animation.activeFrameIndex);
+    }
     scheduleAutosave();
     status('Animation frame deleted', 'success');
   } catch (error) { status(error.message, 'error'); }
