@@ -2,6 +2,7 @@ import { RasterDocument, screenToDocument, validateDimensions, rasterLinePoints,
 import { TiledRasterProjectDocument, PIXELFORGE_TILED_PROJECT_FORMAT } from './raster-tiled-adapter.mjs';
 import { TiledRasterPointerStrokeController } from './raster-tiled-pointer-controller.mjs';
 import { fillTiledLayer } from './raster-tiled-fill.mjs';
+import { drawTiledShape } from './raster-tiled-shapes.mjs';
 import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById, deleteProject } from './persistence.js';
 
 import { preflightImageFile } from './image-import.js';
@@ -45,7 +46,7 @@ function installDocument(nextDocument) {
   doc = nextDocument;
   clearSelectionState();
   refreshReferenceCenterUI();
-  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso'].includes(tool)) setTool('draw');
+  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso', 'shape-line', 'shape-rect', 'shape-ellipse'].includes(tool)) setTool('draw');
   return doc;
 }
 
@@ -824,13 +825,27 @@ function shapePoints(gesture) {
   }
   return path.filter((point, index, points) => index === 0 || point.x !== points[index - 1].x || point.y !== points[index - 1].y);
 }
-function commitShapeGesture(gesture) {
-  if (doc.isTiled) { status('Shape tools are not yet available for sparse tiled projects.', 'warning'); return; }
+async function commitShapeGesture(gesture) {
   if (!gesture) return;
   try {
     const points = shapePoints(gesture);
     if (!points.length) return;
-    const stroke = doc.beginStroke({ color, size: brushSize, mode: 'draw', opacity: Number($('#brush-opacity').value) / 100, shape: $('#brush-shape').value, hardness: Number($('#brush-hardness').value) / 100 });
+    const settings = { color, size: brushSize, mode: 'draw', opacity: Number($('#brush-opacity').value) / 100, shape: $('#brush-shape').value, hardness: Number($('#brush-hardness').value) / 100 };
+    if (doc.isTiled) {
+      const targetDocument = doc;
+      const operation = tiledGestureTail.then(() => {
+        if (doc !== targetDocument) return { changed: false, ignored: true };
+        return drawTiledShape(targetDocument, targetDocument.activeLayerId, points, settings, {
+          mapPoint: point => symmetryPoints(point, symmetryMode),
+        });
+      });
+      tiledGestureTail = operation.catch(() => {});
+      const result = await operation;
+      if (result.changed && doc === targetDocument) changed();
+      status(result.changed ? (gesture.tool === 'shape-line' ? 'Line' : gesture.tool === 'shape-rect' ? 'Rectangle' : 'Ellipse') + ' drawn' : 'Shape made no changes', result.changed ? 'success' : 'neutral');
+      return;
+    }
+    const stroke = doc.beginStroke(settings);
     stroke.symmetryMode = symmetryMode;
     for (const point of points) strokeToWithSymmetry(stroke, point.x, point.y);
     doc.endStroke(stroke, { commit: true });
@@ -2206,8 +2221,8 @@ $('#ai-accept-proposal').addEventListener('click', () => {
 mobileInspector.addEventListener('change', () => setInspectorPanel('properties'));
 setInspectorPanel('properties');
 function setTool(next) {
-  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso'].includes(next)) {
-    status('This tool is not yet available for sparse tiled projects. Brush, eraser, fill, geometric selections, eyedropper and pan are supported.', 'warning');
+  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso', 'shape-line', 'shape-rect', 'shape-ellipse'].includes(next)) {
+    status('This tool is not yet available for sparse tiled projects. Brush, eraser, fill, line/rectangle/ellipse outlines, geometric selections, eyedropper and pan are supported.', 'warning');
     return;
   }
   if (cursorMode && !['draw', 'erase'].includes(next)) setCursorMode(false);
