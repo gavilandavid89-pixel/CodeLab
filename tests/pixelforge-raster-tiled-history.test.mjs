@@ -140,3 +140,21 @@ test('tiled flood fill treats the active selection as a traversal and paint boun
   assert.deepEqual([...pixels.slice((4 * 10 + 8) * 4, (4 * 10 + 8) * 4 + 4)], [0, 0, 0, 0]);
   doc.dispose();
 });
+
+test('tiled fill handles checker pattern and avoids history entries for an identical refill', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 4, height: 4, tileSize: 32 });
+  const layerId = doc.activeLayerId;
+  const changed = await fillTiledLayer(doc, layerId, 0, 0, {
+    color: '#ff0000', secondaryColor: '#0000ff', pattern: 'checker', scale: 1,
+  });
+  assert.equal(changed, 16);
+  const pixels = whole(doc, layerId);
+  assert.deepEqual([...pixels.slice(0, 4)], [255, 0, 0, 255]);
+  assert.deepEqual([...pixels.slice(4, 8)], [0, 0, 255, 255]);
+  const historyLength = doc.history.length;
+  assert.equal(await fillTiledLayer(doc, layerId, 0, 0, {
+    color: '#ff0000', secondaryColor: '#0000ff', pattern: 'checker', scale: 1,
+  }), 0);
+  assert.equal(doc.history.length, historyLength);
+  doc.dispose();
+});
