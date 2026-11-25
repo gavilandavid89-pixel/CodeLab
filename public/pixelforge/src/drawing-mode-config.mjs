@@ -39,7 +39,13 @@ export function normalizeDrawingConfiguration(value, { legacyDefault = PIXELFORG
  * metadata always wins over editor/project defaults.
  */
 export function resolveDrawingMode({ cel, frame, layer, project } = {}) {
-  const candidates = [cel?.authoringMode, cel?.metadata?.authoringMode, frame?.authoringMode, layer?.authoringMode];
+  const frameCelMetadata = Array.isArray(frame?.layerMetadata)
+    ? frame.layerMetadata.find(item => String(item.layerId ?? item.id) === String(cel?.layerId))
+    : frame?.layerMetadata?.[cel?.layerId];
+  const candidates = [
+    cel?.authoringMode, cel?.metadata?.authoringMode, frameCelMetadata?.authoringMode,
+    frame?.authoringMode, layer?.authoringMode,
+  ];
   for (const mode of candidates) if (VALID_MODES.includes(mode)) return mode;
   const configuration = normalizeDrawingConfiguration(project?.drawingConfiguration ?? project);
   return VALID_MODES.includes(configuration.activeMode)
