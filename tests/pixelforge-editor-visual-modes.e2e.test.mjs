@@ -426,7 +426,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   // Undo and redo are checked against the rendered surface, not just history
   // counters: the center of a newly drawn isolated dab must return to baseline.
   await setSymmetry(0);
-  await setValue('#brush-size', 1);
+  await setValue('#brush-size', 9);
   await setColor('#ffffff');
   const historyPoint = { x: 510, y: 510 };
   const historyBaseline = await sampleVisibleExact(historyPoint);
@@ -443,7 +443,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   // Repeated short taps can arrive before async tile writes settle. Every tap
   // must become its own visible stroke, not a dropped gesture or uncaught error.
   await setColor('#f5f5f5');
-  await setValue('#brush-size', 1);
+  await setValue('#brush-size', 5);
   const rapidPoints = [{ x: 400, y: 420 }, { x: 420, y: 420 }, { x: 440, y: 420 }, { x: 460, y: 420 }];
   for (const point of rapidPoints) {
     const screen = await screenPoint(point);
