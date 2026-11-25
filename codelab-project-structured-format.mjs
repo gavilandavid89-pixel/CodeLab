@@ -255,9 +255,13 @@ function installStructuredFrames(project, files, framesManifest) {
       const pixels = readRgba8(files, layer.pixelsPath, width, height, frameId + '/' + layerId);
       totalBytes += pixels.length;
       if (totalBytes > 64 * 1024 * 1024) fail('structured animation exceeds the 64 MiB RGBA8 pixel-memory budget.');
-      cels.push({ layerId, pixels: pixels.toString('base64') });
+      const authoringMode = ['illustration', 'pixel-art'].includes(layer.authoringMode) ? layer.authoringMode : 'pixel-art';
+      const modeOverrides = layer.modeOverrides && typeof layer.modeOverrides === 'object' && !Array.isArray(layer.modeOverrides)
+        ? structuredClone(layer.modeOverrides) : {};
+      cels.push({ layerId, pixels: pixels.toString('base64'), metadata: { authoringMode, modeOverrides } });
       frameMetadata.push({
         layerId, name: String(layer.name || ''), parentFrameId: String(layer.parentFrameId || frameId), index: requireInt(Number(layer.index ?? frameMetadata.length + 1), frameId + '/' + layerId + '.index', 1, MAX_LAYERS),
+        authoringMode, modeOverrides,
         position: { x: requireFinite(layer.position?.x ?? layer.x ?? 0, frameId + '/' + layerId + '.position.x'), y: requireFinite(layer.position?.y ?? layer.y ?? 0, frameId + '/' + layerId + '.position.y') },
         x: requireFinite(layer.x ?? layer.position?.x ?? 0, frameId + '/' + layerId + '.x'), y: requireFinite(layer.y ?? layer.position?.y ?? 0, frameId + '/' + layerId + '.y'),
         scaleX: requireFinite(layer.scaleX ?? 1, frameId + '/' + layerId + '.scaleX'), scaleY: requireFinite(layer.scaleY ?? 1, frameId + '/' + layerId + '.scaleY'),
@@ -277,6 +281,7 @@ function installStructuredFrames(project, files, framesManifest) {
       name: String(frame.name || frameId),
       index: frameIndex,
       durationMs,
+      authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
       cels,
       layerMetadata: structuredClone(frameMetadata),
       layerCount: cels.length,
