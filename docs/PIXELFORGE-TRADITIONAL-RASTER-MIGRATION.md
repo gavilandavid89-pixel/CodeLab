@@ -91,6 +91,14 @@ The first implementation may use ZIP-contained tile binaries. Private remote obj
 - Simulate interrupted upload, retry, duplicate operation ID, stale revision, missing tile, corrupt hash and quota exhaustion.
 - Confirm cleanup never deletes a tile still referenced by any live project revision or checkpoint.
 
+### Explicit authoring mode ownership (required metadata contract)
+
+A project-level active mode is only the editor's current default; it is not sufficient to identify the content already stored. Every raster layer must serialize an explicit `authoringMode` (`illustration` or `pixel-art`). Every animation frame must serialize its own `authoringMode`, and every frame/layer cel must serialize `metadata.authoringMode` as well. The cel mode is authoritative for that cel; when a cel is created without an explicit override, it inherits the frame mode, and the frame default inherits the layer mode. New layers/frames must materialize the resolved value rather than leave it null or rely on the editor's current global selection.
+
+The resolved mode and per-mode tool overrides travel with the layer/cel through duplicate, reorder, edit, undo/redo, native save/load, ZIP import/export, Headless operations and Video Composer. Copying a frame copies its frame mode and each cel's mode independently. Changing the active editor mode never rewrites existing layer/frame/cel mode metadata or pixel/tile bytes. Legacy records with missing metadata receive a deterministic migration default (`pixel-art`) at import; they must never be interpreted from whichever mode happens to be active when opened.
+
+The tiled animation manifest therefore records `frames[].authoringMode` and `frames[].cels[].metadata.authoringMode`; tiled project manifests record `layers[].authoringMode`. Readers validate known mode values and normalize missing legacy fields at the compatibility boundary.
+
 ## Current implementation status (truthful boundary)
 
 - The branch contains an isolated SparseTileCelStore and sparse tile codec with hashing, deduplication, copy-on-write, resource diffs and a bounded decoded-tile LRU cache.
