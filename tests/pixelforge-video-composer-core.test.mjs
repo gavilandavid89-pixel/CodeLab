@@ -198,6 +198,11 @@ test('composition guides expose centered safe bounds and video fitting never str
   assert.equal(crop.width, 607.5);
   assert.equal(crop.height, 1080);
   assert.equal(crop.x, 656.25);
+  const coverQuality = (await import('../public/pixelforge/src/video-capture-layout.mjs'))
+    .getSourceQualityAssessment(1920, 1080, 1080, 1920, { fitMode: 'cover' });
+  assert.equal(coverQuality.sourceCrop.width, 607.5);
+  assert.equal(coverQuality.scale, 1080 / 607.5);
+  assert.equal(coverQuality.contentWidth, 1080);
 
   const calls = [];
   const context = {
@@ -212,4 +217,21 @@ test('composition guides expose centered safe bounds and video fitting never str
   assert.equal(covered.x, 218.75);
   assert.equal(covered.width, 562.5);
   assert.deepEqual(calls.pop(), [bitmap, 218.75, 0, 562.5, 1000, 0, 0, 1080, 1920]);
+});
+
+
+test('Video Composer exposes an agent-readable composition guide and routes fit mode to the export worker', () => {
+  const html = fs.readFileSync(new URL('../public/pixelforge/video-composer.html', import.meta.url), 'utf8');
+  const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
+  const encoder = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder.mjs', import.meta.url), 'utf8');
+  const worker = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder-worker.mjs', import.meta.url), 'utf8');
+  assert.match(html, /id="vc-fit-mode"/);
+  assert.match(html, /id="vc-copy-agent-guide"/);
+  assert.match(js, /getCompositionGuide/);
+  assert.match(js, /normalizedSafeArea/);
+  assert.match(js, /drawingModesPresent/);
+  assert.match(js, /Do not stretch or apply different horizontal and vertical scale factors/);
+  assert.match(encoder, /fitMode:options\.fitMode/);
+  assert.match(worker, /fitMode = 'contain'/);
+  assert.match(worker, /fitMode\s*$/m);
 });
