@@ -8,12 +8,14 @@ import { TiledRasterStrokeHistory } from './raster-tiled-history.mjs';
 
 export class TiledRasterPointerStrokeController {
   #history;
+  #document;
   #pointerId = null;
   #layerId = null;
   #lastPoint = null;
   #disposed = false;
 
   constructor(document, historyOptions = {}) {
+    this.#document = document;
     this.#history = new TiledRasterStrokeHistory(document, historyOptions);
   }
 
@@ -45,6 +47,9 @@ export class TiledRasterPointerStrokeController {
     if (!this.active || pointerId !== this.#pointerId) return { changed: false, ignored: true };
     if (!point || !Number.isInteger(point.x) || !Number.isInteger(point.y)) {
       throw new TypeError('Pointer move requires an integer document point.');
+    }
+    if (point.x < 0 || point.y < 0 || point.x >= this.#document.width || point.y >= this.#document.height) {
+      return { changed: false, ignored: true, outside: true };
     }
     const result = await this.#history.segment(this.#lastPoint, point);
     this.#lastPoint = { x: point.x, y: point.y };
