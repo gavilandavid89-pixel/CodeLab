@@ -222,7 +222,7 @@ export class SparseTileCelStore {
     assertTileSize(tileSize);
     const celId = globalThis.crypto?.randomUUID?.();
     if (!celId) throw new Error('Secure UUID generation is required for sparse cel IDs.');
-    this.#cels.set(celId, { width, height, tileSize, tiles: new Map() });
+    this.#cels.set(celId, { width, height, tileSize, tiles: new Map(), ownershipTiles: new Map() });
     return celId;
   }
 
@@ -333,13 +333,28 @@ export class SparseTileCelStore {
       tiles.set(key, { x: tile.x, y: tile.y, width: tileWidth, height: tileHeight, hash: tile.sha256 });
       pending.push({ hash: tile.sha256, rgba: tile.rgba, byteLength: bytes.byteLength });
     }
+    const ownershipTiles = new Map();
+    if (document.ownershipTiles !== undefined && !Array.isArray(document.ownershipTiles)) throw new TypeError('Tiled cel ownershipTiles must be an array.');
+    for (const tile of document.ownershipTiles || []) {
+      if (!tile || !Number.isInteger(tile.x) || !Number.isInteger(tile.y) || tile.x < 0 || tile.y < 0 || tile.x % tileSize || tile.y % tileSize || tile.x >= width || tile.y >= height) throw new TypeError('Invalid ownership tile coordinate.');
+      const tileWidth = Math.min(tileSize, width - tile.x), tileHeight = Math.min(tileSize, height - tile.y);
+      if (tile.width !== tileWidth || tile.height !== tileHeight) throw new TypeError('Ownership tile edge dimensions do not match canvas.');
+      const key = tileKey(tile.x, tile.y);
+      if (ownershipTiles.has(key)) throw new TypeError('Duplicate ownership tile coordinate.');
+      const owners = base64ToBytes(tile.owners, tileWidth * tileHeight);
+      if (typeof tile.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(tile.sha256) || await sha256(owners) !== tile.sha256) throw new TypeError('Ownership tile SHA-256 integrity check failed.');
+      let nonzero = false;
+      for (const owner of owners) { if (owner > 2) throw new TypeError('Unsupported pixel owner value.'); if (owner) nonzero = true; }
+      if (!nonzero) throw new TypeError('Sparse ownership tiles cannot be empty.');
+      ownershipTiles.set(key, { x: tile.x, y: tile.y, width: tileWidth, height: tileHeight, owners });
+    }
     const celId = globalThis.crypto?.randomUUID?.();
     if (!celId) throw new Error('Secure UUID generation is required for sparse cel IDs.');
     for (const resource of pending) {
       this.#retain(resource.hash, resource.rgba);
       this.#resources.get(resource.hash).byteLength = resource.byteLength;
     }
-    this.#cels.set(celId, { width, height, tileSize, tiles });
+    this.#cels.set(celId, { width, height, tileSize, tiles, ownershipTiles });
     return celId;
   }
 
@@ -357,7 +372,7 @@ export class SparseTileCelStore {
       resource.refs++;
       return [key, { ...tile }];
     }));
-    this.#cels.set(cloneId, { width: source.width, height: source.height, tileSize: source.tileSize, tiles });
+    this.#cels.set(cloneId, { width: source.width, height: source.height, tileSize: source.tileSize, tiles, ownershipTiles: new Map([...source.ownershipTiles].map(([key, tile]) => [key, { ...tile, owners: new Uint8Array(tile.owners) }])) });
     return cloneId;
   }
 
@@ -409,6 +424,42 @@ export class SparseTileCelStore {
       }
     }
     return output;
+  }
+
+  /** Read a bounded ownership rectangle. 0=unowned, 1=Illustration, 2=Pixel Art. */
+  readOwnershipRegion(celId, region) {
+    const cel = this.#cel(celId), rect = this.#assertRegion(cel, region);
+    const output = new Uint8Array(rect.width * rect.height);
+    const startTileX = Math.floor(rect.x / cel.tileSize) * cel.tileSize, startTileY = Math.floor(rect.y / cel.tileSize) * cel.tileSize;
+    for (let ty = startTileY; ty < rect.y + rect.height; ty += cel.tileSize) for (let tx = startTileX; tx < rect.x + rect.width; tx += cel.tileSize) {
+      const tile = cel.ownershipTiles.get(tileKey(tx, ty)); if (!tile) continue;
+      const left = Math.max(rect.x, tx), top = Math.max(rect.y, ty), right = Math.min(rect.x + rect.width, tx + tile.width), bottom = Math.min(rect.y + rect.height, ty + tile.height);
+      for (let y = top; y < bottom; y++) { const from = (y - ty) * tile.width + left - tx, to = (y - rect.y) * rect.width + left - rect.x; output.set(tile.owners.subarray(from, from + right - left), to); }
+    }
+    return output;
+  }
+
+  /** Copy-on-write update of a bounded cel-local ownership rectangle. */
+  async writeOwnershipRegion(celId, region, owners) {
+    const source = this.#cel(celId), rect = this.#assertRegion(source, region);
+    if (!(owners instanceof Uint8Array) || owners.byteLength !== rect.width * rect.height) throw new TypeError('Ownership data must match the region.');
+    for (const owner of owners) if (owner > 2) throw new TypeError('Pixel owner must be 0, 1, or 2.');
+    const nextId = this.cloneCel(celId); let changedTiles = 0;
+    try {
+      const sx = Math.floor(rect.x / source.tileSize) * source.tileSize, sy = Math.floor(rect.y / source.tileSize) * source.tileSize;
+      for (let ty = sy; ty < rect.y + rect.height; ty += source.tileSize) for (let tx = sx; tx < rect.x + rect.width; tx += source.tileSize) {
+        const tw = Math.min(source.tileSize, source.width - tx), th = Math.min(source.tileSize, source.height - ty), key = tileKey(tx, ty), cel = this.#cel(nextId), previous = cel.ownershipTiles.get(key);
+        const bytes = previous ? new Uint8Array(previous.owners) : new Uint8Array(tw * th);
+        const left = Math.max(rect.x, tx), top = Math.max(rect.y, ty), right = Math.min(rect.x + rect.width, tx + tw), bottom = Math.min(rect.y + rect.height, ty + th);
+        for (let y = top; y < bottom; y++) { const from = (y - rect.y) * rect.width + left - rect.x, to = (y - ty) * tw + left - tx; bytes.set(owners.subarray(from, from + right - left), to); }
+        let nonzero = false; for (const value of bytes) if (value) { nonzero = true; break; }
+        const changed = !previous ? nonzero : bytes.some((value, index) => value !== previous.owners[index]); if (!changed) continue;
+        if (nonzero) cel.ownershipTiles.set(key, { x: tx, y: ty, width: tw, height: th, owners: bytes }); else cel.ownershipTiles.delete(key);
+        changedTiles++;
+      }
+      if (!changedTiles) { this.releaseCel(nextId); return { celId, changed: false, changedTiles: 0 }; }
+      return { celId: nextId, changed: true, changedTiles };
+    } catch (error) { this.releaseCel(nextId); throw error; }
   }
 
   /**
@@ -547,6 +598,9 @@ export class SparseTileCelStore {
       format: PIXELFORGE_TILED_CEL_FORMAT,
       version: PIXELFORGE_TILED_CEL_VERSION,
       width: cel.width, height: cel.height, tileSize: cel.tileSize, tiles,
+      ownershipTiles: await Promise.all([...cel.ownershipTiles.values()].sort((a, b) => a.y - b.y || a.x - b.x).map(async tile => ({
+        x: tile.x, y: tile.y, width: tile.width, height: tile.height, sha256: await sha256(tile.owners), owners: bytesToBase64(tile.owners),
+      }))),
     };
   }
 
