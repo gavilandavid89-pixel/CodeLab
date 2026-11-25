@@ -70,6 +70,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.17.0'
+      - name: Install Chromium visual-test runtime
+        run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund @sparticuz/chromium playwright-core
       - name: Validate animation and persistence module syntax
         run: |
           node --check public/pixelforge/src/animation.mjs
