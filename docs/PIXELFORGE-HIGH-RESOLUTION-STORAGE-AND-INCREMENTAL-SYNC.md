@@ -246,6 +246,7 @@ Additional tiled edge coverage verifies exact right/bottom canvas boundaries, re
 A Chromium end-to-end test now drives the actual visible PixelForge canvas with real pointer gestures. It checks the 2 × 2 × 4 matrix of illustration/pixel-art modes, square/circular brushes, and symmetry off/2/4/8, then samples the rendered canvas pixels at every expected mirrored position. This is deliberately stronger than checking that the symmetry function or stored pixels look correct in isolation.
 
 The browser test also checks:
+- Odd, non-square 127 × 91 canvases with 2/4/8-way symmetry, including mirrored points that must be clipped outside the document.
 - Mode-specific defaults and restoration of independent custom brush size, hardness and opacity after repeated mode switches.
 - Actual rendered edge sampling: illustration mode must show blended edge pixels at fractional zoom, while pixel-art must remain crisp without blended colors.
 - Dabs at the top-left and bottom-right canvas pixels, plus a pointer stroke that leaves and re-enters the canvas.
