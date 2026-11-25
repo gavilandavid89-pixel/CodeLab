@@ -203,7 +203,7 @@ test('tiled shape dab cap rejects before drawing and history budget rolls back t
 
 
 test('tiled linear gradient stages changed tiles and is one undoable operation', async () => {
-  const doc = TiledRasterProjectDocument.createBlank({ width: 40, height: 12, tileSize: 16 });
+  const doc = TiledRasterProjectDocument.createBlank({ width: 40, height: 12, tileSize: 32 });
   const layerId = doc.activeLayerId;
   const before = whole(doc, layerId);
   const changed = await fillTiledGradient(doc, layerId, 0, 0, 39, 0, {
@@ -223,7 +223,7 @@ test('tiled linear gradient stages changed tiles and is one undoable operation',
 });
 
 test('tiled gradient respects selection, rejects budget overflow atomically and skips no-op work', async () => {
-  const doc = TiledRasterProjectDocument.createBlank({ width: 24, height: 12, tileSize: 8 });
+  const doc = TiledRasterProjectDocument.createBlank({ width: 24, height: 12, tileSize: 32 });
   const layerId = doc.activeLayerId;
   const mask = new Uint8Array(doc.width * doc.height);
   for (let y = 2; y < 6; y++) mask.fill(1, y * doc.width + 3, y * doc.width + 9);
@@ -249,7 +249,7 @@ test('tiled gradient respects selection, rejects budget overflow atomically and 
 });
 
 test('tiled gradient validates endpoints and respects layer locking', async () => {
-  const doc = TiledRasterProjectDocument.createBlank({ width: 8, height: 8, tileSize: 8 });
+  const doc = TiledRasterProjectDocument.createBlank({ width: 8, height: 8, tileSize: 32 });
   const layerId = doc.activeLayerId;
   await assert.rejects(() => fillTiledGradient(doc, layerId, -1, 0, 7, 7), /endpoints/);
   doc.setLayerLocked(layerId, true);
