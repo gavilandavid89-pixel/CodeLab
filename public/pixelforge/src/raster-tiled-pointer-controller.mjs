@@ -90,7 +90,7 @@ export class TiledRasterPointerStrokeController {
           if (next.x < 0 || next.y < 0 || next.x >= this.#document.width || next.y >= this.#document.height) continue;
           const result = previous
             ? await this.#activeHistory.segment(previous, next)
-            : await this.#history.dab(next.x, next.y);
+            : await this.#activeHistory.dab(next.x, next.y);
           if (result.changed) changed = true;
           changedDabs += result.changedDabs || Number(Boolean(result.changed));
           changedPixels += result.changedPixels || 0;
@@ -98,7 +98,7 @@ export class TiledRasterPointerStrokeController {
         this.#lastPoints = nextPoints;
         return { changed, changedDabs, changedPixels };
       } catch (error) {
-        if (this.#history.isStrokeActive) await this.#history.cancelStroke();
+        if (this.#activeHistory?.isStrokeActive) await this.#activeHistory.cancelStroke();
         this.#reset();
         throw error;
       }
