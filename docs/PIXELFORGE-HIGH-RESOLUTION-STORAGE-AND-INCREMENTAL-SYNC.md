@@ -197,3 +197,20 @@ The tiled document now exposes `readCompositeRegion(region)`, which composites o
 **Validation follow-up:** the bounded-region API now validates viewport coordinates against canvas geometry before reading or compositing. This prevents an invalid editor viewport from silently requesting out-of-range tile data. A regression test covers both right/bottom overflow and negative coordinates. The editor renderer has not yet switched to this API; that remains the next integration boundary.
 
 This still does not replace the editor's legacy full-canvas `doc.composite()` calls. The next integration step is to route viewport rendering through this bounded API and keep full-canvas materialization only for operations that genuinely require it.
+
+
+### Editor bounded viewport renderer
+
+The editor renderer now detects the opt-in `readCompositeRegion(region)` capability and uses it only for tiled documents. The visible CSS viewport is converted back into document coordinates, clamped to the canvas bounds, composited into a reusable temporary canvas sized to the visible source region, and scaled onto the screen. Dense `RasterDocument` documents keep the existing dirty-tile/full-composite preview path unchanged.
+
+This boundary was intentionally kept capability-based rather than switching the editor's document constructor to the tiled model. Brush rasterization, fill, selection, transforms, history, animation, import/export and persistence still assume dense APIs in other places. The renderer change therefore proves bounded display without pretending that the editor is already a canonical tiled editor.
+
+### Mixed illustration / pixel-art edge-case audit
+
+Projects that enable both drawing modes were checked as a separate compatibility surface rather than treating the mode selector as a cosmetic toggle. Repeated illustration → pixel-art → illustration transitions now have regression coverage for independent per-mode brush profiles; malformed/duplicated mode metadata is normalized back to the two supported modes; and switching remains metadata/presentation-only rather than rewriting source pixels.
+
+The tiled renderer also applies the active mode's presentation policy after bounded compositing: illustration keeps smooth/high-quality scaling, while pixel-art keeps nearest-neighbor rendering. The tiled viewport therefore does not accidentally erase the distinction between the two modes merely because its source pixels arrive through a different storage path.
+
+Additional tiled edge coverage verifies exact right/bottom canvas boundaries, rejection of one-pixel overflow in either axis, and alpha compositing across two sparse layers with different opacity. These cases are specifically useful for catching off-by-one viewport calculations and accidental mode/storage coupling.
+
+**Current boundary:** a project containing both modes is supported as a persisted drawing-configuration contract and the renderer preserves their presentation behavior, but the editor still stores its canonical raster data in dense `RasterDocument`. The remaining tile migration work is unchanged: native editor creation/open, tool parity, history, animation cels, versioned package persistence, Headless, authenticated durable tile storage and incremental CAS patches.
