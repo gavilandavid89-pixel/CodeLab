@@ -43,6 +43,7 @@ function installDocument(nextDocument) {
   }
   doc = nextDocument;
   clearSelectionState();
+  refreshReferenceCenterUI();
   if (doc.isTiled && !['draw', 'erase', 'pan', 'eyedropper'].includes(tool)) setTool('draw');
   return doc;
 }
