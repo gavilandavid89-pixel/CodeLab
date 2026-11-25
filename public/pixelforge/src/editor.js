@@ -29,6 +29,7 @@ function installDocument(nextDocument) {
     void previousController.dispose().catch(error => console.warn('Could not settle previous tiled pointer controller:', error));
   }
   doc = nextDocument;
+  if (doc.isTiled && !['draw', 'erase', 'pan', 'eyedropper'].includes(tool)) setTool('draw');
   return doc;
 }
 
@@ -1395,6 +1396,7 @@ function applySelectionCombination(nextMask, baseMask = doc.selectionMask, sourc
   render();
 }
 function performColorSelection(point) {
+  if (doc.isTiled) { status('Color-based selection is not yet available for sparse tiled projects.', 'warning'); return; }
   if (!point?.inside || flushInProgress) return;
   try {
     const mask = createColorSelectionMask(doc.width, doc.height, doc.activeLayer.pixels, point.x, point.y, {
@@ -2607,6 +2609,7 @@ $('#save').addEventListener('click', async () => {
   catch (error) { status(`Save failed: ${error.message}`, 'error'); }
 });
 $('#export-project').addEventListener('click', async () => {
+  if (doc.isTiled) { status('Sparse tiled projects are saved to your account; ZIP package export is being migrated.', 'warning'); return; }
   try {
     settleActiveInput();
     stopAnimationPlayback();
@@ -2618,6 +2621,7 @@ $('#export-project').addEventListener('click', async () => {
   } catch (error) { status(`Project export failed: ${error.message}`, 'error'); }
 });
 $('#export-sprite-sheet').addEventListener('click', async () => {
+  if (doc.isTiled) { status('Sprite-sheet export is not yet available for sparse tiled projects.', 'warning'); return; }
   try {
     settleActiveInput();
     const layout = createSpriteSheetLayout(doc.layers.length, doc.width, doc.height, { columns: Math.ceil(Math.sqrt(doc.layers.length)), padding: 1 });
@@ -2685,7 +2689,7 @@ $('#import-file').addEventListener('change', async event => {
     }
     if (zipProject || file.name.toLowerCase().endsWith('.pforge') || file.type === 'application/json') {
       const parsed = zipProject || JSON.parse(await file.text());
-      importedDoc = RasterDocument.fromJSON(parsed, { newIdentity: !structuredCodeLabPackage });
+      importedDoc = await restoreProjectDocument(parsed, { newIdentity: !structuredCodeLabPackage });
       importedDrawingConfiguration = normalizeDrawingConfiguration(parsed.drawingConfiguration);
       if (structuredCodeLabPackage) importedDoc.id = crypto.randomUUID();
       importedDoc.animationLoop = parsed.animation?.loop !== false;
@@ -3042,7 +3046,7 @@ async function boot() {
       if (!/^[a-zA-Z0-9_-]{1,100}$/.test(projectId)) throw new Error('El enlace contiene un ID de proyecto PixelForge no válido.');
       const snapshot = await loadProjectById(projectId);
       if (!snapshot) throw new Error('No se encontró ese proyecto PixelForge.');
-      doc = RasterDocument.fromJSON(snapshot);
+      installDocument(await restoreProjectDocument(snapshot));
       applyDrawingConfiguration(snapshot);
       animation = snapshot.animation ? PixelForgeAnimation.fromJSON(snapshot.animation) : null;
       animationLoop = snapshot.animation?.loop !== false;
