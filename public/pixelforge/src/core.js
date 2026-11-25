@@ -995,7 +995,7 @@ export class RasterDocument {
     const left = Math.max(0, x), top = Math.max(0, y), right = Math.min(this.width, x + width), bottom = Math.min(this.height, y + height);
     if (left >= right || top >= bottom) throw new RangeError('Copy rectangle is outside document bounds.');
     const layer = this.activeLayer, clipboardWidth = right - left, clipboardHeight = bottom - top;
-    const pixels = new Uint8ClampedArray(clipboardWidth * clipboardHeight * 4), mask = new Uint8Array(clipboardWidth * clipboardHeight);
+    const pixels = new Uint8ClampedArray(clipboardWidth * clipboardHeight * 4), mask = new Uint8Array(clipboardWidth * clipboardHeight), owners = new Uint8Array(clipboardWidth * clipboardHeight);
     for (let row = 0; row < clipboardHeight; row++) {
       for (let col = 0; col < clipboardWidth; col++) {
         const sourcePixel = (top + row) * this.width + left + col, targetPixel = row * clipboardWidth + col;
@@ -1003,9 +1003,10 @@ export class RasterDocument {
         mask[targetPixel] = 1;
         const sourceOffset = sourcePixel * 4, targetOffset = targetPixel * 4;
         pixels.set(layer.pixels.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+        owners[targetPixel] = this.#ownerAt(layer, left + col, top + row);
       }
     }
-    return { x: left, y: top, width: clipboardWidth, height: clipboardHeight, pixels, mask };
+    return { x: left, y: top, width: clipboardWidth, height: clipboardHeight, pixels, mask, owners };
   }
   pasteRect(clipboard, { x = clipboard?.x, y = clipboard?.y } = {}) {
     if (!clipboard || !Number.isInteger(clipboard.width) || !Number.isInteger(clipboard.height) || clipboard.width < 1 || clipboard.height < 1 ||
@@ -1017,6 +1018,7 @@ export class RasterDocument {
     const left = Math.max(0, x), top = Math.max(0, y), right = Math.min(this.width, x + clipboard.width), bottom = Math.min(this.height, y + clipboard.height);
     if (left >= right || top >= bottom) return 0;
     const tilesBefore = new Map();
+    const activeOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     let changedPixels = 0;
     for (let py = top; py < bottom; py++) for (let px = left; px < right; px++) {
       const docPixel = py * this.width + px;
@@ -1024,12 +1026,16 @@ export class RasterDocument {
       const srcX = px - x, srcY = py - y, sourcePixel = srcY * clipboard.width + srcX;
       if (clipboard.mask && !clipboard.mask[sourcePixel]) continue;
       const srcOffset = sourcePixel * 4, dstOffset = docPixel * 4;
+      const targetOwner = this.#ownerAt(layer, px, py), sourceOwner = clipboard.owners instanceof Uint8Array ? clipboard.owners[sourcePixel] : activeOwner;
+      const effectiveSourceOwner = sourceOwner || activeOwner;
+      if (targetOwner !== 0 && targetOwner !== effectiveSourceOwner) continue;
       let differs = false;
       for (let channel = 0; channel < 4; channel++) if (layer.pixels[dstOffset + channel] !== clipboard.pixels[srcOffset + channel]) { differs = true; break; }
       if (!differs) continue;
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       layer.pixels.set(clipboard.pixels.subarray(srcOffset, srcOffset + 4), dstOffset);
+      this.#setOwner(layer, px, py, clipboard.pixels[srcOffset + 3] === 0 ? 0 : effectiveSourceOwner);
       this.compositeDirtyTiles.add(key); changedPixels++;
     }
     if (changedPixels) {
