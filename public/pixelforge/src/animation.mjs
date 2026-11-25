@@ -127,6 +127,8 @@ function normalizeLayerMetadata(metadata = {}, layerId, index = 0, fallbackMode 
     assets: Array.isArray(value.assets) ? structuredClone(value.assets) : [],
     metadata: value.metadata && typeof value.metadata === 'object' ? structuredClone(value.metadata) : {},
     authoringMode: ['illustration', 'pixel-art'].includes(value.authoringMode) ? value.authoringMode : fallbackMode,
+    modeOverrides: value.modeOverrides && typeof value.modeOverrides === 'object' && !Array.isArray(value.modeOverrides)
+      ? structuredClone(value.modeOverrides) : {},
   };
 }
 
