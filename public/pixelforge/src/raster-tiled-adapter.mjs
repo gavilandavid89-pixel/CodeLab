@@ -214,7 +214,7 @@ export class TiledRasterProjectDocument {
     }
   }
 
-  static async fromManifest(manifest, { maxDecodedCacheBytes = 16 * 1024 * 1024 } = {}) {
+  static async fromManifest(manifest, { maxDecodedCacheBytes = 16 * 1024 * 1024, newIdentity = false } = {}) {
     if (!manifest || manifest.format !== PIXELFORGE_TILED_PROJECT_FORMAT ||
         manifest.version !== PIXELFORGE_TILED_PROJECT_VERSION) {
       throw new TypeError('Unsupported PixelForge tiled project manifest.');
@@ -238,8 +238,8 @@ export class TiledRasterProjectDocument {
         store, id: manifest.id, name: manifest.name, width: manifest.width, height: manifest.height,
         layers, activeLayerId: manifest.activeLayerId, drawingConfiguration: manifest.drawingConfiguration,
         projectMetadata: manifest.projectMetadata || {},
-        revision: manifest.revision, saveVersion: manifest.saveVersion,
-        serverRevision: manifest.serverRevision, dirty: manifest.dirty,
+        revision: newIdentity ? 0 : manifest.revision, saveVersion: newIdentity ? 0 : manifest.saveVersion,
+        serverRevision: newIdentity ? 0 : manifest.serverRevision, dirty: newIdentity || manifest.dirty,
         drawingModel: manifest.drawingModel, vectorModel: manifest.vectorModel,
       });
     } catch (error) {
@@ -250,6 +250,10 @@ export class TiledRasterProjectDocument {
 
   get isTiled() { return true; }
   get id() { return this.#id; }
+  set id(value) {
+    if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) throw new TypeError('Document ID is invalid.');
+    if (this.#id !== value) { this.#id = value; this.#markChanged(); }
+  }
   get name() { return this.#name; }
   set name(value) {
     if (typeof value !== 'string' || !value.trim() || value.trim().length > 180) throw new TypeError('Document name must contain 1–180 characters.');
@@ -272,7 +276,9 @@ export class TiledRasterProjectDocument {
   get drawingModel() { return structuredClone(this.#drawingModel); }
   set drawingModel(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Drawing model must be an object.');
-    this.#drawingModel = structuredClone(value); this.#markChanged();
+    if (JSON.stringify(this.#drawingModel) !== JSON.stringify(value)) {
+      this.#drawingModel = structuredClone(value); this.#markChanged();
+    }
   }
   get selectionMask() { return this.#selectionMask; }
   set selectionMask(value) {
