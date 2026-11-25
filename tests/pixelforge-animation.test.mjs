@@ -446,7 +446,7 @@ test('keeps high-resolution animation budgets aligned with PixelForge API limits
 test('drawing mode is persisted independently on each dense animation frame and cel', () => {
   const timeline = PixelForgeAnimation.fromDocument(documentFixture(), { fps: 12 });
   timeline.setFrameAuthoringMode(0, 'illustration');
-  timeline.setLayerMetadata(0, 'ink', { ...timeline.getLayerMetadata(0, 'ink'), authoringMode: 'illustration' });
+  timeline.setLayerMetadata(0, 'ink', { ...timeline.getLayerMetadata(0, 'ink'), authoringMode: 'illustration', modeOverrides: { illustration: { brushSize: 7 } } });
   timeline.setLayerMetadata(0, 'color', { ...timeline.getLayerMetadata(0, 'color'), authoringMode: 'pixel-art' });
   timeline.addFrame({ duplicate: true });
   assert.equal(timeline.getFrame(1).authoringMode, 'illustration');
@@ -455,6 +455,7 @@ test('drawing mode is persisted independently on each dense animation frame and 
   const restored = PixelForgeAnimation.fromJSON(timeline.toJSON());
   assert.equal(restored.getFrame(0).authoringMode, 'illustration');
   assert.equal(restored.getLayerMetadata(0, 'ink').authoringMode, 'illustration');
+  assert.deepEqual(restored.getLayerMetadata(0, 'ink').modeOverrides, { illustration: { brushSize: 7 } }, 'per-mode brush profiles must survive animation serialization');
   assert.equal(restored.getLayerMetadata(0, 'color').authoringMode, 'pixel-art');
   assert.equal(restored.getFrame(1).authoringMode, 'illustration');
   restored.addFrame({ duplicate: false });
