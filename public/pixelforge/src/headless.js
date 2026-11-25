@@ -497,7 +497,7 @@ export class HeadlessEditorRuntime {
 
         const cleanLayer = this.#workspace.sandbox.layers[0];
         const blank = new Uint8Array(this.#workspace.sandbox.width * this.#workspace.sandbox.height * 4);
-        this.#workspace.sandbox.setLayerPixels(cleanLayer.id, blank);
+        this.#workspace.sandbox.setLayerPixels(cleanLayer.id, blank, { restore: true, ownershipTiles: new Map() });
         this.#workspace.sandbox.renameLayer(cleanLayer.id, String(action.cleanLayerName || 'Layer 1').slice(0, 180));
         for (const layer of [...this.#workspace.sandbox.layers].slice(1)) this.#workspace.sandbox.deleteLayer(layer.id);
         this.#workspace.sandbox.setLayerVisibility(cleanLayer.id, true);
