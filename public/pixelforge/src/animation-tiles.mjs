@@ -359,7 +359,16 @@ export class SparseTileCelStore {
   }
 
   async createCelFromPixels(pixels, options) {
-    return this.createCel(await encodeSparseTiles(pixels, options));
+    const document = await encodeSparseTiles(pixels, options);
+    if (options?.ownershipTiles instanceof Map) {
+      document.ownershipTiles = await Promise.all([...options.ownershipTiles].map(async ([key, owners]) => {
+        const [tileX, tileY] = key.split(':').map(Number), x = tileX * document.tileSize, y = tileY * document.tileSize;
+        const width = Math.min(document.tileSize, document.width - x), height = Math.min(document.tileSize, document.height - y);
+        if (!(owners instanceof Uint8Array) || owners.byteLength !== width * height) throw new TypeError('Dense ownership tile dimensions do not match the sparse cel.');
+        return { x, y, width, height, sha256: await sha256(owners), owners: bytesToBase64(owners) };
+      }));
+    }
+    return this.createCel(document);
   }
 
   cloneCel(celId) {
