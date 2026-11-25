@@ -614,9 +614,9 @@ export class SparseTileCelStore {
       format: PIXELFORGE_TILED_CEL_FORMAT,
       version: PIXELFORGE_TILED_CEL_VERSION,
       width: cel.width, height: cel.height, tileSize: cel.tileSize, tiles,
-      ownershipTiles: await Promise.all([...cel.ownershipTiles.values()].sort((a, b) => a.y - b.y || a.x - b.x).map(async tile => ({
+      ...(cel.ownershipTiles.size ? { ownershipTiles: await Promise.all([...cel.ownershipTiles.values()].sort((a, b) => a.y - b.y || a.x - b.x).map(async tile => ({
         x: tile.x, y: tile.y, width: tile.width, height: tile.height, sha256: await sha256(tile.owners), owners: bytesToBase64(tile.owners),
-      }))),
+      }))) } : {}),
     };
   }
 
