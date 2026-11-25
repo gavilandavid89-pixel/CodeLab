@@ -120,3 +120,17 @@ test('content drawing mode resolves from cel to frame to layer before project de
   assert.equal(resolveDrawingMode({ project, layer: { authoringMode: 'illustration' }, frame: { authoringMode: 'pixel-art' } }), 'pixel-art');
   assert.equal(resolveDrawingMode({ project, layer: { authoringMode: 'illustration' }, frame: { authoringMode: 'pixel-art' }, cel: { metadata: { authoringMode: 'illustration' } } }), 'illustration');
 });
+test('resolves per-cel mode from canonical animation layer metadata before frame and project defaults', () => {
+  assert.equal(resolveDrawingMode({
+    cel: { layerId: 'ink' },
+    frame: {
+      authoringMode: 'illustration',
+      layerMetadata: [
+        { layerId: 'ink', authoringMode: 'pixel-art' },
+        { layerId: 'color', authoringMode: 'illustration' },
+      ],
+    },
+    layer: { authoringMode: 'illustration' },
+    project: { drawingConfiguration: { activeMode: 'illustration' } },
+  }), 'pixel-art');
+});
