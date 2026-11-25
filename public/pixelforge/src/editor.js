@@ -26,6 +26,8 @@ function installDocument(nextDocument) {
   const previousController = tiledPointerController;
   tiledPointerController = null;
   tiledPointerDocument = null;
+  activeTiledGestureToken = ++tiledGestureSequence;
+  pointerId = null;
   if (activeStroke && previousDocument && !previousDocument.isTiled) {
     previousDocument.endStroke(activeStroke, { commit: false });
     activeStroke = null;
@@ -81,7 +83,7 @@ const previewCanvas = document.createElement('canvas'), previewCtx = previewCanv
 const tiledViewportCanvas = document.createElement('canvas'), tiledViewportCtx = tiledViewportCanvas.getContext('2d', { alpha: true });
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
-let tiledPointerController = null, tiledPointerDocument = null, tiledGestureTail = Promise.resolve();
+let tiledPointerController = null, tiledPointerDocument = null, tiledGestureTail = Promise.resolve(), tiledGestureSequence = 0, activeTiledGestureToken = 0;
 const TILED_DOCUMENT_THRESHOLD_PIXELS = 1_048_576;
 let drawingConfiguration = normalizeDrawingConfiguration(null, { legacyDefault: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
 let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
@@ -1339,6 +1341,7 @@ function startStrokeAt(point, id) {
     const controller = getTiledPointerController();
     if (doc.activeLayer?.locked) { status('This layer is locked', 'warning'); return; }
     pointerId = id;
+    activeTiledGestureToken = ++tiledGestureSequence;
     const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
     const targetDocument = doc;
     const operation = tiledGestureTail.then(() => {
@@ -1357,7 +1360,10 @@ function startStrokeAt(point, id) {
     });
     tiledGestureTail = operation.catch(() => {});
     void operation.then(() => render()).catch(error => {
-      if (pointerId === id) pointerId = null;
+      if (activeTiledGestureToken === gestureToken) {
+        pointerId = null;
+        activeTiledGestureToken = 0;
+      }
       status(error.message, 'error');
     });
     return;
@@ -1496,7 +1502,8 @@ function moveStroke(event) {
 }
 function finishActiveStroke(commit = true) {
   if (doc.isTiled && tiledPointerController?.active) {
-    const id = pointerId, controller = tiledPointerController, targetDocument = doc;
+    const id = pointerId, gestureToken = activeTiledGestureToken;
+    const controller = tiledPointerController, targetDocument = doc;
     const operation = tiledGestureTail.then(() => {
       if (doc !== targetDocument || tiledPointerController !== controller) return false;
       return commit
@@ -1505,7 +1512,10 @@ function finishActiveStroke(commit = true) {
     });
     tiledGestureTail = operation.catch(() => {});
     return operation.then(finished => {
-      if (pointerId === id) pointerId = null;
+      if (activeTiledGestureToken === gestureToken) {
+        pointerId = null;
+        activeTiledGestureToken = 0;
+      }
       if (finished && doc === targetDocument) changed();
       return Boolean(finished);
     }).catch(error => {
