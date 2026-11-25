@@ -3,6 +3,7 @@ import { TiledRasterProjectDocument, PIXELFORGE_TILED_PROJECT_FORMAT } from './r
 import { TiledRasterPointerStrokeController } from './raster-tiled-pointer-controller.mjs';
 import { fillTiledLayer } from './raster-tiled-fill.mjs';
 import { drawTiledShape } from './raster-tiled-shapes.mjs';
+import { fillTiledGradient } from './raster-tiled-gradient.mjs';
 import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById, deleteProject } from './persistence.js';
 
 import { preflightImageFile } from './image-import.js';
@@ -1722,14 +1723,31 @@ window.addEventListener('pointercancel', finishCursorGesture, true);
 canvas.addEventListener('pointerup', event => {
   if (gradientGesture && event.pointerId === gradientGesture.pointerId) {
     const gesture = gradientGesture; gradientGesture = null;
-    try {
-      const count = doc.fillGradient(gesture.x1, gesture.y1, gesture.x2, gesture.y2, {
-        startColor: color, endColor: backgroundColor, opacity: Number($('#brush-opacity').value) / 100
+    const settings = { startColor: color, endColor: backgroundColor, opacity: Number($('#brush-opacity').value) / 100 };
+    if (doc.isTiled) {
+      const targetDocument = doc;
+      const operation = tiledGestureTail.then(() => {
+        if (doc !== targetDocument) return 0;
+        return fillTiledGradient(targetDocument, targetDocument.activeLayerId,
+          gesture.x1, gesture.y1, gesture.x2, gesture.y2, settings);
       });
-      if (count) { changed(); status(`Gradient applied to ${count.toLocaleString()} pixels`, 'success'); }
-      else status('Gradient made no changes', 'neutral');
-    } catch (error) { status(error.message, 'error'); }
-    render(); return;
+      tiledGestureTail = operation.catch(() => {});
+      void operation.then(count => {
+        if (doc === targetDocument && count) { changed(); status(`Gradient applied to ${count.toLocaleString()} pixels`, 'success'); }
+        else if (doc === targetDocument) status('Gradient made no changes', 'neutral');
+        if (doc === targetDocument) render();
+      }).catch(error => {
+        if (doc === targetDocument) { status(error.message, 'error'); render(); }
+      });
+    } else {
+      try {
+        const count = doc.fillGradient(gesture.x1, gesture.y1, gesture.x2, gesture.y2, settings);
+        if (count) { changed(); status(`Gradient applied to ${count.toLocaleString()} pixels`, 'success'); }
+        else status('Gradient made no changes', 'neutral');
+      } catch (error) { status(error.message, 'error'); }
+      render();
+    }
+    return;
   }
   if (shapeGesture && event.pointerId === shapeGesture.pointerId) {
     const gesture = shapeGesture; shapeGesture = null;
@@ -2221,8 +2239,8 @@ $('#ai-accept-proposal').addEventListener('click', () => {
 mobileInspector.addEventListener('change', () => setInspectorPanel('properties'));
 setInspectorPanel('properties');
 function setTool(next) {
-  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso', 'shape-line', 'shape-rect', 'shape-ellipse'].includes(next)) {
-    status('This tool is not yet available for sparse tiled projects. Brush, eraser, fill, line/rectangle/ellipse outlines, geometric selections, eyedropper and pan are supported.', 'warning');
+  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso', 'shape-line', 'shape-rect', 'shape-ellipse', 'gradient'].includes(next)) {
+    status('This tool is not yet available for sparse tiled projects. Brush, eraser, fill, line/rectangle/ellipse outlines, linear gradients, geometric selections, eyedropper and pan are supported.', 'warning');
     return;
   }
   if (cursorMode && !['draw', 'erase'].includes(next)) setCursorMode(false);
