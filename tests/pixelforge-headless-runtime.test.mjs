@@ -16,6 +16,7 @@ test('headless runtime preserves project drawing modes through edits and seriali
     initialMode: 'illustration',
     activeMode: 'pixel-art',
   };
+  fixture.layers[0].authoringMode = 'illustration';
   const runtime = HeadlessEditorRuntime.fromJSON(fixture);
   const before = runtime.toJSON();
   assert.deepEqual(before.drawingConfiguration, fixture.drawingConfiguration);
@@ -24,7 +25,9 @@ test('headless runtime preserves project drawing modes through edits and seriali
   }).ok, true);
   runtime.createProposal('Preserve project drawing mode');
   assert.equal(runtime.acceptProposal().status, 'applied');
-  assert.deepEqual(runtime.toJSON().drawingConfiguration, fixture.drawingConfiguration);
+  const saved = runtime.toJSON();
+  assert.deepEqual(saved.drawingConfiguration, fixture.drawingConfiguration);
+  assert.equal(saved.layers[0].authoringMode, 'pixel-art', 'agent raster edits must stamp the active mode onto the edited layer');
 });
 
 test('headless runtime opens a persisted PixelForge project without changing its identity', () => {
