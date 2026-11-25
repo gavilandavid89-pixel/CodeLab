@@ -996,7 +996,8 @@ function syncTiledAnimationFrame() {
   for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
     const layer = doc.layers[layerIndex];
     const celId = doc.cloneLayerCelReference(layer.id);
-    animation.replaceFrameCelReference(index, layer.id, celId, { takeOwnership: true });
+    try { animation.replaceFrameCelReference(index, layer.id, celId, { takeOwnership: true }); }
+    catch (error) { animation.releaseCelReference(celId); throw error; }
     const metadata = { ...layer, index: layerIndex + 1, parentFrameId: animationFrameId(index) };
     delete metadata.celId;
     animation.setLayerMetadata(index, layer.id, metadata);
@@ -1014,10 +1015,18 @@ function pruneTiledAnimationOrphanCels() {
       for (const state of [command.before, command.after]) for (const layer of state?.layers || []) referenced.add(layer.id);
     }
   }
+  const liveFrameIds = new Set(Array.from({ length: animation.frameCount }, (_, index) => animation.getFrame(index).id));
   for (const [layerId, frames] of tiledAnimationOrphanCels) {
-    if (referenced.has(layerId)) continue;
-    for (const item of frames) if (item.celId) animation.releaseCelReference(item.celId);
-    tiledAnimationOrphanCels.delete(layerId);
+    const retained = [];
+    for (const item of frames) {
+      if (!liveFrameIds.has(item.frameId)) {
+        if (item.celId) animation.releaseCelReference(item.celId);
+      } else retained.push(item);
+    }
+    if (!referenced.has(layerId)) {
+      for (const item of retained) if (item.celId) animation.releaseCelReference(item.celId);
+      tiledAnimationOrphanCels.delete(layerId);
+    } else tiledAnimationOrphanCels.set(layerId, retained);
   }
 }
 function syncTiledAnimationLayerStack(copyFromByNewId = new Map()) {
