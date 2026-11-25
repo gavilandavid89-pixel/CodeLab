@@ -426,6 +426,22 @@ export class SparseTileCelStore {
     return output;
   }
 
+  /**
+   * Commit RGBA and ownership patches as one copy-on-write cel replacement.
+   * Intermediate clones are never exposed; failures release them and preserve source.
+   */
+  async writeRegionWithOwnership(celId, region, pixels, owners) {
+    const rgba = await this.writeRegion(celId, region, pixels);
+    const intermediateId = rgba.celId;
+    try {
+      const ownership = await this.writeOwnershipRegion(intermediateId, region, owners);
+      if (ownership.celId !== intermediateId) this.releaseCel(intermediateId);
+      return { celId: ownership.celId, changed: rgba.changed || ownership.changed, changedTiles: rgba.changedTiles + ownership.changedTiles };
+    } catch (error) {
+      if (intermediateId !== celId) this.releaseCel(intermediateId);
+      throw error;
+    }
+  }
   /** Read a bounded ownership rectangle. 0=unowned, 1=Illustration, 2=Pixel Art. */
   readOwnershipRegion(celId, region) {
     const cel = this.#cel(celId), rect = this.#assertRegion(cel, region);
