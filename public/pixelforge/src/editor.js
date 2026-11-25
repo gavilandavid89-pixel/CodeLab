@@ -1360,7 +1360,7 @@ function stampActiveDrawingMode() {
   } else if (doc.activeLayer) {
     doc.activeLayer.authoringMode = mode;
   }
-  if (animation) {
+  if (animation && animation.layerIds.includes(layerId)) {
     const frameIndex = animation.activeFrameIndex;
     if (typeof animation.setFrameAuthoringMode === 'function') animation.setFrameAuthoringMode(frameIndex, mode);
     if (typeof animation.setLayerMetadata === 'function') {
