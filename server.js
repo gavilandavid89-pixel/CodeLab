@@ -15,6 +15,7 @@ const net = require('net');
 const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const pixelForgeUploads = require('./pixelforge-upload-store.js');
+const { validatePixelForgeTiledProjectPayload } = require('./pixelforge-tiled-project-validation.js');
 const neonEvidence = require('./neon-pixelforge-evidence.js');
 
 const PORT = process.env.PORT || 3000;
@@ -745,6 +746,12 @@ function validatePixelForgeAnimation(project) {
 }
 
 function validatePixelForgeProjectPayload(project, serializedInput = null) {
+  if (project?.format === 'pixelforge-tiled-project') {
+    return validatePixelForgeTiledProjectPayload(project, serializedInput, {
+      maxProjectBytes: PIXELFORGE_MAX_PROJECT_BYTES,
+      maxRasterBytes: PIXELFORGE_MAX_RASTER_BYTES,
+    });
+  }
   if (!project || typeof project !== 'object' || Array.isArray(project) ||
       project.format !== 'pixelforge-project' || project.version !== 1 ||
       typeof project.id !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(project.id) ||
