@@ -4,6 +4,7 @@ import { webcrypto } from 'node:crypto';
 import { PixelForgeAnimation } from '../public/pixelforge/src/animation.mjs';
 import { TiledAnimationDocument } from '../public/pixelforge/src/animation-tiled-adapter.mjs';
 import { SparseTileCelStore } from '../public/pixelforge/src/animation-tiles.mjs';
+import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
@@ -126,4 +127,41 @@ test('tiled timeline supports blank frames, reorder, duration, and active-index-
   assert.equal(tiled.fps, 24);
   assert.throws(() => tiled.setFps(61), /FPS/);
   tiled.dispose();
+});
+
+
+test('tiled animation shares the project tile store and swaps frame cel references without dense frame buffers', async () => {
+  const project = TiledRasterProjectDocument.createBlank({ width: 4096, height: 4096, tileSize: 128 });
+  const animation = TiledAnimationDocument.fromTiledProjectDocument(project, { fps: 12 });
+  assert.equal(animation.store, project.tileStore);
+  assert.equal(animation.frameCount, 1);
+  const layerId = project.activeLayerId;
+  const patch = new Uint8ClampedArray([255, 32, 16, 255]);
+  await project.writeRegion(layerId, { x: 2048, y: 2048, width: 1, height: 1 }, patch);
+  const celId = project.cloneLayerCelReference(layerId);
+  animation.replaceFrameCelReference(0, layerId, celId, { takeOwnership: true });
+  const sampled = animation.readRegion(0, layerId, { x: 2048, y: 2048, width: 1, height: 1 });
+  assert.deepEqual([...sampled], [...patch]);
+  const thumbnail = animation.compositeThumbnail(0, null, 48);
+  assert.equal(thumbnail.width, 48);
+  assert.equal(thumbnail.height, 48);
+  assert.equal(thumbnail.pixels.byteLength, 48 * 48 * 4);
+  const frameRegion = animation.compositeRegion(0, { x: 2048, y: 2048, width: 1, height: 1 });
+  assert.deepEqual([...frameRegion.pixels], [...patch]);
+
+  animation.createBlankFrame({ durationMs: 80, authoringMode: 'illustration' });
+  assert.equal(animation.frameCount, 2);
+  assert.equal(animation.readRegion(1, layerId, { x: 2048, y: 2048, width: 1, height: 1 })[3], 0);
+  animation.setActiveFrame(0);
+  const refs = new Map(animation.layerIds.map(id => [id, animation.getFrameCelReference(0, id)]));
+  project.replaceLayerCelReferences(refs, { takeOwnership: true });
+  assert.deepEqual([...project.readRegion(layerId, { x: 2048, y: 2048, width: 1, height: 1 })], [...patch]);
+  const manifest = await animation.toManifest();
+  const restored = await TiledAnimationDocument.fromManifest(manifest, { store: project.tileStore });
+  assert.equal(restored.store, project.tileStore);
+  assert.equal(restored.frameCount, 2);
+  assert.deepEqual([...restored.readRegion(0, layerId, { x: 2048, y: 2048, width: 1, height: 1 })], [...patch]);
+  restored.dispose();
+  animation.dispose();
+  project.dispose();
 });
