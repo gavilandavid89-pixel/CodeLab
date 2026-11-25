@@ -569,22 +569,26 @@ export class RasterDocument {
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
     const rgb = parseHexColor(color), source = new Uint8ClampedArray(layer.pixels);
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     const neighbors = diagonals ? [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]] : [[0,-1],[-1,0],[1,0],[0,1]];
     const tilesBefore = new Map();
     let changedPixels = 0;
     for (let y = 0; y < this.height; y++) for (let x = 0; x < this.width; x++) {
       const sourceIndex = (y * this.width + x) * 4;
-      if (source[sourceIndex + 3] === 0) continue;
+      if (source[sourceIndex + 3] === 0 || (this.#ownerAt(layer, x, y) !== 0 && this.#ownerAt(layer, x, y) !== styleOwner)) continue;
       for (const [dx, dy] of neighbors) {
         const px = x + dx, py = y + dy;
         if (px < 0 || py < 0 || px >= this.width || py >= this.height) continue;
         const pixel = py * this.width + px;
         if (this.selectionMask && !this.selectionMask[pixel]) continue;
         const index = pixel * 4;
+        const targetOwner = this.#ownerAt(layer, px, py);
+        if (targetOwner !== 0 && targetOwner !== styleOwner) continue;
         if (source[index + 3] !== 0 || layer.pixels[index + 3] !== 0) continue;
         const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
         if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
         layer.pixels[index] = rgb[0]; layer.pixels[index + 1] = rgb[1]; layer.pixels[index + 2] = rgb[2]; layer.pixels[index + 3] = 255;
+        this.#setOwner(layer, px, py, styleOwner);
         this.compositeDirtyTiles.add(key); changedPixels++;
       }
     }
@@ -978,12 +982,15 @@ export class RasterDocument {
     if (!Number.isInteger(tolerance) || tolerance < 0 || tolerance > 255) throw new RangeError('Color replacement tolerance must be an integer from 0 to 255.');
     const source = parseHexColor(sourceColor), target = parseHexColor(targetColor), layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     if (source.every((value, index) => value === target[index]) && tolerance === 0) return 0;
     const tilesBefore = new Map();
     let changedPixels = 0;
     for (let index = 0; index < layer.pixels.length; index += 4) {
       const pixel = index / 4;
       if (this.selectionMask && !this.selectionMask[pixel]) continue;
+      const owner = this.#ownerAt(layer, pixel % this.width, Math.floor(pixel / this.width));
+      if (owner !== 0 && owner !== styleOwner) continue;
       if (layer.pixels[index + 3] === 0) continue;
       if (Math.max(Math.abs(layer.pixels[index] - source[0]), Math.abs(layer.pixels[index + 1] - source[1]), Math.abs(layer.pixels[index + 2] - source[2])) > tolerance) continue;
       if (layer.pixels[index] === target[0] && layer.pixels[index + 1] === target[1] && layer.pixels[index + 2] === target[2]) continue;
@@ -991,6 +998,7 @@ export class RasterDocument {
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       layer.pixels[index] = target[0]; layer.pixels[index + 1] = target[1]; layer.pixels[index + 2] = target[2];
+      this.#setOwner(layer, px, py, owner || styleOwner);
       this.compositeDirtyTiles.add(key); changedPixels++;
     }
     if (changedPixels) {
