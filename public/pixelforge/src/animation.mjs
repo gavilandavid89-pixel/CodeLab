@@ -453,7 +453,7 @@ export class PixelForgeAnimation {
       frame.cels.set(layerId, source ? new Uint8ClampedArray(source) : new Uint8ClampedArray(byteLength));
       const sourceMetadata = copyFromLayerId === null ? null : frame.layerMetadata?.get(copyFromLayerId);
       frame.layerMetadata ||= new Map();
-      frame.layerMetadata.set(layerId, normalizeLayerMetadata(sourceMetadata || {}, layerId, this.#layerIds.length - 1));
+      frame.layerMetadata.set(layerId, normalizeLayerMetadata(sourceMetadata || {}, layerId, this.#layerIds.length - 1, frame.authoringMode || 'pixel-art'));
     }
     return this.#layerIds.length;
   }
