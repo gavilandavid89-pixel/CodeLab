@@ -455,6 +455,52 @@ export class SparseTileCelStore {
     }
   }
 
+  /**
+   * Atomically apply a bounded set of complete tile replacements to one cel.
+   * The source cel remains untouched until every replacement has succeeded.
+   */
+  async writeTileBatch(celId, patches, { maxBytes = 16 * 1024 * 1024 } = {}) {
+    const source = this.#cel(celId);
+    if (!Array.isArray(patches) || !patches.length) throw new TypeError('Tile batch must contain at least one patch.');
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new RangeError('Tile batch byte budget must be positive.');
+    const seen = new Set();
+    let totalBytes = 0;
+    for (const patch of patches) {
+      if (!patch || !Number.isInteger(patch.x) || !Number.isInteger(patch.y) ||
+          patch.x < 0 || patch.y < 0 || patch.x % source.tileSize || patch.y % source.tileSize ||
+          patch.x >= source.width || patch.y >= source.height) {
+        throw new RangeError('Tile batch contains an invalid tile coordinate.');
+      }
+      const key = tileKey(patch.x, patch.y);
+      if (seen.has(key)) throw new TypeError('Tile batch cannot contain duplicate coordinates.');
+      seen.add(key);
+      const width = Math.min(source.tileSize, source.width - patch.x);
+      const height = Math.min(source.tileSize, source.height - patch.y);
+      assertPixels(patch.pixels, width, height);
+      totalBytes += patch.pixels.byteLength;
+      if (totalBytes > maxBytes) throw new RangeError('Tile batch exceeded its byte budget.');
+    }
+    const nextId = this.cloneCel(celId);
+    let changedTiles = 0, removedTiles = 0;
+    try {
+      for (const patch of patches) {
+        const result = await this.updateTile(nextId, patch.x, patch.y, patch.pixels);
+        if (result.changed) changedTiles++;
+        if (result.removed) removedTiles++;
+      }
+      if (!changedTiles) {
+        this.releaseCel(nextId);
+        return { celId, changed: false, changedTiles: 0, removedTiles: 0 };
+      }
+      return { celId: nextId, changed: true, changedTiles, removedTiles };
+    } catch (error) {
+      this.releaseCel(nextId);
+      throw error;
+    }
+  }
+
+  getCelTileSize(celId) { return this.#cel(celId).tileSize; }
+
   async updateTile(celId, x, y, pixels) {
     const cel = this.#cel(celId);
     if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 ||
