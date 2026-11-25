@@ -289,7 +289,12 @@ test('tiled document exposes bounded editor state, layer operations and shared s
 
   tiled.setSelectionMask(null);
   assert.equal(tiled.selectionMask, null);
-  assert.throws(() => tiled.setSelectionMask(new Uint8Array(128 * 128)), /do not support dense selection masks/);
+  const selectionMask = new Uint8Array(128 * 128);
+  selectionMask.fill(1, 10 * 128, 12 * 128);
+  tiled.setSelectionMask(selectionMask);
+  assert.equal(tiled.selectionMask[10 * 128], 1);
+  assert.throws(() => tiled.setSelectionMask(new Uint8Array(8)), /matching tiled project dimensions/);
+  tiled.setSelectionMask(null);
   tiled.drawingModel = { activeWorkspace: 'main' };
   tiled.setVectorModel({ version: 1, objects: [] });
   assert.deepEqual(tiled.getVectorModel(), { version: 1, objects: [] });
