@@ -252,7 +252,13 @@ export class TiledRasterProjectDocument {
   get id() { return this.#id; }
   set id(value) {
     if (typeof value !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(value)) throw new TypeError('Document ID is invalid.');
-    if (this.#id !== value) { this.#id = value; this.#markChanged(); }
+    if (this.#id !== value) {
+      this.#id = value;
+      this.#revision = 0;
+      this.#saveVersion = 0;
+      this.#serverRevision = 0;
+      this.#dirty = true;
+    }
   }
   get name() { return this.#name; }
   set name(value) {
