@@ -235,6 +235,34 @@ export class TiledRasterProjectDocument {
     return this.#store.readRegion(this.#cel(layerId).celId, region);
   }
 
+  /**
+   * Composite only a bounded viewport-sized region. This is intentionally
+   * separate from toLegacyProjectJSON()/composeCel(): callers rendering a
+   * zoomed viewport do not need to allocate width × height RGBA storage.
+   */
+  readCompositeRegion(region) {
+    const normalized = normalizeRegion(region, this.#width, this.#height);
+    const output = new Uint8ClampedArray(normalized.width * normalized.height * 4);
+    for (const layer of this.#layers) {
+      if (!layer.visible || layer.opacity <= 0) continue;
+      const source = this.#store.readRegion(layer.celId, normalized);
+      const opacity = layer.opacity;
+      for (let i = 0; i < source.length; i += 4) {
+        const alpha = (source[i + 3] / 255) * opacity;
+        if (alpha <= 0) continue;
+        const dstAlpha = output[i + 3] / 255;
+        const outAlpha = alpha + dstAlpha * (1 - alpha);
+        if (outAlpha <= 0) continue;
+        const dstWeight = dstAlpha * (1 - alpha);
+        output[i] = Math.round((source[i] * alpha + output[i] * dstWeight) / outAlpha);
+        output[i + 1] = Math.round((source[i + 1] * alpha + output[i + 1] * dstWeight) / outAlpha);
+        output[i + 2] = Math.round((source[i + 2] * alpha + output[i + 2] * dstWeight) / outAlpha);
+        output[i + 3] = Math.round(outAlpha * 255);
+      }
+    }
+    return { ...normalized, pixels: output };
+  }
+
   async writeRegion(layerId, region, pixels) {
     const layer = this.#cel(layerId);
     if (layer.locked) throw new Error('The target layer is locked.');
