@@ -500,6 +500,10 @@ export class SparseTileCelStore {
   }
 
   getCelTileSize(celId) { return this.#cel(celId).tileSize; }
+  getCelDimensions(celId) {
+    const cel = this.#cel(celId);
+    return Object.freeze({ width: cel.width, height: cel.height, tileSize: cel.tileSize });
+  }
 
   async updateTile(celId, x, y, pixels) {
     const cel = this.#cel(celId);
