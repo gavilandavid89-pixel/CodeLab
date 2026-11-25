@@ -69,20 +69,20 @@ A UI warning or a disabled toolbar button is not sufficient protection.
 
 ### Implemented in the tiled path
 
-- Sparse cel-local ownership tiles now use values `0/1/2` and are read/written by bounded region APIs.
-- Ownership tiles are validated on manifest load (coordinates, dimensions, allowed values, canonical base64 and SHA-256) and are exported with independent hashes.
+- Both dense `RasterDocument` layers and sparse tiled cels now store sparse per-pixel ownership tiles with values `0/1/2`.
+- Tiled ownership tiles are validated on manifest load (coordinates, dimensions, allowed values, canonical base64 and SHA-256); dense project JSON validates coordinates, dimensions, allowed values and canonical base64. Both formats export ownership metadata.
 - Cel copy-on-write clones ownership data; native tiled project and tiled animation manifests carry the ownership tiles. Legacy cels without the field load as unowned.
-- The shared tiled raster adapter guards both bounded region writes and tile-batch writes. The tiled animation adapter guards frame/layer cel region writes.
-- Brush and eraser use the guard; fill and gradient go through guarded tile-batch writes; shape outlines use the guarded stroke/brush path.
-- Stroke and tile-operation history capture RGBA and ownership snapshots together and restore both on undo/redo/cancel.
-- Integration tests cover project-manifest round-trip, legacy unowned import, both cross-style directions, erasing, brush ownership, fill undo/redo, and animation frame clone/manifest round-trip.
+- The shared tiled raster adapter guards both bounded region writes and tile-batch writes. The tiled animation adapter guards frame/layer cel region writes. Dense animation JSON preserves per-frame ownership in layer metadata and the editor restores it on frame switches.
+- Dense and tiled brush/eraser, bucket fill, gradient, shape outlines, color replacement, selection paste, transforms, and dense AI/batch layer replacement respect pixel ownership.
+- Dense and tiled stroke/tile-operation history capture RGBA and ownership snapshots together and restore both on undo/redo/cancel.
+- Integration tests cover dense/tiled project round-trips, legacy unowned import, both cross-style directions, erasing, brush/fill/gradient/AI paths, undo/redo, and dense/tiled animation frame clone/manifest round-trip.
 
 ### Still incomplete — do not mark the feature fully released
 
-- The animation adapter's frame-level ownership is guarded on region writes, but other animation mutation APIs and all AI/headless/scripted write entry points still need an explicit audit.
+- Dense animation frame restore now carries ownership; the remaining animation mutation APIs and every AI/headless/scripted write entry point still need a full audit.
 - Server/remote cel patch generation (`createPatch`) currently diffs RGBA tiles only; ownership tile deltas are not yet represented in that patch protocol.
 - Legacy RGBA export intentionally has no ownership channel. Re-importing such an export treats its pixels as unowned; native tiled manifest/animation manifest round-trips are the ownership-preserving paths.
 - Selection cut/paste, transform, and any direct tile-store callers must be audited to prove they route through the guarded boundary or use a privileged, explicit restore path.
 - CI for the latest changes is still running; the implementation is not CI-verified until the workflows finish successfully.
 
-Mixed-style protection is now implemented across the tiled raster brush, eraser, fill, gradient, shape, region-write and tile-batch paths, plus tiled animation region writes. It is **not yet complete across every editing, AI/headless, remote-patch, and legacy export path**. Do not advertise the whole feature as finished until those remaining gates and the CI suite pass.
+Mixed-style protection is now implemented across the dense and tiled raster brush, eraser, fill, gradient, shape, transform, selection-paste, color-replacement and batch layer-write paths, plus dense/tiled animation frame ownership. It is **not yet complete across every direct store, AI/headless, remote-patch, autosave/recovery, and legacy export path**. Do not advertise the whole feature as finished until those remaining gates and the CI suite pass.
