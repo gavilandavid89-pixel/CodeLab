@@ -116,7 +116,7 @@ function refreshOutputDimensions() {
   $('#vc-export-dimensions').textContent = width + ' × ' + height;
   const sourceWidth = packageData.manifest.width;
   const sourceHeight = packageData.manifest.height;
-  const quality = getSourceQualityAssessment(sourceWidth, sourceHeight, width, height);
+  const quality = getSourceQualityAssessment(sourceWidth, sourceHeight, width, height, { fitMode: $('#vc-fit-mode').value });
   const sourceLabel = sourceWidth + ' × ' + sourceHeight;
   const contentLabel = quality.contentWidth + ' × ' + quality.contentHeight;
   const qualityNote = $('#vc-source-quality');
