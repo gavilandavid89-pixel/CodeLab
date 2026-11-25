@@ -77,6 +77,7 @@ export class TiledRasterStrokeHistory {
       normalized.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes });
     if (!result.changed) return false;
     this.#undo.push({ type, layerId, entries: normalized, bytes });
+    for (const command of this.#redo) this.#releaseCommand(command);
     this.#redo = [];
     this.#trimHistory();
     return true;

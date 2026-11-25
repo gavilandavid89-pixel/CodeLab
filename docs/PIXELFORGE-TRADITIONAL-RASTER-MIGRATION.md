@@ -243,7 +243,7 @@ The CodeLab structured ZIP v2 path now accepts a tiled raster project together w
 - Every dab writes only its clipped brush region; selection masks are honored by the shared tiled brush primitive. No full-canvas RGBA surface is allocated for a shape.
 - If the path exceeds the dab cap, it is rejected before drawing. If the undo byte budget is exceeded during rasterization, the active history stroke rolls back before the error is returned. Undo/redo treats the complete shape as one operation.
 - Editor shape gestures are serialized with tiled pointer gestures so two operations cannot claim the same history transaction concurrently. Symmetry is expanded in document coordinates and is covered by tests.
-- **Scope limit:** this does not yet implement tiled gradients, magic-wand/color selection, transforms, general layer-metadata history or tiled animation cels. The visited bitset is bounded by the existing maximum canvas area; staged RGBA history, scanline queue and shape dab count have explicit caps. Do not raise canvas or history limits based on these tools alone.
+- **Scope limit:** this does not yet implement tiled gradients, magic-wand/color selection, transforms, full animation-cel metadata history or tiled animation cels. The visited bitset is bounded by the existing maximum canvas area; staged RGBA history, scanline queue and shape dab count have explicit caps. Do not raise canvas or history limits based on these tools alone.
 
 ### Tiled layer management and metadata history
 
