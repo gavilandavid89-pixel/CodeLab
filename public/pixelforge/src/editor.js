@@ -510,11 +510,12 @@ function fitCanvas() {
   render();
 }
 function fitArtworkForCapture() {
+  const densePixels = doc.isTiled ? null : doc.composite();
   let minX = doc.width, minY = doc.height, maxX = -1, maxY = -1;
   for (let y = 0; y < doc.height; y++) {
     const pixels = doc.isTiled
       ? doc.readCompositeRegion({ x: 0, y, width: doc.width, height: 1 }).pixels
-      : doc.composite().subarray(y * doc.width * 4, (y + 1) * doc.width * 4);
+      : densePixels.subarray(y * doc.width * 4, (y + 1) * doc.width * 4);
     for (let x = 0; x < doc.width; x++) {
       if (pixels[x * 4 + 3] <= 8) continue;
       if (x < minX) minX = x;
@@ -3169,9 +3170,10 @@ function getAnimationLayerSettings(frameIndex) {
 function drawAnimationFrameToContext(frameIndex, context, x = 0, y = 0) {
   if (animation instanceof TiledAnimationDocument) {
     const settings = getAnimationLayerSettings(frameIndex);
-    for (let row = 0; row < doc.height; row++) {
-      const pixels = animation.compositeRegion(frameIndex, { x: 0, y: row, width: doc.width, height: 1 }, settings).pixels;
-      context.putImageData(new ImageData(pixels, doc.width, 1), x, y + row);
+    for (let row = 0; row < doc.height; row += 16) {
+      const rows = Math.min(16, doc.height - row);
+      const pixels = animation.compositeRegion(frameIndex, { x: 0, y: row, width: doc.width, height: rows }, settings).pixels;
+      context.putImageData(new ImageData(pixels, doc.width, rows), x, y + row);
     }
     return;
   }
@@ -3180,9 +3182,10 @@ function drawAnimationFrameToContext(frameIndex, context, x = 0, y = 0) {
 }
 function drawProjectCompositeToContext(context, x = 0, y = 0) {
   if (doc.isTiled) {
-    for (let row = 0; row < doc.height; row++) {
-      const pixels = doc.readCompositeRegion({ x: 0, y: row, width: doc.width, height: 1 }).pixels;
-      context.putImageData(new ImageData(pixels, doc.width, 1), x, y + row);
+    for (let row = 0; row < doc.height; row += 16) {
+      const rows = Math.min(16, doc.height - row);
+      const pixels = doc.readCompositeRegion({ x: 0, y: row, width: doc.width, height: rows }).pixels;
+      context.putImageData(new ImageData(pixels, doc.width, rows), x, y + row);
     }
     return;
   }
