@@ -1455,14 +1455,17 @@ function moveStroke(event) {
     const point = docPoint(event);
     if (point.inside) {
       const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
-      const controller = tiledPointerController, targetDocument = doc;
+      const controller = tiledPointerController, targetDocument = doc, gestureToken = activeTiledGestureToken;
       const operation = tiledGestureTail.then(() => {
         if (doc !== targetDocument || tiledPointerController !== controller) return { changed: false, ignored: true };
         return controller.pointerMove({ pointerId: event.pointerId, points });
       });
       tiledGestureTail = operation.catch(() => {});
       void operation.then(() => render()).catch(error => {
-        if (pointerId === event.pointerId) pointerId = null;
+        if (activeTiledGestureToken === gestureToken) {
+          pointerId = null;
+          activeTiledGestureToken = 0;
+        }
         status(error.message, 'error');
       });
     }
@@ -1534,7 +1537,7 @@ function finishActiveStroke(commit = true) {
   return true;
 }
 function endStroke(event, commit = true) {
-  if (doc.isTiled && tiledPointerController?.active) {
+  if (doc.isTiled && tiledPointerController && pointerId !== null) {
     if (event?.pointerId !== undefined && event.pointerId !== pointerId) return;
     void finishActiveStroke(commit);
     return;
@@ -2156,7 +2159,7 @@ function setTool(next) {
     return;
   }
   if (cursorMode && !['draw', 'erase'].includes(next)) setCursorMode(false);
-  if (activeStroke || (doc.isTiled && tiledPointerController?.active)) void finishActiveStroke(false);
+  if (activeStroke || (doc.isTiled && tiledPointerController && pointerId !== null)) void finishActiveStroke(false);
   shapeGesture = null; gradientGesture = null;
   if (next === 'eyedropper' && tool !== 'eyedropper') returnTool = ['draw', 'erase'].includes(tool) ? tool : 'draw';
   drawHeld = false; drawHoldPointerId = null;
