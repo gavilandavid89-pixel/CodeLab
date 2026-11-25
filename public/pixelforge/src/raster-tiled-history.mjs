@@ -57,6 +57,36 @@ export class TiledRasterStrokeHistory {
     };
   }
 
+  async applyTileOperation(layerId, entries, { type = 'tile-operation' } = {}) {
+    this.#assertLive();
+    if (this.#active) throw new Error('Commit or cancel the active stroke before applying a tile operation.');
+    if (!this.#document.layers.some(layer => layer.id === layerId)) throw new Error('Unknown tiled operation layer.');
+    if (!Array.isArray(entries) || !entries.length) return false;
+    const normalized = entries.map(entry => {
+      if (!entry || !Number.isInteger(entry.x) || !Number.isInteger(entry.y) ||
+          !(entry.before instanceof Uint8Array || entry.before instanceof Uint8ClampedArray) ||
+          !(entry.after instanceof Uint8Array || entry.after instanceof Uint8ClampedArray) ||
+          entry.before.byteLength !== entry.after.byteLength) {
+        throw new TypeError('Tile operation entries must contain matching before/after tile buffers.');
+      }
+      return { x: entry.x, y: entry.y, before: copyPixels(entry.before), after: copyPixels(entry.after) };
+    });
+    const bytes = normalized.reduce((sum, entry) => sum + entry.before.byteLength + entry.after.byteLength, 0);
+    if (bytes > this.#maxBytes) throw new RangeError('Tile operation exceeded the sparse undo history byte budget.');
+    const result = await this.#document.writeTileBatch(layerId,
+      normalized.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes });
+    if (!result.changed) return false;
+    this.#undo.push({ type, layerId, entries: normalized, bytes });
+    this.#redo = [];
+    this.#trimHistory();
+    return true;
+  }
+
+  #trimHistory() {
+    while (this.#undo.length > this.#maxCommands ||
+      this.#undo.reduce((sum, item) => sum + item.bytes, 0) > this.#maxBytes) this.#undo.shift();
+  }
+
   beginStroke(layerId, settings = {}) {
     this.#assertLive();
     if (this.#active) throw new Error('A tiled brush stroke is already active.');
@@ -133,9 +163,13 @@ export class TiledRasterStrokeHistory {
     if (this.#active) throw new Error('Commit or cancel the active stroke before undo.');
     const command = this.#undo.pop();
     if (!command) return false;
-    for (let index = command.entries.length - 1; index >= 0; index--) {
-      const entry = command.entries[index];
-      await this.#document.writeRegion(command.layerId, entry.region, entry.before);
+    if (command.entries[0]?.region) {
+      for (let index = command.entries.length - 1; index >= 0; index--) {
+        const entry = command.entries[index];
+        await this.#document.writeRegion(command.layerId, entry.region, entry.before);
+      }
+    } else {
+      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, before }) => ({ x, y, pixels: before })), { maxBytes: this.#maxBytes });
     }
     this.#redo.push(command);
     return true;
@@ -146,8 +180,10 @@ export class TiledRasterStrokeHistory {
     if (this.#active) throw new Error('Commit or cancel the active stroke before redo.');
     const command = this.#redo.pop();
     if (!command) return false;
-    for (const entry of command.entries) {
-      await this.#document.writeRegion(command.layerId, entry.region, entry.after);
+    if (command.entries[0]?.region) {
+      for (const entry of command.entries) await this.#document.writeRegion(command.layerId, entry.region, entry.after);
+    } else {
+      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes });
     }
     this.#undo.push(command);
     return true;
