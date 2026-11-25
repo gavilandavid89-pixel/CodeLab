@@ -47,7 +47,7 @@ test('cancel restores a partially drawn stroke and never adds it to history', as
 test('stroke exceeding history byte budget rolls back all prior dabs', async () => {
   const doc = TiledRasterProjectDocument.createBlank({ width: 32, height: 32, tileSize: 32 });
   const layerId = doc.activeLayerId;
-  const history = new TiledRasterStrokeHistory(doc, { maxBytes: 8 });
+  const history = new TiledRasterStrokeHistory(doc, { maxBytes: 10 });
   const blank = whole(doc, layerId);
   history.beginStroke(layerId, { color: '#ff0000', size: 1 });
   await history.dab(2, 2);
