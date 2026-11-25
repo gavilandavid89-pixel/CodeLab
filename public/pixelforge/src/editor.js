@@ -27,7 +27,11 @@ const $ = selector => document.querySelector(selector);
 
 function installDocument(nextDocument) {
   const previousDocument = doc;
-  if (animation instanceof TiledAnimationDocument) animation.dispose();
+  if (animation instanceof TiledAnimationDocument) {
+    for (const frames of tiledAnimationOrphanCels.values()) for (const item of frames) if (item.celId) animation.releaseCelReference(item.celId);
+    animation.dispose();
+  }
+  tiledAnimationOrphanCels.clear();
   for (const history of tiledAnimationHistory.values()) history.dispose();
   tiledAnimationHistory.clear();
   animation = null;
@@ -118,7 +122,7 @@ let tiledPointerController = null, tiledPointerDocument = null, tiledGestureTail
 const TILED_DOCUMENT_THRESHOLD_PIXELS = 1_048_576;
 let drawingConfiguration = normalizeDrawingConfiguration(null, { legacyDefault: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
 for (const layer of doc.layers) layer.authoringMode = drawingConfiguration.activeMode;
-let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), tiledAnimationHistory = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
+let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), tiledAnimationHistory = new Map(), tiledAnimationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
 let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1, saveOnStop: true };
 let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiCoordinator = null, activeAIRequestController = null;
 let aiPanelVisible = false;
@@ -997,17 +1001,41 @@ function syncTiledAnimationFrame() {
   animation.setFrameAuthoringMode(index, drawingConfiguration.activeMode);
   return true;
 }
+function pruneTiledAnimationOrphanCels() {
+  if (!(animation instanceof TiledAnimationDocument)) return;
+  const referenced = new Set();
+  const histories = [doc?.strokeHistory, ...tiledAnimationHistory.values()].filter(Boolean);
+  for (const history of histories) {
+    for (const command of [...history.undoStack, ...history.redoStack]) {
+      if (!command?.type?.startsWith('layer-state:')) continue;
+      for (const state of [command.before, command.after]) for (const layer of state?.layers || []) referenced.add(layer.id);
+    }
+  }
+  for (const [layerId, frames] of tiledAnimationOrphanCels) {
+    if (referenced.has(layerId)) continue;
+    for (const item of frames) if (item.celId) animation.releaseCelReference(item.celId);
+    tiledAnimationOrphanCels.delete(layerId);
+  }
+}
 function syncTiledAnimationLayerStack(copyFromByNewId = new Map()) {
   if (!(animation instanceof TiledAnimationDocument) || !doc.isTiled) return;
   const currentIds = doc.layerIds;
-  for (const oldId of animation.layerIds) if (!currentIds.includes(oldId)) animation.removeLayer(oldId);
+  for (const oldId of animation.layerIds) {
+    if (currentIds.includes(oldId)) continue;
+    const orphan = animation.removeLayer(oldId);
+    tiledAnimationOrphanCels.set(oldId, orphan.frames);
+  }
   for (const layer of doc.layers) {
     if (animation.layerIds.includes(layer.id)) continue;
     const sourceId = copyFromByNewId.get(layer.id) || null;
     const activeCelId = doc.cloneLayerCelReference(layer.id);
-    animation.addLayer(layer.id, { activeCelId, copyFromLayerId: sourceId, metadata: layer });
+    const orphanFrames = tiledAnimationOrphanCels.get(layer.id);
+    animation.addLayer(layer.id, { activeCelId, copyFromLayerId: sourceId, metadata: layer,
+      orphanFrames: orphanFrames ? new Map(orphanFrames.map(item => [item.frameId, item])) : null });
+    if (orphanFrames) tiledAnimationOrphanCels.delete(layer.id);
   }
   animation.reorderLayers(currentIds);
+  pruneTiledAnimationOrphanCels();
 }
 function applyTiledAnimationFrame(index, { resetHistory = false } = {}) {
   if (!(animation instanceof TiledAnimationDocument) || !doc.isTiled) return false;
