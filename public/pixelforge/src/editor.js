@@ -1341,7 +1341,8 @@ function startStrokeAt(point, id) {
     const controller = getTiledPointerController();
     if (doc.activeLayer?.locked) { status('This layer is locked', 'warning'); return; }
     pointerId = id;
-    activeTiledGestureToken = ++tiledGestureSequence;
+    const gestureToken = ++tiledGestureSequence;
+    activeTiledGestureToken = gestureToken;
     const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
     const targetDocument = doc;
     const operation = tiledGestureTail.then(() => {
@@ -1519,7 +1520,10 @@ function finishActiveStroke(commit = true) {
       if (finished && doc === targetDocument) changed();
       return Boolean(finished);
     }).catch(error => {
-      if (pointerId === id) pointerId = null;
+      if (activeTiledGestureToken === gestureToken) {
+        pointerId = null;
+        activeTiledGestureToken = 0;
+      }
       status(error.message, 'error');
       return false;
     });
