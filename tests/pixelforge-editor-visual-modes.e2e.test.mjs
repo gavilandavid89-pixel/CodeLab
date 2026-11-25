@@ -454,6 +454,33 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await page.waitForTimeout(120);
   for (const point of rapidPoints) await assertVisibleColor(point, '#f5f5f5', 'tiled/rapid-tap');
 
+  // Exercise the visible eraser, not only its lower-level raster parity. The
+  // eraser must restore the same rendered background sample and participate
+  // in undo/redo just like a brush gesture.
+  await setMode('pixel-art');
+  await setSymmetry(0);
+  await page.locator('#brush-tool').click();
+  await setColor('#ffffff');
+  await setValue('#brush-size', 9);
+  await setValue('#brush-hardness', 100);
+  await setValue('#brush-opacity', 100);
+  const eraserPoint = { x: 560, y: 560 };
+  const eraserBaseline = await sampleVisibleExact(eraserPoint);
+  await drawAt(eraserPoint);
+  await assertVisibleColor(eraserPoint, '#ffffff', 'tiled/eraser/source');
+  await page.locator('#eraser-tool').click();
+  await drawAt(eraserPoint);
+  await page.waitForTimeout(40);
+  assert.deepEqual(await sampleVisibleExact(eraserPoint), eraserBaseline,
+    'visible eraser must restore the original rendered pixel');
+  await page.locator('#undo').click();
+  await page.waitForTimeout(40);
+  await assertVisibleColor(eraserPoint, '#ffffff', 'tiled/eraser/undo');
+  await page.locator('#redo').click();
+  await page.waitForTimeout(40);
+  assert.deepEqual(await sampleVisibleExact(eraserPoint), eraserBaseline,
+    'redo of eraser must restore the original rendered pixel');
+
   // Wait for the real editor autosave and inspect the payload received by the
   // mock account API. A tiled canvas must persist a tile manifest, not a dense
   // base64 pixel buffer or a legacy project snapshot.
