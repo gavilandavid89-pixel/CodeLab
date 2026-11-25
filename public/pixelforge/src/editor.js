@@ -40,6 +40,7 @@ function installDocument(nextDocument) {
     void previousController.dispose().catch(error => console.warn('Could not settle previous tiled pointer controller:', error));
   }
   doc = nextDocument;
+  clearSelectionState();
   if (doc.isTiled && !['draw', 'erase', 'pan', 'eyedropper'].includes(tool)) setTool('draw');
   return doc;
 }
