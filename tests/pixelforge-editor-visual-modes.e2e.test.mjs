@@ -214,7 +214,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     await setMode(mode);
     const color = mode === 'illustration' ? '#e34b72' : '#39d6a5';
     await setColor(color);
-    await setValue('#brush-size', 3);
+    await setValue('#brush-size', 5);
     await setValue('#brush-hardness', 100);
     await setValue('#brush-opacity', 100);
     for (const shape of ['square', 'circle']) {
@@ -322,6 +322,30 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     for (const point of points) await assertVisibleColor(point, '#f0c674', '127x91/pixel-art/symmetry-' + symmetry);
   }
   await page.locator('#canvas').screenshot({ path: path.join(artifactDir, 'editor-odd-127x91.png') });
+
+  // Shape coverage must differ visibly: a 5px square includes its diagonal
+  // corners, while a 5px circle does not.
+  await setSymmetry(0);
+  await setColor('#ffffff');
+  await setValue('#brush-size', 5);
+  await page.locator('#brush-shape').selectOption('square');
+  await drawAt({ x: 44, y: 44 });
+  await assertVisibleColor({ x: 42, y: 42 }, '#ffffff', 'square brush diagonal corner');
+  await setColor('#f0c674');
+  await page.locator('#brush-shape').selectOption('circle');
+  await drawAt({ x: 78, y: 78 });
+  await assertVisibleColor({ x: 78, y: 78 }, '#f0c674', 'circle brush center');
+  const circleCorner = await sampleVisible({ x: 76, y: 76 }, '#f0c674');
+  const circleCornerError = circleCorner.rgba.slice(0, 3).reduce((sum, value, index) =>
+    sum + Math.abs(value - expectedRgb('#f0c674')[index]), 0);
+  assert.ok(circleCornerError > 20, 'circle brush must leave the square-only diagonal corner untouched');
+
+  // Maximum brush size must clip cleanly to a non-square canvas.
+  await setColor('#ffffff');
+  await setValue('#brush-size', 128);
+  await page.locator('#brush-shape').selectOption('square');
+  await drawAt({ x: 63, y: 45 });
+  await assertVisibleColor({ x: 126, y: 90 }, '#ffffff', '128px brush clipped to bottom-right edge');
 
   await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence }, null, 2));
   await page.close();
