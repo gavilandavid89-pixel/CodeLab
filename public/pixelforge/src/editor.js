@@ -1098,11 +1098,12 @@ function applyAnimationFramePixels(index) {
   const frameAuthoringMode = animation.getFrame(index).authoringMode || PIXELFORGE_DRAWING_MODES.PIXEL_ART;
   const previousRevision = doc.revision, previousSaveVersion = doc.saveVersion;
   const replacements = doc.layers.map(layer => ({ layerId: layer.id, pixels: animation.getLayerPixels(index, layer.id) }));
+  const ownershipByLayer = new Map(doc.layers.map(layer => [layer.id, animation.getLayerOwnershipTiles(index, layer.id)]));
   const frameLayerMetadata = doc.layers.map((layer, layerIndex) => animation.getLayerMetadata(index, layer.id) || { id: layer.id, index: layerIndex + 1 });
   const locks = doc.layers.map(layer => [layer, layer.locked]);
   try {
     for (const [layer] of locks) layer.locked = false;
-    doc.replaceLayerPixelsBatch(replacements);
+    doc.replaceLayerPixelsBatch(replacements, { restore: true, ownershipByLayer });
     for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
       const layer = doc.layers[layerIndex], metadata = frameLayerMetadata[layerIndex];
       if (!metadata) continue;
