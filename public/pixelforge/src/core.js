@@ -710,14 +710,21 @@ export class RasterDocument {
     for (let sy = Math.max(0, y); sy < Math.min(this.height, y + height); sy++) for (let sx = Math.max(0, x); sx < Math.min(this.width, x + width); sx++) {
       const index = sy * this.width + sx;
       if (this.selectionMask && !this.selectionMask[index]) continue;
+      const sourceOwner = this.#ownerAt(layer, sx, sy), styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
+      if (sourceOwner !== 0 && sourceOwner !== styleOwner) continue;
       touch(sx, sy);
       layer.pixels.fill(0, index * 4, index * 4 + 4);
+      this.#setOwner(layer, sx, sy, 0);
     }
     for (let index = 0; index < preview.selectionMask.length; index++) {
       if (!preview.selectionMask[index]) continue;
       const x2 = index % this.width, y2 = Math.floor(index / this.width);
+      const sourceOwner = preview.owners?.[index] || 0, styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
+      const targetOwner = this.#ownerAt(layer, x2, y2);
+      if ((sourceOwner !== 0 && sourceOwner !== styleOwner) || (targetOwner !== 0 && targetOwner !== styleOwner)) continue;
       touch(x2, y2);
       layer.pixels.set(preview.pixels.subarray(index * 4, index * 4 + 4), index * 4);
+      this.#setOwner(layer, x2, y2, preview.pixels[index * 4 + 3] === 0 ? 0 : (sourceOwner || styleOwner));
     }
     const changedTiles = [];
     let changedPixels = 0;
