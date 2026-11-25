@@ -184,3 +184,32 @@ test('constant-FPS resampling rejects unsafe frame explosions and invalid timeli
   assert.throws(() => buildConstantFrameRateSequence([{ durationMs: 0 }], 12), /positive finite duration/);
   assert.throws(() => buildConstantFrameRateSequence([], 12), /non-empty source/);
 });
+
+
+test('composition guides expose centered safe bounds and video fitting never stretches source frames', async () => {
+  const { getCompositionGuide, coverSourceRect, drawFrameToCanvas } = await import('../public/pixelforge/src/video-capture-layout.mjs');
+  const horizontal = getCompositionGuide(1000, 1000, 1920, 1080);
+  assert.deepEqual(horizontal.safeArea, { x: 0, y: 219, width: 1000, height: 563 });
+  assert.equal(horizontal.aspectRatio, '1920:1080');
+  const vertical = getCompositionGuide(1000, 1000, 1080, 1920);
+  assert.deepEqual(vertical.safeArea, { x: 219, y: 0, width: 563, height: 1000 });
+
+  const crop = coverSourceRect(1920, 1080, 1080, 1920);
+  assert.equal(crop.width, 607.5);
+  assert.equal(crop.height, 1080);
+  assert.equal(crop.x, 656.25);
+
+  const calls = [];
+  const context = {
+    save() {}, restore() {}, clearRect() {}, fillRect() {},
+    drawImage(...args) { calls.push(args); },
+  };
+  const bitmap = { width: 1000, height: 1000 };
+  const fitted = drawFrameToCanvas(context, bitmap, 1920, 1080, { fitMode: 'contain' });
+  assert.deepEqual(fitted, { x: 420, y: 0, width: 1080, height: 1080 });
+  assert.deepEqual(calls.pop(), [bitmap, 420, 0, 1080, 1080]);
+  const covered = drawFrameToCanvas(context, bitmap, 1080, 1920, { fitMode: 'cover' });
+  assert.equal(covered.x, 218.75);
+  assert.equal(covered.width, 562.5);
+  assert.deepEqual(calls.pop(), [bitmap, 218.75, 0, 562.5, 1000, 0, 0, 1080, 1920]);
+});
