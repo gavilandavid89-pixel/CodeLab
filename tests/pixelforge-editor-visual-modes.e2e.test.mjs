@@ -498,6 +498,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.equal(savedTiled.width, 1024);
   assert.equal(savedTiled.height, 1024);
   assert.equal(savedTiled.layers.length, 1);
+  assert.equal(savedTiled.layers[0].authoringMode, 'pixel-art', 'the tiled layer must persist the mode used by the last committed draw/erase operation');
   assert.ok(savedTiled.layers[0].cel, 'each tiled layer must persist its cel manifest');
   assert.ok(!Object.hasOwn(savedTiled.layers[0], 'pixels'),
     'the tiled persistence payload must not contain a full dense layer pixel string');
