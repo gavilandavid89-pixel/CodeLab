@@ -391,6 +391,63 @@ export class TiledAnimationDocument {
     return fps;
   }
 
+  addLayer(layerId, { activeCelId, copyFromLayerId = null, metadata = {} } = {}) {
+    if (typeof layerId !== 'string' || !layerId.trim() || this.#layerIds.includes(layerId)) throw new TypeError('A new unique animation layer ID is required.');
+    if (this.#layerIds.length >= 64) throw new RangeError('A tiled animation cannot exceed 64 layers.');
+    if (!activeCelId) throw new TypeError('The active frame cel reference is required.');
+    if (copyFromLayerId !== null && !this.#layerIds.includes(copyFromLayerId)) throw new Error('Unknown source animation layer ID.');
+    const created = [];
+    try {
+      this.#store.getCelTileSize(activeCelId);
+      for (let index = 0; index < this.#frames.length; index++) {
+        const frame = this.#frames[index];
+        let celId;
+        if (index === this.#activeFrameIndex) celId = activeCelId;
+        else if (copyFromLayerId) celId = this.#store.cloneCel(this.#cel(frame, copyFromLayerId));
+        else celId = this.#store.createBlankCel({ width: this.#width, height: this.#height, tileSize: this.#store.getCelTileSize(this.#cel(frame, this.#layerIds[0])) });
+        created.push({ frame, celId });
+      }
+      this.#layerIds.push(layerId);
+      for (const { frame, celId } of created) {
+        frame.cels.set(layerId, celId);
+        const source = copyFromLayerId ? frame.layerMetadata[copyFromLayerId] : null;
+        frame.layerMetadata[layerId] = normalizeCelMetadata({ ...(source || metadata), ...metadata, id: layerId }, frame.authoringMode);
+      }
+      return this.#layerIds.length;
+    } catch (error) {
+      for (const { celId } of created) this.#store.releaseCel(celId);
+      if (!created.some(item => item.celId === activeCelId)) this.#store.releaseCel(activeCelId);
+      throw error;
+    }
+  }
+
+  removeLayer(layerId) {
+    if (!this.#layerIds.includes(layerId)) throw new Error('Unknown animation layer ID.');
+    if (this.#layerIds.length <= 1) throw new RangeError('A tiled animation must retain at least one raster layer.');
+    this.#layerIds = this.#layerIds.filter(id => id !== layerId);
+    for (const frame of this.#frames) {
+      const celId = frame.cels.get(layerId);
+      frame.cels.delete(layerId);
+      delete frame.layerMetadata[layerId];
+      this.#store.releaseCel(celId);
+    }
+    return this.#layerIds.length;
+  }
+
+  reorderLayers(layerIds) {
+    if (!Array.isArray(layerIds) || layerIds.length !== this.#layerIds.length ||
+        new Set(layerIds).size !== layerIds.length || this.#layerIds.some(id => !layerIds.includes(id))) {
+      throw new TypeError('Layer reordering must preserve all tiled animation layer IDs.');
+    }
+    if (layerIds.every((id, index) => id === this.#layerIds[index])) return false;
+    for (const frame of this.#frames) {
+      frame.cels = new Map(layerIds.map(id => [id, frame.cels.get(id)]));
+      frame.layerMetadata = Object.fromEntries(layerIds.map(id => [id, frame.layerMetadata[id]]));
+    }
+    this.#layerIds = [...layerIds];
+    return true;
+  }
+
   cloneFrame(index, { afterIndex = index } = {}) {
     assertFrameIndex(index, this.#frames.length);
     if (!Number.isInteger(afterIndex) || afterIndex < -1 || afterIndex >= this.#frames.length) {
