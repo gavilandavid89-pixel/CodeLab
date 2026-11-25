@@ -133,9 +133,18 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   };
   const expectedRgb = hex => [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16));
   const assertVisibleColor = async (point, hex, label) => {
+    const screen = await screenPoint(point);
+    await page.mouse.move(screen.x, screen.y);
+    const readout = await page.locator('#coordinate-readout').textContent();
+    assert.equal(readout, 'x: ' + point.x + ' · y: ' + point.y,
+      'screen-to-document mapping must identify the same pixel being visually sampled for ' + label);
     const actual = await sampleVisible(point);
     const expected = expectedRgb(hex);
     const channelError = actual.slice(0, 3).map((value, index) => Math.abs(value - expected[index]));
+    if (!channelError.every(error => error <= 20)) {
+      await page.locator('#canvas').screenshot({ path: path.join(artifactDir, 'failure-' + label.replace(/[^a-z0-9-]/gi, '-') + '.png') });
+      await fs.promises.writeFile(path.join(artifactDir, 'failure-details.json'), JSON.stringify({ label, point, expected, actual, readout }, null, 2));
+    }
     assert.ok(channelError.every(error => error <= 20),
       label + ' must be visibly rendered near document pixel ' + point.x + ',' + point.y +
       '; expected RGB ' + expected.join(',') + ', got ' + actual.slice(0, 3).join(','));
