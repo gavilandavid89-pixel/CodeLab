@@ -373,6 +373,14 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   [width, height] = (await page.locator('#document-size').textContent()).split('×').map(value => Number(value.trim()));
   assert.equal(await page.locator('#canvas').getAttribute('data-storage-mode'), 'tiled',
     'a 1024×1024 project must activate the sparse tiled editor path');
+  assert.equal(await page.locator('.reference-center-section').isHidden(), true,
+    'dense-only Reference Center controls must be hidden for sparse tiled documents');
+  assert.equal(await page.locator('#ai-tab').isDisabled(), true,
+    'AI proposals must not remain available against a dense-only workspace adapter');
+  for (const selector of ['#add-layer', '#rename-layer', '#duplicate-layer', '#delete-layer']) {
+    assert.equal(await page.locator(selector).isDisabled(), true,
+      selector + ' must not advertise unsupported sparse layer-history operations');
+  }
   // Baseline edge gesture immediately after creating a tiled document,
   // before the high-volume combination matrix below.
   await setMode('illustration');
