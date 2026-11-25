@@ -89,6 +89,7 @@ let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool
 let tiledPointerController = null, tiledPointerDocument = null, tiledGestureTail = Promise.resolve(), tiledGestureSequence = 0, activeTiledGestureToken = 0;
 const TILED_DOCUMENT_THRESHOLD_PIXELS = 1_048_576;
 let drawingConfiguration = normalizeDrawingConfiguration(null, { legacyDefault: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
+for (const layer of doc.layers) layer.authoringMode = drawingConfiguration.activeMode;
 let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
 let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1, saveOnStop: true };
 let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiCoordinator = null, activeAIRequestController = null;
