@@ -8,6 +8,8 @@ import { TiledRasterStrokeHistory } from './raster-tiled-history.mjs';
 
 export class TiledRasterPointerStrokeController {
   #history;
+  #fixedHistory = null;
+  #activeHistory = null;
   #document;
   #pointerId = null;
   #layerId = null;
@@ -20,11 +22,16 @@ export class TiledRasterPointerStrokeController {
     this.#document = document;
     const sharedHistory = historyOptions.history || document.strokeHistory;
     this.#history = sharedHistory || new TiledRasterStrokeHistory(document, historyOptions);
+    this.#fixedHistory = historyOptions.history || null;
     this.#ownsHistory = !sharedHistory;
   }
 
   get active() { return this.#pointerId !== null; }
-  get history() { return this.#history; }
+  get history() { return this.#activeHistory || this.#resolveHistory(); }
+
+  #resolveHistory() {
+    return this.#fixedHistory || this.#document.strokeHistory || this.#history;
+  }
 
   async pointerDown({ pointerId, layerId, point, points, settings }) {
     this.#assertLive();
@@ -34,7 +41,8 @@ export class TiledRasterPointerStrokeController {
         !initialPoints.some(candidate => candidate && Number.isInteger(candidate.x) && Number.isInteger(candidate.y))) {
       throw new TypeError('A pointer ID and at least one integer document point are required.');
     }
-    this.#history.beginStroke(layerId, settings);
+    this.#activeHistory = this.#resolveHistory();
+    this.#activeHistory.beginStroke(layerId, settings);
     this.#pointerId = pointerId;
     this.#layerId = layerId;
     this.#lastPoints = initialPoints.map(candidate =>
@@ -45,12 +53,12 @@ export class TiledRasterPointerStrokeController {
         let changed = false;
         for (const candidate of this.#lastPoints) {
           if (!candidate) continue;
-          const result = await this.#history.dab(candidate.x, candidate.y);
+          const result = await this.#activeHistory.dab(candidate.x, candidate.y);
           changed ||= result.changed;
         }
         return { changed };
       } catch (error) {
-        if (this.#history.isStrokeActive) await this.#history.cancelStroke();
+        if (this.#activeHistory?.isStrokeActive) await this.#activeHistory.cancelStroke();
         this.#reset();
         throw error;
       }
@@ -81,7 +89,7 @@ export class TiledRasterPointerStrokeController {
           }
           if (next.x < 0 || next.y < 0 || next.x >= this.#document.width || next.y >= this.#document.height) continue;
           const result = previous
-            ? await this.#history.segment(previous, next)
+            ? await this.#activeHistory.segment(previous, next)
             : await this.#history.dab(next.x, next.y);
           if (result.changed) changed = true;
           changedDabs += result.changedDabs || Number(Boolean(result.changed));
@@ -101,8 +109,8 @@ export class TiledRasterPointerStrokeController {
     this.#assertLive();
     await this.#pending;
     if (!this.active || (pointerId !== undefined && pointerId !== this.#pointerId)) return false;
-    if (commit) this.#history.commitStroke();
-    else await this.#history.cancelStroke();
+    if (commit) this.#activeHistory.commitStroke();
+    else await this.#activeHistory.cancelStroke();
     this.#reset();
     return true;
   }
@@ -118,7 +126,7 @@ export class TiledRasterPointerStrokeController {
   async dispose() {
     if (this.#disposed) return;
     await this.#pending;
-    if (this.active) await this.#history.cancelStroke();
+    if (this.active && this.#activeHistory?.isStrokeActive) await this.#activeHistory.cancelStroke();
     this.#reset();
     if (this.#ownsHistory) this.#history.dispose();
     this.#disposed = true;
@@ -133,6 +141,7 @@ export class TiledRasterPointerStrokeController {
     this.#pointerId = null;
     this.#layerId = null;
     this.#lastPoints = [];
+    this.#activeHistory = null;
   }
   #assertLive() {
     if (this.#disposed) throw new Error('Tiled pointer stroke controller has been disposed.');
