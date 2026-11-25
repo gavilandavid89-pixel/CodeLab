@@ -138,8 +138,15 @@ export function drawContentComposition(context, bitmap, frameIndex, dimensions, 
   context.fillStyle = '#20232d';
   context.fillRect(artX, artY, artWidth, artHeight);
   const inset = Math.round(Math.min(width, height) * 0.045);
-  const rect = containRect(sourceWidth, sourceHeight, artX + inset, artY + inset, artWidth - inset * 2, artHeight - inset * 2);
-  context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height);
+  const targetX = artX + inset, targetY = artY + inset;
+  const targetWidth = artWidth - inset * 2, targetHeight = artHeight - inset * 2;
+  if (options.fitMode === 'cover') {
+    const crop = coverSourceRect(sourceWidth, sourceHeight, targetWidth, targetHeight);
+    context.drawImage(bitmap, crop.x, crop.y, crop.width, crop.height, targetX, targetY, targetWidth, targetHeight);
+  } else {
+    const rect = containRect(sourceWidth, sourceHeight, targetX, targetY, targetWidth, targetHeight);
+    context.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height);
+  }
 
   const stripY = height - timelineHeight;
   context.fillStyle = '#171a23';
