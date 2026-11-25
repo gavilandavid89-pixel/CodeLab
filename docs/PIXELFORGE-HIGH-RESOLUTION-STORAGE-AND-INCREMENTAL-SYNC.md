@@ -239,3 +239,16 @@ Additional tiled edge coverage verifies exact right/bottom canvas boundaries, re
 - Pointer IDs are isolated: events from a second pointer are ignored, out-of-canvas movement is ignored without corrupting the active stroke, pointer cancellation/lost capture rolls back, and controller disposal cancels an active gesture.
 - CI tests verify one undoable command per gesture, pointer ownership, outside-canvas movement, cancellation, lost capture, and disposal.
 - The controller is a tested integration seam, not yet connected to `editor.js`: the visible editor still constructs `RasterDocument` and its existing tools, selection masks, symmetry, fills, transforms, animation, and persistence remain dense-model dependencies. Do not infer that the UI is already running on sparse tiles.
+
+
+### Browser visual matrix for mixed drawing modes
+
+A Chromium end-to-end test now drives the actual visible PixelForge canvas with real pointer gestures. It checks the 2 × 2 × 4 matrix of illustration/pixel-art modes, square/circular brushes, and symmetry off/2/4/8, then samples the rendered canvas pixels at every expected mirrored position. This is deliberately stronger than checking that the symmetry function or stored pixels look correct in isolation.
+
+The browser test also checks:
+- Mode-specific defaults and restoration of independent custom brush size, hardness and opacity after repeated mode switches.
+- Actual rendered edge sampling: illustration mode must show blended edge pixels at fractional zoom, while pixel-art must remain crisp without blended colors.
+- Dabs at the top-left and bottom-right canvas pixels, plus a pointer stroke that leaves and re-enters the canvas.
+- Browser runtime errors and captured per-mode canvas screenshots.
+
+CI uploads the screenshots and matrix evidence as the `pixelforge-editor-visual-matrix` artifact. These tests exercise the current visible dense editor and its presentation behavior. They do **not** claim that the sparse tiled adapter is already the editor's canonical model or that its primitives are connected to the UI; that integration still needs tool-by-tool parity and visual checks.
