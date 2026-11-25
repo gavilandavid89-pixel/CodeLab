@@ -126,3 +126,17 @@ test('tile operation history can undo and redo after the target layer is locked'
   assert.deepEqual(whole(doc, layerId), after);
   doc.dispose();
 });
+
+test('tiled flood fill treats the active selection as a traversal and paint boundary', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 10, height: 10, tileSize: 32 });
+  const layerId = doc.activeLayerId;
+  const mask = new Uint8Array(100);
+  for (let y = 3; y < 6; y++) mask.fill(1, y * 10 + 2, y * 10 + 7);
+  doc.setSelectionMask(mask);
+  const changed = await fillTiledLayer(doc, layerId, 3, 4, { color: '#11aaee' });
+  assert.equal(changed, 15);
+  const pixels = whole(doc, layerId);
+  assert.deepEqual([...pixels.slice((4 * 10 + 3) * 4, (4 * 10 + 3) * 4 + 4)], [17, 170, 238, 255]);
+  assert.deepEqual([...pixels.slice((4 * 10 + 8) * 4, (4 * 10 + 8) * 4 + 4)], [0, 0, 0, 0]);
+  doc.dispose();
+});
