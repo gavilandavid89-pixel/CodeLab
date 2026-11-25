@@ -167,6 +167,16 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
       return best;
     }, { ...screen, hex });
   };
+  const sampleVisibleExact = async point => {
+    const screen = await screenPoint(point);
+    return page.locator('#canvas').evaluate((canvas, p) => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = canvas.width / Math.max(1, canvas.clientWidth);
+      const x = Math.max(0, Math.min(canvas.width - 1, Math.floor((p.x - rect.left) * dpr)));
+      const y = Math.max(0, Math.min(canvas.height - 1, Math.floor((p.y - rect.top) * dpr)));
+      return Array.from(canvas.getContext('2d').getImageData(x, y, 1, 1).data);
+    }, screen);
+  };
   const expectedRgb = hex => [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16));
   const assertVisibleColor = async (point, hex, label) => {
     await screenPoint(point);
@@ -335,10 +345,9 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await page.locator('#brush-shape').selectOption('circle');
   await drawAt({ x: 78, y: 78 });
   await assertVisibleColor({ x: 78, y: 78 }, '#f0c674', 'circle brush center');
-  const circleCorner = await sampleVisible({ x: 76, y: 76 }, '#f0c674');
-  const circleCornerError = circleCorner.rgba.slice(0, 3).reduce((sum, value, index) =>
-    sum + Math.abs(value - expectedRgb('#f0c674')[index]), 0);
-  assert.ok(circleCornerError > 20, 'circle brush must leave the square-only diagonal corner untouched');
+  const circleCorner = await sampleVisibleExact({ x: 76, y: 76 });
+  assert.deepEqual(circleCorner.slice(0, 3), backgroundColor.split(',').map(Number),
+    'circle brush must leave the square-only diagonal corner untouched');
 
   // Maximum brush size must clip cleanly to a non-square canvas.
   await setColor('#ffffff');
