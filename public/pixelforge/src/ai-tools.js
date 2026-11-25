@@ -470,6 +470,7 @@ export class AICommandSession {
           const copied = copyReferencePixelsToActiveFrameLayer({
             drawingDocument: doc,
             pixels: deserializePixels(part.pixels),
+            ownershipTiles: part.ownershipTiles || [],
           });
           result = {
             copied: true, referenceId: entry.id, partId: part.id,
