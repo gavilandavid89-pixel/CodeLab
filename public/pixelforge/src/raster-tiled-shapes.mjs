@@ -44,25 +44,26 @@ export async function drawTiledShape(document, layerId, points, settings = {}, {
   if (!Number.isSafeInteger(maxDabs) || maxDabs < 1) throw new RangeError('Shape dab limit must be a positive safe integer.');
 
   let plannedDabs = 0;
+  const mappedPath = [];
   for (const point of points) {
     if (!point || !Number.isInteger(point.x) || !Number.isInteger(point.y) ||
         point.x < 0 || point.y < 0 || point.x >= document.width || point.y >= document.height) {
       throw new RangeError('Shape path contains coordinates outside the document.');
     }
-    plannedDabs += resolveMappedPoints(point, mapPoint, document.width, document.height).length;
+    const mappedPoints = resolveMappedPoints(point, mapPoint, document.width, document.height);
+    plannedDabs += mappedPoints.length;
     if (plannedDabs > maxDabs) throw new RangeError('Shape exceeded the sparse raster dab limit before drawing.');
+    mappedPath.push(...mappedPoints);
   }
   if (!plannedDabs) return { changed: false, changedDabs: 0, changedPixels: 0 };
 
   history.beginStroke(layerId, settings);
   let changedDabs = 0, changedPixels = 0;
   try {
-    for (const point of points) {
-      for (const mapped of resolveMappedPoints(point, mapPoint, document.width, document.height)) {
-        const result = await history.dab(mapped.x, mapped.y);
-        if (result.changed) changedDabs++;
-        changedPixels += result.changedPixels || 0;
-      }
+    for (const mapped of mappedPath) {
+      const result = await history.dab(mapped.x, mapped.y);
+      if (result.changed) changedDabs++;
+      changedPixels += result.changedPixels || 0;
     }
     const changed = history.commitStroke();
     return { changed, changedDabs, changedPixels };
