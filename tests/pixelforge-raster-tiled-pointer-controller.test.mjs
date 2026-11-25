@@ -52,3 +52,30 @@ test('disposing an active pointer controller cancels its stroke and prevents reu
   await assert.rejects(() => controller.pointerDown({ pointerId: 11, layerId, point: { x: 4, y: 4 }, settings: {} }), /disposed/);
   doc.dispose();
 });
+
+
+test('pointer writes are serialized when move and pointer-up arrive before the first tile write settles', async () => {
+  const document = TiledRasterProjectDocument.createBlank({
+    width: 128, height: 128, tileSize: 32, maxDecodedCacheBytes: 64 * 1024,
+  });
+  const controller = new TiledRasterPointerStrokeController(document);
+  const down = controller.pointerDown({
+    pointerId: 91, layerId: document.activeLayerId,
+    points: [{ x: 8, y: 8 }, { x: 120, y: 8 }, null],
+    settings: { color: '#33aaff', size: 3, mode: 'draw', opacity: 1, shape: 'square', hardness: 1 },
+  });
+  const move = controller.pointerMove({
+    pointerId: 91,
+    points: [{ x: 12, y: 12 }, { x: 116, y: 12 }, null],
+  });
+  const up = controller.pointerUp({ pointerId: 91 });
+  await Promise.all([down, move, up]);
+  assert.equal(controller.active, false);
+  assert.equal(document.history.length, 1);
+  assert.deepEqual(Array.from(document.readRegion(document.activeLayerId, { x: 12, y: 12, width: 1, height: 1 })), [51, 170, 255, 255]);
+  assert.deepEqual(Array.from(document.readRegion(document.activeLayerId, { x: 116, y: 12, width: 1, height: 1 })), [51, 170, 255, 255]);
+  await document.undo();
+  assert.deepEqual(Array.from(document.readRegion(document.activeLayerId, { x: 12, y: 12, width: 1, height: 1 })), [0, 0, 0, 0]);
+  await controller.dispose();
+  document.dispose();
+});
