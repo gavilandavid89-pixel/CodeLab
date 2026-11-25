@@ -214,3 +214,11 @@ The tiled renderer also applies the active mode's presentation policy after boun
 Additional tiled edge coverage verifies exact right/bottom canvas boundaries, rejection of one-pixel overflow in either axis, and alpha compositing across two sparse layers with different opacity. These cases are specifically useful for catching off-by-one viewport calculations and accidental mode/storage coupling.
 
 **Current boundary:** a project containing both modes is supported as a persisted drawing-configuration contract and the renderer preserves their presentation behavior, but the editor still stores its canonical raster data in dense `RasterDocument`. The remaining tile migration work is unchanged: native editor creation/open, tool parity, history, animation cels, versioned package persistence, Headless, authenticated durable tile storage and incremental CAS patches.
+
+
+### Sparse tiled brush/eraser rasterization foundation
+
+- Added an opt-in `raster-tiled-brush.mjs` primitive that rasterizes bounded square/circular brush dabs directly against `TiledRasterProjectDocument.readRegion()/writeRegion()`; it never materializes a full-canvas or full-layer RGBA buffer.
+- Draw blending, partial-opacity erasing, circle hardness coverage, even/odd brush centers, segment interpolation, and clipping at canvas edges follow the same pixel math and sampling cadence as `RasterDocument.#dab()/strokeTo()`.
+- Added parity tests that compare the tiled output byte-for-byte against dense `RasterDocument` for mixed draw/erase strokes crossing tile boundaries and touching all canvas edges, plus validation/locked-layer/no-op sparse allocation cases.
+- This is an isolated editing primitive, not yet wired into the visible editor pointer lifecycle. Stroke undo/redo snapshots, selection-mask clipping, symmetry, and atomic multi-dab history still need migration before the editor can switch its canonical document model. Existing dense editor behavior and limits remain unchanged.
