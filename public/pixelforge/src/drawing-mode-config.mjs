@@ -34,6 +34,19 @@ export function normalizeDrawingConfiguration(value, { legacyDefault = PIXELFORG
   };
 }
 
+/**
+ * Resolve the mode that owns a rendered/edited cel. More specific content
+ * metadata always wins over editor/project defaults.
+ */
+export function resolveDrawingMode({ cel, frame, layer, project } = {}) {
+  const candidates = [cel?.authoringMode, cel?.metadata?.authoringMode, frame?.authoringMode, layer?.authoringMode];
+  for (const mode of candidates) if (VALID_MODES.includes(mode)) return mode;
+  const configuration = normalizeDrawingConfiguration(project?.drawingConfiguration ?? project);
+  return VALID_MODES.includes(configuration.activeMode)
+    ? configuration.activeMode
+    : PIXELFORGE_DRAWING_MODES.PIXEL_ART;
+}
+
 export function switchDrawingMode(configuration, mode) {
   const current = normalizeDrawingConfiguration(configuration);
   if (!current.availableModes.includes(mode)) {
