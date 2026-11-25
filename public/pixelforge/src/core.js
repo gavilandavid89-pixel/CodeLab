@@ -222,7 +222,7 @@ function makeLayer(id, name, width, height) {
     id, name, visible: true, opacity: 1, locked: false,
     x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, angle: 0,
     blendMode: 'normal', blur: 0, brightness: 0, contrast: 0, saturation: 0,
-    mask: 'inexistente', clipping: 'inexistente', references: [], assets: [], metadata: {}, authoringMode: null, modeOverrides: {},
+    mask: 'inexistente', clipping: 'inexistente', references: [], assets: [], metadata: {}, authoringMode: 'pixel-art', modeOverrides: {},
     pixels: new Uint8ClampedArray(width * height * 4),
   };
 }
@@ -1172,7 +1172,7 @@ export class RasterDocument {
         mask: item.mask === undefined ? 'inexistente' : structuredClone(item.mask), clipping: item.clipping === undefined ? 'inexistente' : structuredClone(item.clipping),
         references: Array.isArray(item.references) ? structuredClone(item.references) : [], assets: Array.isArray(item.assets) ? structuredClone(item.assets) : [],
         metadata: item.metadata && typeof item.metadata === 'object' ? structuredClone(item.metadata) : {},
-        authoringMode: ['illustration', 'pixel-art'].includes(item.authoringMode) ? item.authoringMode : null,
+        authoringMode: ['illustration', 'pixel-art'].includes(item.authoringMode) ? item.authoringMode : 'pixel-art',
         modeOverrides: item.modeOverrides && typeof item.modeOverrides === 'object' && !Array.isArray(item.modeOverrides) ? structuredClone(item.modeOverrides) : {},
       };
     });
