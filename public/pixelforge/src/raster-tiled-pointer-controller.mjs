@@ -26,7 +26,7 @@ export class TiledRasterPointerStrokeController {
   get active() { return this.#pointerId !== null; }
   get history() { return this.#history; }
 
-  pointerDown({ pointerId, layerId, point, points, settings }) {
+  async pointerDown({ pointerId, layerId, point, points, settings }) {
     this.#assertLive();
     if (this.active) throw new Error('A tiled pointer stroke is already active.');
     const initialPoints = Array.isArray(points) ? points : [point];
