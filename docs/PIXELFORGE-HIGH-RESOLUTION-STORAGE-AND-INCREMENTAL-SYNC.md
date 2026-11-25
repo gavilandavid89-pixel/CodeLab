@@ -188,3 +188,10 @@ Do not delete the 64 MiB checks in v1 as a shortcut. First make the editor creat
 ### Copy-on-write reference lifecycle correction
 
 The native sparse-edit CI test exposed a cel ownership leak: the adapter replaced a layer's cel ID after a successful copy-on-write edit but retained the old cel reference. The adapter now releases the replaced layer-owned cel after switching to the new cel. Other layers that share the original cel retain their own references. The regression test asserts that exactly the two live layer cels remain after editing both branches, and that disposal releases all cels and tile resources.
+
+
+### Bounded viewport compositing milestone
+
+The tiled document now exposes `readCompositeRegion(region)`, which composites only a requested viewport-sized RGBA region across visible layers. This is the next bridge needed by the editor renderer: a 4096×4096 project does not need a 4096×4096 composite just to display a small zoomed viewport. A regression test confirms a 16×16 read from a 4096×4096 sparse project returns only 1024 RGBA pixels and preserves the edited pixel exactly.
+
+This still does not replace the editor's legacy full-canvas `doc.composite()` calls. The next integration step is to route viewport rendering through this bounded API and keep full-canvas materialization only for operations that genuinely require it.
