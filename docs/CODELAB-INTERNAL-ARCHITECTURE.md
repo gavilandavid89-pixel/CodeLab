@@ -164,7 +164,7 @@ Después de editar:
 | Modos illustration/pixel-art | Persistencia y propagación en documentos densos, Headless y paquetes estructurados | No significa que todas las herramientas tiled estén migradas |
 | Cambio de modo | No destructivo y basado en metadatos | No debe reescribir píxeles ni geometría |
 | Capas y cels tiled | Adaptadores sparse y operaciones regionales implementadas | Todavía no son el modelo canónico completo del editor |
-| Herramientas tiled | Brush/eraser, fill transaccional, selecciones geométricas y contornos de línea/rectángulo/elipse | Gradientes, magic wand y transforms requieren migración/paridad |
+| Herramientas tiled | Brush/eraser, fill y gradientes transaccionales, selecciones geométricas y contornos de línea/rectángulo/elipse | Magic wand y transforms requieren migración/paridad |
 | Historia tiled | Historia de trazos en alcance limitado | Operaciones de metadatos de capa y operaciones generales aún requieren integración |
 | Animación tiled | Adaptador de migración/manifiesto | La ruta densa del editor sigue siendo la ruta integrada; no afirmar paridad completa |
 | Video nativo mixto | Compositor/exportador por capa conserva modo y sampling | Paquetes legacy aplanados no pueden recuperar metadatos por capa ausentes |
