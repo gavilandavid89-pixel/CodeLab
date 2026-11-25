@@ -438,6 +438,7 @@ function syncAIWorkspaceFromUser() {
 }
 function updateTitle() {
   updateSceneWorkspaceUI();
+  canvas.dataset.storageMode = doc.isTiled ? 'tiled' : 'dense';
   $('#document-name').textContent = doc.name;
   $('#document-size').textContent = `${doc.width} × ${doc.height}`;
   $('#layer-count').textContent = `${doc.layers.length} layer${doc.layers.length === 1 ? '' : 's'}`;
@@ -1157,6 +1158,7 @@ function restoreActiveSceneWorkspace() {
   updateSceneWorkspaceUI();
 }
 async function switchSceneWorkspace(nextSection) {
+  if (doc.isTiled) { status('Scene workspaces are not yet available for sparse tiled projects.', 'warning'); return; }
   const valid = nextSection === 'main' || sceneWorkspaceSections().some(section => section.key === nextSection);
   if (!valid || nextSection === activeSceneWorkspace) return;
   try {
