@@ -425,17 +425,19 @@ export class TiledRasterProjectDocument {
     return this.#store.readOwnershipRegion(this.#cel(layerId).celId, region);
   }
 
-  async writeRegionWithOwnership(layerId, region, pixels, owners) {
+  async writeRegionWithOwnership(layerId, region, pixels, { authoringMode = this.#drawingConfiguration.activeMode, operation = 'draw' } = {}) {
     const layer = this.#cel(layerId);
     if (layer.locked) throw new Error('The target layer is locked.');
     const previousCelId = layer.celId;
-    const result = await this.#store.writeRegionWithOwnership(previousCelId, region, pixels, owners);
-    if (result.changed) {
-      layer.celId = result.celId;
-      this.#markChanged();
-      this.#store.releaseCel(previousCelId);
+    const before = this.#store.readRegion(previousCelId, region);
+    const owners = this.#store.readOwnershipRegion(previousCelId, region);
+    const guarded = guardStyleOwnedPixels({ before, after: pixels, owners, authoringMode, operation });
+    if (!guarded.changedPixels && guarded.owners.every((value, index) => value === owners[index])) {
+      return { changed: false, changedTiles: 0, celId: previousCelId, blockedPixels: guarded.blockedPixels };
     }
-    return { changed: result.changed, changedTiles: result.changedTiles, celId: result.celId };
+    const result = await this.#store.writeRegionWithOwnership(previousCelId, region, guarded.pixels, guarded.owners);
+    if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
+    return { changed: result.changed, changedTiles: result.changedTiles, celId: result.celId, blockedPixels: guarded.blockedPixels };
   }
 
   /**
