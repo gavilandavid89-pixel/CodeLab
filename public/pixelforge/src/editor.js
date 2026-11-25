@@ -1344,8 +1344,29 @@ function changed(copyFromByNewId = new Map()) {
   if (animation) { syncAnimationLayerStack(copyFromByNewId); captureAnimationFrame(); renderAnimationTimeline(); }
   syncAIWorkspaceFromUser(); render(); updateTitle(); scheduleAutosave();
 }
+function stampActiveDrawingMode() {
+  const mode = drawingConfiguration.activeMode;
+  const layerId = doc?.activeLayerId;
+  if (!layerId || !['illustration', 'pixel-art'].includes(mode)) return false;
+  if (doc.isTiled) {
+    doc.updateLayer(layerId, { authoringMode: mode });
+  } else if (doc.activeLayer) {
+    doc.activeLayer.authoringMode = mode;
+  }
+  if (animation) {
+    const frameIndex = animation.activeFrameIndex;
+    if (typeof animation.setFrameAuthoringMode === 'function') animation.setFrameAuthoringMode(frameIndex, mode);
+    if (typeof animation.setLayerMetadata === 'function') {
+      const metadata = animation.getLayerMetadata(frameIndex, layerId);
+      animation.setLayerMetadata(frameIndex, layerId, { ...metadata, authoringMode: mode });
+    }
+  }
+  return true;
+}
+
 function startStrokeAt(point, id) {
   if (!point?.inside) return;
+  stampActiveDrawingMode();
   if (doc.isTiled) {
     const controller = getTiledPointerController();
     if (doc.activeLayer?.locked) { status('This layer is locked', 'warning'); return; }
@@ -1561,6 +1582,7 @@ canvas.addEventListener('pointerdown', event => {
     if (event.button !== undefined && event.button !== 0) return;
     if (doc.activeLayer?.locked) { status('The active layer is locked.', 'error'); event.preventDefault(); return; }
     const point = docPoint(event); if (!point.inside) return;
+    stampActiveDrawingMode();
     gradientGesture = { x1: point.x, y1: point.y, x2: point.x, y2: point.y, pointerId: event.pointerId };
     try { canvas.setPointerCapture?.(event.pointerId); } catch {}
     render(); event.preventDefault(); return;
@@ -1570,6 +1592,7 @@ canvas.addEventListener('pointerdown', event => {
     if (doc.activeLayer?.locked) { status('The active layer is locked.', 'error'); event.preventDefault(); return; }
     const point = docPoint(event);
     if (!point.inside) return;
+    stampActiveDrawingMode();
     shapeGesture = { tool, x1: point.x, y1: point.y, x2: point.x, y2: point.y, pointerId: event.pointerId };
     try { canvas.setPointerCapture?.(event.pointerId); } catch {}
     render(); event.preventDefault(); return;
