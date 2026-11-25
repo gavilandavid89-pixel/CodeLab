@@ -12,6 +12,7 @@ import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { AIEditCoordinator, OpenAICompatibleProvider } from './ai-provider.js';
 import { PixelForgeAnimation } from './animation.mjs';
+import { TiledAnimationDocument, PIXELFORGE_TILED_ANIMATION_FORMAT } from './animation-tiled-adapter.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
@@ -26,6 +27,10 @@ const $ = selector => document.querySelector(selector);
 
 function installDocument(nextDocument) {
   const previousDocument = doc;
+  if (animation instanceof TiledAnimationDocument) animation.dispose();
+  for (const history of tiledAnimationHistory.values()) history.dispose();
+  tiledAnimationHistory.clear();
+  animation = null;
   const previousController = tiledPointerController;
   tiledPointerController = null;
   tiledPointerDocument = null;
@@ -64,6 +69,26 @@ function createEditorDocument(width, height, name, config = drawingConfiguration
   return document;
 }
 
+async function restoreProjectAnimation(snapshot) {
+  if (!snapshot) return null;
+  if (doc.isTiled) {
+    if (snapshot.format !== PIXELFORGE_TILED_ANIMATION_FORMAT) {
+      throw new TypeError('Sparse tiled projects require a tile-backed animation manifest.');
+    }
+    const restored = await TiledAnimationDocument.fromManifest(snapshot, { store: doc.tileStore });
+    if (restored.width !== doc.width || restored.height !== doc.height ||
+        restored.layerIds.length !== doc.layerIds.length || restored.layerIds.some((id, index) => id !== doc.layerIds[index])) {
+      restored.dispose();
+      throw new TypeError('Tiled animation manifest does not match the project canvas and layer stack.');
+    }
+    tiledAnimationHistory.clear();
+    animation = restored;
+    applyTiledAnimationFrame(restored.activeFrameIndex, { resetHistory: true });
+    return restored;
+  }
+  return PixelForgeAnimation.fromJSON(snapshot);
+}
+
 async function restoreProjectDocument(snapshot, { newIdentity = false } = {}) {
   if (snapshot?.format === PIXELFORGE_TILED_PROJECT_FORMAT) {
     return TiledRasterProjectDocument.fromManifest(snapshot, { newIdentity });
@@ -93,7 +118,7 @@ let tiledPointerController = null, tiledPointerDocument = null, tiledGestureTail
 const TILED_DOCUMENT_THRESHOLD_PIXELS = 1_048_576;
 let drawingConfiguration = normalizeDrawingConfiguration(null, { legacyDefault: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
 for (const layer of doc.layers) layer.authoringMode = drawingConfiguration.activeMode;
-let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
+let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), tiledAnimationHistory = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
 let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1, saveOnStop: true };
 let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiCoordinator = null, activeAIRequestController = null;
 let aiPanelVisible = false;
