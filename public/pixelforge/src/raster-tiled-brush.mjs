@@ -42,7 +42,7 @@ export async function applyTiledBrushDab(document, layerId, x, y, settings = {})
   if (!layer) throw new Error('Unknown tiled brush layer.');
   if (layer.locked) throw new Error('The active layer is locked.');
   const brush = validateSettings(settings);
-  const authoringMode = settings.authoringMode ?? layer.authoringMode ?? document.drawingConfiguration?.activeMode;
+  const authoringMode = settings.authoringMode ?? document.drawingConfiguration?.activeMode ?? layer.authoringMode;
   if (!['illustration', 'pixel-art'].includes(authoringMode)) throw new TypeError('Tiled brush requires an explicit Illustration or Pixel Art authoringMode.');
   if (brush.opacity <= 0) return { changed: false, changedTiles: 0 };
 
