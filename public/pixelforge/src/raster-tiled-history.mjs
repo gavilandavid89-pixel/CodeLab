@@ -69,14 +69,26 @@ export class TiledRasterStrokeHistory {
           entry.before.byteLength !== entry.after.byteLength) {
         throw new TypeError('Tile operation entries must contain matching before/after tile buffers.');
       }
-      return { x: entry.x, y: entry.y, before: copyPixels(entry.before), after: copyPixels(entry.after) };
+      return { x: entry.x, y: entry.y, before: copyPixels(entry.before), after: copyPixels(entry.after), beforeOwners: entry.beforeOwners ? new Uint8Array(entry.beforeOwners) : null, afterOwners: entry.afterOwners ? new Uint8Array(entry.afterOwners) : null };
     });
     const bytes = normalized.reduce((sum, entry) => sum + entry.before.byteLength + entry.after.byteLength, 0);
     if (bytes > this.#maxBytes) throw new RangeError('Tile operation exceeded the sparse undo history byte budget.');
-    const result = await this.#document.writeTileBatch(layerId,
-      normalized.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes });
+    for (const entry of normalized) {
+      if (typeof this.#document.readOwnershipRegion !== 'function') continue;
+      const tileSize = this.#document.getLayerTileSize?.(layerId) ?? Math.round(Math.sqrt(entry.before.byteLength / 4));
+      const region = { x: entry.x, y: entry.y, width: Math.min(tileSize, this.#document.width - entry.x), height: Math.min(tileSize, this.#document.height - entry.y) };
+      entry.beforeOwners = this.#document.readOwnershipRegion(layerId, region);
+    }
+    const result = await this.#document.writeTileBatch(layerId, normalized.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes });
     if (!result.changed) return false;
-    this.#undo.push({ type, layerId, entries: normalized, bytes });
+    for (const entry of normalized) {
+      if (typeof this.#document.readOwnershipRegion !== 'function') continue;
+      const tileSize = this.#document.getLayerTileSize?.(layerId) ?? Math.round(Math.sqrt(entry.after.byteLength / 4));
+      const region = { x: entry.x, y: entry.y, width: Math.min(tileSize, this.#document.width - entry.x), height: Math.min(tileSize, this.#document.height - entry.y) };
+      entry.afterOwners = this.#document.readOwnershipRegion(layerId, region);
+    }
+    const ownerBytes = normalized.reduce((sum, entry) => sum + (entry.beforeOwners?.byteLength || 0) + (entry.afterOwners?.byteLength || 0), 0);
+    this.#undo.push({ type, layerId, entries: normalized, bytes: bytes + ownerBytes });
     for (const command of this.#redo) this.#releaseCommand(command);
     this.#redo = [];
     this.#trimHistory();
