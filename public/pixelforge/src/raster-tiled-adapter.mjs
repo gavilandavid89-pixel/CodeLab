@@ -4,6 +4,7 @@
  * project manifest for layer metadata and sparse RGBA cel resources.
  */
 import { SparseTileCelStore, DEFAULT_CEL_TILE_SIZE } from './animation-tiles.mjs';
+import { TiledRasterStrokeHistory } from './raster-tiled-history.mjs';
 import { normalizeDrawingConfiguration, switchDrawingMode as switchProjectDrawingMode, PIXELFORGE_DRAWING_MODES } from './drawing-mode-config.mjs';
 
 export const PIXELFORGE_TILED_PROJECT_FORMAT = 'pixelforge-tiled-project';
@@ -84,8 +85,20 @@ export class TiledRasterProjectDocument {
   #activeLayerId;
   #drawingConfiguration;
   #projectMetadata;
+  #strokeHistory;
+  #revision;
+  #saveVersion;
+  #serverRevision;
+  #dirty;
+  #drawingModel;
+  #vectorModel;
+  #selectionMask = null;
 
-  constructor({ store, id, name, width, height, layers, activeLayerId, drawingConfiguration, projectMetadata = {} }) {
+  constructor({
+    store, id, name, width, height, layers, activeLayerId, drawingConfiguration,
+    projectMetadata = {}, revision = 0, saveVersion = 0, serverRevision = 0,
+    dirty = false, drawingModel, vectorModel = null,
+  }) {
     if (!(store instanceof SparseTileCelStore)) throw new TypeError('A SparseTileCelStore is required.');
     validateGeometry(width, height);
     if (typeof id !== 'string' || !id.trim() || typeof name !== 'string' || !name.trim()) {
@@ -114,6 +127,13 @@ export class TiledRasterProjectDocument {
       throw new TypeError('Tiled project metadata must be an object.');
     }
     this.#projectMetadata = structuredClone(projectMetadata);
+    this.#revision = Number.isInteger(revision) && revision >= 0 ? revision : 0;
+    this.#saveVersion = Number.isInteger(saveVersion) && saveVersion >= 0 ? saveVersion : 0;
+    this.#serverRevision = Number.isInteger(serverRevision) && serverRevision >= 0 ? serverRevision : 0;
+    this.#dirty = Boolean(dirty);
+    this.#drawingModel = structuredClone(drawingModel ?? projectMetadata.drawingModel ?? {});
+    this.#vectorModel = vectorModel === null ? structuredClone(projectMetadata.vectorModel ?? null) : structuredClone(vectorModel);
+    this.#strokeHistory = new TiledRasterStrokeHistory(this);
   }
 
   /**
@@ -132,6 +152,12 @@ export class TiledRasterProjectDocument {
     maxDecodedCacheBytes = 16 * 1024 * 1024,
     drawingConfiguration,
     projectMetadata = {},
+    revision = 0,
+    saveVersion = 0,
+    serverRevision = 0,
+    dirty = false,
+    drawingModel = {},
+    vectorModel = null,
   } = {}) {
     validateGeometry(width, height);
     if (!id || !layerId) throw new Error('Secure UUID generation is required for tiled project identity.');
@@ -145,7 +171,7 @@ export class TiledRasterProjectDocument {
         }],
         activeLayerId: layerId,
         drawingConfiguration,
-        projectMetadata,
+        projectMetadata, revision, saveVersion, serverRevision, dirty, drawingModel, vectorModel,
       });
     } catch (error) {
       store.releaseCel(celId);
@@ -178,6 +204,9 @@ export class TiledRasterProjectDocument {
         layers, activeLayerId: document.activeLayerId,
         drawingConfiguration: drawingConfiguration ?? sourceSnapshot.drawingConfiguration,
         projectMetadata,
+        revision: document.revision, saveVersion: document.saveVersion,
+        serverRevision: document.serverRevision, dirty: document.dirty,
+        drawingModel: sourceSnapshot.drawingModel, vectorModel: sourceSnapshot.vectorModel,
       });
     } catch (error) {
       for (const layer of layers) store.releaseCel(layer.celId);
@@ -209,6 +238,9 @@ export class TiledRasterProjectDocument {
         store, id: manifest.id, name: manifest.name, width: manifest.width, height: manifest.height,
         layers, activeLayerId: manifest.activeLayerId, drawingConfiguration: manifest.drawingConfiguration,
         projectMetadata: manifest.projectMetadata || {},
+        revision: manifest.revision, saveVersion: manifest.saveVersion,
+        serverRevision: manifest.serverRevision, dirty: manifest.dirty,
+        drawingModel: manifest.drawingModel, vectorModel: manifest.vectorModel,
       });
     } catch (error) {
       for (const layer of layers) store.releaseCel(layer.celId);
@@ -216,12 +248,44 @@ export class TiledRasterProjectDocument {
     }
   }
 
+  get isTiled() { return true; }
   get id() { return this.#id; }
   get name() { return this.#name; }
+  set name(value) {
+    if (typeof value !== 'string' || !value.trim() || value.trim().length > 180) throw new TypeError('Document name must contain 1–180 characters.');
+    if (this.#name !== value.trim()) { this.#name = value.trim(); this.#markChanged(); }
+  }
   get width() { return this.#width; }
   get height() { return this.#height; }
   get activeLayerId() { return this.#activeLayerId; }
+  get activeLayer() { return this.#cel(this.#activeLayerId); }
   get drawingConfiguration() { return structuredClone(this.#drawingConfiguration); }
+  set drawingConfiguration(value) { this.#drawingConfiguration = normalizeDrawingConfiguration(value); this.#markChanged(); }
+  get revision() { return this.#revision; }
+  set revision(value) { if (!Number.isInteger(value) || value < 0) throw new RangeError('Revision must be a non-negative integer.'); this.#revision = value; }
+  get saveVersion() { return this.#saveVersion; }
+  set saveVersion(value) { if (!Number.isInteger(value) || value < 0) throw new RangeError('Save version must be a non-negative integer.'); this.#saveVersion = value; }
+  get serverRevision() { return this.#serverRevision; }
+  set serverRevision(value) { if (!Number.isInteger(value) || value < 0) throw new RangeError('Server revision must be a non-negative integer.'); this.#serverRevision = value; }
+  get dirty() { return this.#dirty; }
+  set dirty(value) { this.#dirty = Boolean(value); }
+  get drawingModel() { return structuredClone(this.#drawingModel); }
+  set drawingModel(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Drawing model must be an object.');
+    this.#drawingModel = structuredClone(value); this.#markChanged();
+  }
+  get selectionMask() { return this.#selectionMask; }
+  set selectionMask(value) {
+    if (value !== null) throw new Error('Sparse tiled projects do not support dense selection masks yet.');
+    this.#selectionMask = null;
+  }
+  get strokeHistory() { return this.#strokeHistory; }
+  get history() { return this.#strokeHistory.undoStack; }
+  set history(value) { if (Array.isArray(value) && value.length === 0) this.#strokeHistory.clear(); }
+  get future() { return this.#strokeHistory.redoStack; }
+  set future(value) { if (Array.isArray(value) && value.length === 0) this.#strokeHistory.clear(); }
+  get historyBytes() { return this.#strokeHistory.stats.retainedBytes; }
+  set historyBytes(value) { if (value === 0) this.#strokeHistory.clear(); }
   /**
    * Switches the editor interpretation without rewriting any cel bytes.
    * Layer authoringMode/modeOverrides remain attached to their original cels,
@@ -245,7 +309,41 @@ export class TiledRasterProjectDocument {
   get layers() {
     return this.#layers.map(({ celId, ...layer }) => ({ ...structuredClone(layer), celId }));
   }
-  get stats() { return this.#store.stats; }
+  get stats() { return { ...this.#store.stats, history: this.#strokeHistory.stats }; }
+  getVectorModel() { return this.#vectorModel === null ? null : structuredClone(this.#vectorModel); }
+  setVectorModel(model) {
+    if (model !== null && (!model || typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Vector model must be an object or null.');
+    this.#vectorModel = model === null ? null : structuredClone(model);
+    this.#markChanged();
+    return true;
+  }
+  setSelectionMask(mask) {
+    if (mask !== null) throw new Error('Sparse tiled projects do not support dense selection masks yet.');
+    this.#selectionMask = null;
+  }
+  clearHistory() { this.#strokeHistory.clear(); }
+  async undo() {
+    const changed = await this.#strokeHistory.undo();
+    if (changed) this.#markChanged();
+    return changed;
+  }
+  async redo() {
+    const changed = await this.#strokeHistory.redo();
+    if (changed) this.#markChanged();
+    return changed;
+  }
+  getCompositeDirtyTiles() { return []; }
+  clearCompositeDirtyTiles() {}
+  composite() { return this.readCompositeRegion({ x: 0, y: 0, width: this.#width, height: this.#height }).pixels; }
+  sampleColorAt(x, y, { merged = true } = {}) {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= this.#width || y >= this.#height) {
+      throw new RangeError('Sample coordinates are outside the document bounds.');
+    }
+    const region = { x, y, width: 1, height: 1 };
+    const pixel = merged ? this.readCompositeRegion(region).pixels : this.readRegion(this.#activeLayerId, region);
+    if (pixel[3] === 0) return null;
+    return '#' + [...pixel.subarray(0, 3)].map(channel => channel.toString(16).padStart(2, '0')).join('').toUpperCase();
+  }
 
   readRegion(layerId, region) {
     return this.#store.readRegion(this.#cel(layerId).celId, region);
@@ -286,6 +384,7 @@ export class TiledRasterProjectDocument {
     const result = await this.#store.writeRegion(previousCelId, region, pixels);
     if (result.changed) {
       layer.celId = result.celId;
+      this.#markChanged();
       // writeRegion creates a copy-on-write cel. Once the layer points at the
       // replacement, release its old ownership reference; duplicated layers
       // retain their own references to that immutable cel.
@@ -299,14 +398,70 @@ export class TiledRasterProjectDocument {
 
   setActiveLayer(layerId) {
     this.#cel(layerId);
-    this.#activeLayerId = layerId;
+    if (this.#activeLayerId !== layerId) {
+      this.#activeLayerId = layerId;
+      this.#markChanged();
+    }
     return layerId;
+  }
+
+  addLayer(name = 'Layer ' + (this.#layers.length + 1)) {
+    if (this.#layers.length >= MAX_LAYERS) throw new RangeError('Tiled project supports up to 64 layers.');
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 180) throw new TypeError('Layer name must contain 1–180 characters.');
+    const id = globalThis.crypto?.randomUUID?.();
+    if (!id) throw new Error('Secure UUID generation is required for tiled layer identity.');
+    const celId = this.#store.createBlankCel({ width: this.#width, height: this.#height });
+    const layer = { id, name: name.trim(), visible: true, opacity: 1, locked: false, celId };
+    const activeIndex = this.#layers.findIndex(item => item.id === this.#activeLayerId);
+    this.#layers.splice(activeIndex + 1, 0, layer);
+    this.#activeLayerId = id;
+    this.#markChanged();
+    return this.layers.find(item => item.id === id);
+  }
+
+  renameLayer(layerId, name) {
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 180) throw new TypeError('Layer name must contain 1–180 characters.');
+    const layer = this.#cel(layerId);
+    if (layer.name === name.trim()) return false;
+    layer.name = name.trim(); this.#markChanged(); return true;
+  }
+
+  moveLayer(layerId, targetIndex) {
+    if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= this.#layers.length) throw new RangeError('Layer target index is outside the layer stack.');
+    const index = this.#layers.findIndex(layer => layer.id === layerId);
+    if (index < 0) throw new Error('Unknown layer ID.');
+    if (index === targetIndex) return false;
+    const [layer] = this.#layers.splice(index, 1);
+    this.#layers.splice(targetIndex, 0, layer);
+    this.#markChanged(); return true;
+  }
+
+  setLayerVisibility(layerId, visible) {
+    if (typeof visible !== 'boolean') throw new TypeError('Layer visibility must be a boolean.');
+    const layer = this.#cel(layerId);
+    if (layer.visible === visible) return false;
+    layer.visible = visible; this.#markChanged(); return true;
+  }
+
+  setLayerOpacity(layerId, opacity) {
+    if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new RangeError('Layer opacity must be between 0 and 1.');
+    const layer = this.#cel(layerId);
+    if (layer.opacity === opacity) return false;
+    layer.opacity = opacity; this.#markChanged(); return true;
+  }
+
+  setLayerLocked(layerId, locked) {
+    if (typeof locked !== 'boolean') throw new TypeError('Layer lock must be a boolean.');
+    const layer = this.#cel(layerId);
+    if (layer.locked === locked) return false;
+    layer.locked = locked; this.#markChanged(); return true;
   }
 
   updateLayer(layerId, changes) {
     const layer = this.#cel(layerId);
     const next = normalizeLayer({ ...layer, ...changes, id: layer.id });
     Object.assign(layer, next);
+    this.#markChanged();
     return this.layers.find(item => item.id === layerId);
   }
 
@@ -323,6 +478,7 @@ export class TiledRasterProjectDocument {
     const index = this.#layers.indexOf(source);
     this.#layers.splice(index + 1, 0, layer);
     this.#activeLayerId = layer.id;
+    this.#markChanged();
     return this.layers.find(item => item.id === layer.id);
   }
 
@@ -333,6 +489,7 @@ export class TiledRasterProjectDocument {
     const [removed] = this.#layers.splice(index, 1);
     this.#store.releaseCel(removed.celId);
     if (this.#activeLayerId === layerId) this.#activeLayerId = this.#layers[Math.min(index, this.#layers.length - 1)].id;
+    this.#markChanged();
     return { id: removed.id, activeLayerId: this.#activeLayerId };
   }
 
@@ -346,7 +503,11 @@ export class TiledRasterProjectDocument {
       version: PIXELFORGE_TILED_PROJECT_VERSION,
       id: this.#id, name: this.#name, width: this.#width, height: this.#height,
       activeLayerId: this.#activeLayerId,
+      revision: this.#revision, saveVersion: this.#saveVersion, serverRevision: this.#serverRevision,
+      dirty: this.#dirty,
       drawingConfiguration: structuredClone(this.#drawingConfiguration),
+      drawingModel: structuredClone(this.#drawingModel),
+      vectorModel: this.#vectorModel === null ? null : structuredClone(this.#vectorModel),
       projectMetadata: structuredClone(this.#projectMetadata),
       layers,
     };
@@ -362,13 +523,23 @@ export class TiledRasterProjectDocument {
       format: 'pixelforge-project', version: 1,
       id: this.#id, name: this.#name, width: this.#width, height: this.#height,
       activeLayerId: this.#activeLayerId, layers,
+      revision: this.#revision, saveVersion: this.#saveVersion, serverRevision: this.#serverRevision,
       drawingConfiguration: structuredClone(this.#drawingConfiguration),
+      drawingModel: structuredClone(this.#drawingModel),
+      vectorModel: this.#vectorModel === null ? null : structuredClone(this.#vectorModel),
     };
   }
 
   dispose() {
+    this.#strokeHistory.dispose();
     for (const layer of this.#layers) this.#store.releaseCel(layer.celId);
     this.#layers = [];
+  }
+
+  #markChanged() {
+    this.#revision++;
+    this.#saveVersion++;
+    this.#dirty = true;
   }
 
   #cel(layerId) {
