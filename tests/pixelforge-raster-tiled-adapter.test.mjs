@@ -10,10 +10,12 @@ if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
 test('migrates all raster layers and project drawing configuration into a tiled manifest losslessly', async () => {
   const source = new RasterDocument(80, 72, 'Traditional raster');
+  source.activeLayer.authoringMode = null;
   source.setDrawingModel({ projectNote: 'preserve-me' });
   source.activeLayer.pixels.set([7, 44, 99, 255], (65 * 80 + 70) * 4);
   source.activeLayer.opacity = 0.7;
   const extra = source.addLayer('Ink');
+  extra.authoringMode = null;
   extra.pixels.set([200, 30, 40, 255], (3 * 80 + 4) * 4);
   const config = { version: 1, availableModes: ['illustration', 'pixel-art'], initialMode: 'illustration', activeMode: 'illustration' };
   const tiled = await TiledRasterProjectDocument.fromDocument(source, { tileSize: 32, drawingConfiguration: config });
