@@ -56,6 +56,10 @@ test('tiled brush blocks cross-style painting and erasing in both directions', a
     const paintIllustration = await applyTiledBrushDab(doc, doc.activeLayerId, 3, 3, { authoringMode: 'illustration', color: '#00ff00', size: 1 });
     assert.equal(paintIllustration.changed, true);
     assert.deepEqual([...doc.readOwnershipRegion(doc.activeLayerId, { x: 3, y: 3, width: 1, height: 1 })], [1]);
+    const pixelArtOverIllustration = await applyTiledBrushDab(doc, doc.activeLayerId, 3, 3, { authoringMode: 'pixel-art', color: '#0000ff', size: 1 });
+    assert.equal(pixelArtOverIllustration.changed, false);
+    assert.equal(pixelArtOverIllustration.blockedPixels, 1);
+    assert.deepEqual([...doc.readRegion(doc.activeLayerId, { x: 3, y: 3, width: 1, height: 1 })], [0, 255, 0, 255]);
   } finally { doc.dispose(); }
 });
 
