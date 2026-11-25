@@ -121,8 +121,8 @@ export async function fillTiledLayer(document, layerId, x, y, options = {}) {
       const row = readRow(py);
       if (!matches(row, px, py)) { markVisited(startIndex); continue; }
       let left = px, right = px;
-      while (left > 0 && !wasVisited(py * document.width + left - 1) && matches(row, left - 1)) left--;
-      while (right + 1 < document.width && !wasVisited(py * document.width + right + 1) && matches(row, right + 1)) right++;
+      while (left > 0 && !wasVisited(py * document.width + left - 1) && matches(row, left - 1, py)) left--;
+      while (right + 1 < document.width && !wasVisited(py * document.width + right + 1) && matches(row, right + 1, py)) right++;
       for (let scanX = left; scanX <= right; scanX++) {
         markVisited(py * document.width + scanX);
         stagePixel(scanX, py);
