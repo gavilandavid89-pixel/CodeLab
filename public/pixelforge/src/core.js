@@ -539,15 +539,18 @@ export class RasterDocument {
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
     const tilesBefore = new Map();
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     let changedPixels = 0;
     for (let py = top; py < bottom; py++) for (let px = left; px < right; px++) {
       const pixelIndex = py * this.width + px;
       if (this.selectionMask && !this.selectionMask[pixelIndex]) continue;
       const index = pixelIndex * 4;
+      if (this.#ownerAt(layer, px, py) !== styleOwner) continue;
       if (layer.pixels[index + 3] === 0 && layer.pixels[index] === 0 && layer.pixels[index + 1] === 0 && layer.pixels[index + 2] === 0) continue;
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       layer.pixels[index] = 0; layer.pixels[index + 1] = 0; layer.pixels[index + 2] = 0; layer.pixels[index + 3] = 0;
+      this.#setOwner(layer, px, py, 0);
       this.compositeDirtyTiles.add(key); changedPixels++;
     }
     if (changedPixels) {
@@ -915,6 +918,7 @@ export class RasterDocument {
     if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new RangeError('Gradient opacity must be between 0 and 1.');
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     if (opacity === 0) return 0;
     const start = parseHexColor(startColor), end = parseHexColor(endColor);
     const dx = x1 - x0, dy = y1 - y0, lengthSquared = dx * dx + dy * dy || 1;
@@ -923,6 +927,8 @@ export class RasterDocument {
     for (let y = 0; y < this.height; y++) for (let x = 0; x < this.width; x++) {
       const pixel = y * this.width + x;
       if (this.selectionMask && !this.selectionMask[pixel]) continue;
+      const owner = this.#ownerAt(layer, x, y);
+      if (owner !== 0 && owner !== styleOwner) continue;
       const t = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / lengthSquared));
       const gradient = start.map((channel, index) => Math.round(channel + (end[index] - channel) * t));
       const i = pixel * 4, destinationAlpha = layer.pixels[i + 3] / 255;
@@ -936,7 +942,7 @@ export class RasterDocument {
       if (next.every((value, channel) => value === layer.pixels[i + channel])) continue;
       const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
-      layer.pixels.set(next, i); this.compositeDirtyTiles.add(key); changedPixels++;
+      layer.pixels.set(next, i); this.#setOwner(layer, x, y, next[3] === 0 ? 0 : (owner || styleOwner)); this.compositeDirtyTiles.add(key); changedPixels++;
     }
     if (changedPixels) {
       const tiles = [...tilesBefore.entries()].map(([key, before]) => {
