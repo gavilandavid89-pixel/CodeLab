@@ -386,9 +386,9 @@ export class TiledRasterProjectDocument {
 
   get tileSize() { return this.#store.getCelTileSize(this.#cel(this.#activeLayerId).celId); }
 
-  async writeTileBatch(layerId, patches, options = {}) {
+  async writeTileBatch(layerId, patches, { allowLocked = false, ...options } = {}) {
     const layer = this.#cel(layerId);
-    if (layer.locked) throw new Error('The target layer is locked.');
+    if (layer.locked && !allowLocked) throw new Error('The target layer is locked.');
     const previousCelId = layer.celId;
     const result = await this.#store.writeTileBatch(previousCelId, patches, options);
     if (result.changed) {
