@@ -237,3 +237,43 @@ test('Video Composer exposes an agent-readable composition guide and routes fit 
   assert.match(worker, /fitMode = 'contain'/);
   assert.match(worker, /fitMode\s*$/m);
 });
+
+
+test('native video composition scales mixed illustration and pixel-art layers independently without stretching', async () => {
+  const { drawLayeredFrameToCanvas } = await import('../public/pixelforge/src/video-capture-layout.mjs');
+  const draws = [];
+  const scales = [];
+  const context = {
+    imageSmoothingEnabled: true,
+    save() {}, restore() {}, clearRect() {}, fillRect() {},
+    translate() {}, rotate() {},
+    scale(x, y) { scales.push([x, y]); },
+    drawImage(bitmap) { draws.push({ bitmap, smoothing: this.imageSmoothingEnabled }); },
+  };
+  const pixelLayer = { bitmap: { id: 'pixel' }, authoringMode: 'pixel-art', opacity: 1 };
+  const illustrationLayer = { bitmap: { id: 'illustration' }, authoringMode: 'illustration', opacity: 0.8 };
+  const result = drawLayeredFrameToCanvas(context, [pixelLayer, illustrationLayer], 1000, 1000, 1080, 1920, {
+    fitMode: 'cover', backgroundColor: '#000000',
+  });
+  assert.equal(result.fitMode, 'cover');
+  assert.equal(result.cropX, 218.75);
+  assert.deepEqual(draws, [
+    { bitmap: pixelLayer.bitmap, smoothing: false },
+    { bitmap: illustrationLayer.bitmap, smoothing: true },
+  ]);
+  const outputScale = scales[0];
+  assert.ok(Math.abs(outputScale[0] - outputScale[1]) < 1e-12,
+    'cover must use the same scale on both axes and crop instead of stretching');
+});
+
+test('Video Composer resolves per-cel mode before frame, layer and project defaults for native exports', () => {
+  const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
+  const worker = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder-worker.mjs', import.meta.url), 'utf8');
+  const encoder = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder.mjs', import.meta.url), 'utf8');
+  assert.match(js, /resolveDrawingMode\(\{ cel, frame, layer, project \}\)/);
+  assert.match(js, /layers: renderLayers/);
+  assert.match(js, /drawingModesPresent/);
+  assert.match(encoder, /layers: Array\.isArray\(frame\.layers\)/);
+  assert.match(worker, /drawLayeredFrameToCanvas/);
+  assert.match(worker, /layer\.blob/);
+});
