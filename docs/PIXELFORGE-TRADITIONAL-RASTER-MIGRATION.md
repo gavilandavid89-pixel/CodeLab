@@ -185,3 +185,15 @@ This is a migration milestone, not yet the default editor path. The UI still con
 
 
 The adapter's bounded region-write path now releases the replaced layer-owned cel after a successful copy-on-write operation. This prevents stale cel/resource references from accumulating while preserving references held by duplicated layers. The new lifecycle test checks live cel count and complete resource cleanup on disposal.
+
+### CodeLab ZIP: sparse animated project boundary
+
+The CodeLab structured ZIP v2 path now accepts a tiled raster project together with an optional `pixelforge-tiled-animation` manifest embedded in `project.json`.
+
+- Export/import validates the animation manifest, every cel's tile resources and SHA-256 integrity through `TiledAnimationDocument`.
+- Canvas dimensions, layer IDs and layer order must match the parent tiled project; malformed or mismatched animation data is rejected.
+- Frame IDs, order, durations, FPS, sparse tile payloads and per-cel metadata survive package round trips. Per-cel `authoringMode` and `modeOverrides` can therefore retain illustration and pixel-art editing profiles in different frames of the same animation.
+- Tiled animation stays sparse inside the ZIP. The exporter does not generate dense `Frames/frames.tscn` RGBA cels, and package metadata reports the actual tiled frame count.
+- A browser package regression covers two frames with different authoring modes, distinct durations, tile-backed pixel edits and import/export restoration.
+
+**Boundary:** this completes the package-format boundary only. The editor still rejects `ensureAnimation()` for tiled raster projects and does not yet expose a live tiled timeline, onion skin, frame editing, playback, or autosave of `TiledAnimationDocument`. Do not describe mixed-mode high-resolution animation as fully available in the UI until that editor integration and persistence path are implemented and tested end-to-end.
