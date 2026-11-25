@@ -1,6 +1,6 @@
 import { parsePixelForgeVideoPackage, readStoredZip, buildConstantFrameRateSequence } from './src/video-composer-core.mjs';
 import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
-import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, drawContentComposition, drawLayeredFrameToCanvas } from './src/video-capture-layout.mjs';
+import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
 import { getVideoScalingMode, resolveDrawingMode } from './src/drawing-mode-config.mjs';
 
