@@ -183,6 +183,19 @@ export class TiledAnimationDocument {
     return Object.freeze({ id: frame.id, durationMs: frame.durationMs, authoringMode: frame.authoringMode, index });
   }
 
+  setFrameAuthoringMode(frameIndex, mode) {
+    if (!VALID_DRAWING_MODES.includes(mode)) throw new RangeError('Unsupported frame authoring mode.');
+    const frame = this.#frame(frameIndex);
+    frame.authoringMode = mode;
+    for (const layerId of this.#layerIds) {
+      const metadata = frame.layerMetadata[layerId] || {};
+      if (!VALID_DRAWING_MODES.includes(metadata.authoringMode)) {
+        frame.layerMetadata[layerId] = normalizeCelMetadata(metadata, mode);
+      }
+    }
+    return this.getFrame(frameIndex);
+  }
+
   getLayerMetadata(frameIndex, layerId) {
     const frame = this.#frame(frameIndex);
     this.#cel(frame, layerId);
@@ -283,10 +296,10 @@ export class TiledAnimationDocument {
         cels.push({
           layerId,
           pixels: encodeBase64(this.#store.composeCel(this.#cel(frame, layerId))),
-          metadata: structuredClone(frame.layerMetadata[layerId] || {}),
+          metadata: normalizeCelMetadata(frame.layerMetadata[layerId], frame.authoringMode),
         });
       }
-      frames.push({ id: frame.id, durationMs: frame.durationMs, cels });
+      frames.push({ id: frame.id, durationMs: frame.durationMs, authoringMode: frame.authoringMode, cels });
     }
     return {
       format: 'pixelforge-animation', version: 1,
