@@ -384,6 +384,21 @@ export class TiledRasterProjectDocument {
     return { ...normalized, pixels: output };
   }
 
+  get tileSize() { return this.#store.getCelTileSize(this.#cel(this.#activeLayerId).celId); }
+
+  async writeTileBatch(layerId, patches, options = {}) {
+    const layer = this.#cel(layerId);
+    if (layer.locked) throw new Error('The target layer is locked.');
+    const previousCelId = layer.celId;
+    const result = await this.#store.writeTileBatch(previousCelId, patches, options);
+    if (result.changed) {
+      layer.celId = result.celId;
+      this.#markChanged();
+      this.#store.releaseCel(previousCelId);
+    }
+    return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: result.removedTiles, celId: result.celId };
+  }
+
   async writeRegion(layerId, region, pixels) {
     const layer = this.#cel(layerId);
     if (layer.locked) throw new Error('The target layer is locked.');
