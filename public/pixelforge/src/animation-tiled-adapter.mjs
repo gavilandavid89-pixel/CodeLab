@@ -168,6 +168,22 @@ export class TiledAnimationDocument {
     return Object.freeze({ id: frame.id, durationMs: frame.durationMs, index });
   }
 
+  getLayerMetadata(frameIndex, layerId) {
+    const frame = this.#frame(frameIndex);
+    this.#cel(frame, layerId);
+    return structuredClone(frame.layerMetadata[layerId] || {});
+  }
+
+  setLayerMetadata(frameIndex, layerId, metadata) {
+    const frame = this.#frame(frameIndex);
+    this.#cel(frame, layerId);
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+      throw new TypeError('Tiled animation cel metadata must be an object.');
+    }
+    frame.layerMetadata[layerId] = structuredClone(metadata);
+    return this.getLayerMetadata(frameIndex, layerId);
+  }
+
   readRegion(frameIndex, layerId, region) {
     const frame = this.#frame(frameIndex);
     return this.#store.readRegion(this.#cel(frame, layerId), region);
