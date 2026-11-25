@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import { RasterDocument } from '../public/pixelforge/src/core.js';
 import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
+import { TiledRasterPointerStrokeController } from '../public/pixelforge/src/raster-tiled-pointer-controller.mjs';
 import { SparseTileCelStore, PIXELFORGE_TILED_CEL_FORMAT, PIXELFORGE_TILED_CEL_VERSION } from '../public/pixelforge/src/animation-tiles.mjs';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
@@ -228,5 +229,75 @@ test('bounded sparse compositing handles viewport edges and mixed layer opacity 
   assert.deepEqual(Array.from(pixel), [120, 80, 40, 255]);
   assert.throws(() => tiled.readCompositeRegion({ x: 64, y: 64, width: 2, height: 1 }), /outside canvas bounds/);
   assert.throws(() => tiled.readCompositeRegion({ x: 64, y: 64, width: 1, height: 2 }), /outside canvas bounds/);
+  tiled.dispose();
+});
+
+
+test('tiled document exposes bounded editor state, layer operations and shared stroke undo/redo', async () => {
+  const tiled = TiledRasterProjectDocument.createBlank({
+    width: 128, height: 128, name: 'Editor adapter contract', tileSize: 32, maxDecodedCacheBytes: 64 * 1024,
+  });
+  const baseId = tiled.activeLayerId;
+  assert.equal(tiled.isTiled, true);
+  assert.equal(tiled.activeLayer.id, baseId);
+  assert.equal(tiled.history.length, 0);
+  assert.equal(tiled.future.length, 0);
+  assert.equal(tiled.dirty, false);
+
+  const overlay = tiled.addLayer('Ink');
+  assert.equal(tiled.layers.length, 2);
+  assert.equal(tiled.activeLayerId, overlay.id);
+  tiled.setLayerOpacity(overlay.id, 0.75);
+  tiled.setLayerVisibility(overlay.id, true);
+  tiled.setLayerLocked(overlay.id, false);
+  tiled.renameLayer(overlay.id, 'Ink renamed');
+  tiled.moveLayer(overlay.id, 0);
+  assert.equal(tiled.layers[0].name, 'Ink renamed');
+  assert.equal(tiled.activeLayer.id, overlay.id);
+
+  const controller = new TiledRasterPointerStrokeController(tiled);
+  await controller.pointerDown({
+    pointerId: 77,
+    layerId: overlay.id,
+    points: [{ x: 10, y: 12 }, { x: 110, y: 12 }, null, { x: 10, y: 116 }],
+    settings: { color: '#e34b72', size: 1, mode: 'draw', opacity: 1, shape: 'square', hardness: 1 },
+  });
+  await controller.pointerMove({
+    pointerId: 77,
+    points: [{ x: 14, y: 16 }, { x: 106, y: 16 }, null, { x: 14, y: 112 }],
+  });
+  await controller.pointerUp({ pointerId: 77 });
+  assert.equal(tiled.history.length, 1, 'one pointer gesture becomes one shared document history command');
+  assert.ok(tiled.historyBytes > 0);
+  assert.equal(tiled.sampleColorAt(10, 12, { merged: false }), '#E34B72');
+  assert.equal(tiled.sampleColorAt(110, 12, { merged: true }), '#E34B72');
+  assert.equal(tiled.composite().length, 128 * 128 * 4);
+  assert.deepEqual(tiled.getCompositeDirtyTiles(), []);
+
+  assert.equal(await tiled.undo(), true);
+  assert.equal(tiled.sampleColorAt(10, 12, { merged: false }), null);
+  assert.equal(tiled.history.length, 0);
+  assert.equal(tiled.future.length, 1);
+  assert.equal(await tiled.redo(), true);
+  assert.equal(tiled.sampleColorAt(10, 12, { merged: false }), '#E34B72');
+  assert.equal(tiled.history.length, 1);
+  await controller.dispose();
+
+  tiled.setSelectionMask(null);
+  assert.equal(tiled.selectionMask, null);
+  assert.throws(() => tiled.setSelectionMask(new Uint8Array(128 * 128)), /do not support dense selection masks/);
+  tiled.drawingModel = { activeWorkspace: 'main' };
+  tiled.setVectorModel({ version: 1, objects: [] });
+  assert.deepEqual(tiled.getVectorModel(), { version: 1, objects: [] });
+
+  const manifest = await tiled.toManifest();
+  assert.equal(manifest.revision, tiled.revision);
+  assert.equal(manifest.saveVersion, tiled.saveVersion);
+  assert.equal(manifest.serverRevision, 0);
+  assert.deepEqual(manifest.drawingModel, { activeWorkspace: 'main' });
+  const restored = await TiledRasterProjectDocument.fromManifest(manifest);
+  assert.equal(restored.revision, manifest.revision);
+  assert.equal(restored.sampleColorAt(10, 12, { merged: false }), '#E34B72');
+  restored.dispose();
   tiled.dispose();
 });
