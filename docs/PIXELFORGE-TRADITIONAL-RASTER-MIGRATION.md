@@ -228,4 +228,12 @@ The CodeLab structured ZIP v2 path now accepts a tiled raster project together w
 - Rectangular, elliptical and lasso selection masks are accepted by tiled documents (bounded one-byte-per-pixel compatibility mask, up to 16 MiB at current geometry limits). Tiled brush/eraser and flood fill clip to that mask; fill treats it as both a traversal and paint boundary.
 - Magic-wand/color selection remains unavailable in tiled mode because its current source path requires a dense full-layer pixel buffer.
 - Regression tests cover atomic fill/undo/redo, contiguous boundary behavior and budget rejection without pixel changes.
-- **Scope limit:** this does not yet implement tiled selection masks, magic-wand selection, transforms, general layer-metadata history or tiled animation cels. The visited bitset is bounded by the existing maximum canvas area; staged RGBA history and scanline queue have explicit caps. Do not raise canvas or history limits based on this feature alone.
+
+### Transactional tiled shape outlines (implemented)
+
+- Line, rectangle-outline and ellipse-outline gestures now rasterize through the tiled brush/history path instead of being rejected by the tiled editor guard.
+- `raster-tiled-shapes.mjs` accepts an already-rasterized document-coordinate path, preflights every point and symmetry expansion against a hard dab cap, and applies the outline as one `TiledRasterStrokeHistory` command.
+- Every dab writes only its clipped brush region; selection masks are honored by the shared tiled brush primitive. No full-canvas RGBA surface is allocated for a shape.
+- If the path exceeds the dab cap, it is rejected before drawing. If the undo byte budget is exceeded during rasterization, the active history stroke rolls back before the error is returned. Undo/redo treats the complete shape as one operation.
+- Editor shape gestures are serialized with tiled pointer gestures so two operations cannot claim the same history transaction concurrently. Symmetry is expanded in document coordinates and is covered by tests.
+- **Scope limit:** this does not yet implement tiled gradients, magic-wand/color selection, transforms, general layer-metadata history or tiled animation cels. The visited bitset is bounded by the existing maximum canvas area; staged RGBA history, scanline queue and shape dab count have explicit caps. Do not raise canvas or history limits based on these tools alone.
