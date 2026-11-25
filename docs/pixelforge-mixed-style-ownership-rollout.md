@@ -43,3 +43,18 @@ This plan turns the contract in `pixelforge-mixed-style-ownership.md` into an im
 
 ### Stage 5 — release gate
 Do not enable mixed-style editing as a supported feature until every test in the ownership contract passes, including mixed-style brush/eraser, fill, gradient, shapes, transforms, AI/headless writes, per-frame isolation, undo/redo and persistence round trips.
+
+
+## Implementation progress — 2026-11-25
+
+- [x] Sparse cel-local owner tiles, bounded owner-region read/write, clone and native manifest round-trip.
+- [x] Shared tiled raster region and tile-batch guards; foreign-style pixels are filtered before copy-on-write commit.
+- [x] Tiled brush/eraser, bucket fill, gradient and shape-stroke paths routed through the guard.
+- [x] RGBA + owner snapshots captured/restored by stroke and tile-operation undo/redo.
+- [x] Tiled animation region writes guarded; frame clone and animation manifest preserve owner tiles.
+- [ ] Audit and migrate selection cut/paste/transform, direct tile-store writers, AI/headless/scripted writes.
+- [ ] Extend remote cel patch protocol to include owner tile put/remove operations.
+- [ ] Verify all autosave/recovery/ZIP flows use ownership-bearing tiled manifests; document legacy RGBA export limitation.
+- [ ] Run and pass the complete CI suite on the final implementation commit.
+
+Do not enable or advertise the complete feature until every unchecked release gate is closed.
