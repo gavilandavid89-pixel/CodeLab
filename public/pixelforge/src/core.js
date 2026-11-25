@@ -616,7 +616,7 @@ export class RasterDocument {
       if (sourceMask && !sourceMask[sourceIndex]) continue;
       selected.push({ x: sx, y: sy, rx: sx - x, ry: sy - y });
     }
-    const empty = { changedPixels: 0, selectedPixels: 0, pixels: new Uint8ClampedArray(this.width * this.height * 4), selectionMask: new Uint8Array(this.width * this.height), bounds: null, rect: { x, y, width, height }, options: { dx, dy, rotate, scaleX, scaleY, skewX, skewY, interpolation } };
+    const empty = { changedPixels: 0, selectedPixels: 0, pixels: new Uint8ClampedArray(this.width * this.height * 4), owners: new Uint8Array(this.width * this.height), selectionMask: new Uint8Array(this.width * this.height), bounds: null, rect: { x, y, width, height }, options: { dx, dy, rotate, scaleX, scaleY, skewX, skewY, interpolation } };
     if (!selected.length) return empty;
     const theta = rotate * Math.PI / 180, cos = Math.round(Math.cos(theta)), sin = Math.round(Math.sin(theta));
     // Compose rotation with scale + skew around the center of the source rectangle.
@@ -637,6 +637,7 @@ export class RasterDocument {
     const maxX = Math.min(this.width - 1, Math.ceil(Math.max(...corners.map(p => p.x)) - .5));
     const maxY = Math.min(this.height - 1, Math.ceil(Math.max(...corners.map(p => p.y)) - .5));
     const pixels = new Uint8ClampedArray(this.width * this.height * 4);
+    const owners = new Uint8Array(this.width * this.height);
     const nextMask = new Uint8Array(this.width * this.height);
     const selectedAt = (sx, sy) => {
       if (sx < x || sy < y || sx >= x + width || sy >= y + height || sx < 0 || sy < 0 || sx >= this.width || sy >= this.height) return false;
@@ -655,6 +656,8 @@ export class RasterDocument {
       const sx = Math.round(u), sy = Math.round(v);
       if (!selectedAt(sx, sy)) continue;
       const targetIndex = py * this.width + px, targetOffset = targetIndex * 4;
+      const sourceOwner = this.#ownerAt(layer, sx, sy);
+      owners[targetIndex] = sourceOwner;
       if (interpolation === 'nearest') {
         pixels.set(sourcePixel(sx, sy), targetOffset);
       } else {
@@ -665,7 +668,7 @@ export class RasterDocument {
         ];
         let alpha = 0, premulR = 0, premulG = 0, premulB = 0;
         for (const [ix,iy,weight] of samples) {
-          if (!selectedAt(ix,iy)) continue;
+          if (!selectedAt(ix,iy) || this.#ownerAt(layer, ix, iy) !== sourceOwner) continue;
           const si = (iy * this.width + ix) * 4, sa = layer.pixels[si+3] / 255 * weight;
           alpha += sa; premulR += layer.pixels[si] * sa; premulG += layer.pixels[si+1] * sa; premulB += layer.pixels[si+2] * sa;
         }
@@ -688,7 +691,7 @@ export class RasterDocument {
           layer.pixels[oldOffset+2] !== pixels[oldOffset+2] || layer.pixels[oldOffset+3] !== pixels[oldOffset+3]) changedPixels++;
     }
     return {
-      changedPixels, selectedPixels: count, pixels, selectionMask: nextMask,
+      changedPixels, selectedPixels: count, pixels, owners, selectionMask: nextMask,
       bounds: outRight < 0 ? null : { x: outLeft, y: outTop, width: outRight - outLeft + 1, height: outBottom - outTop + 1 },
       rect: { x, y, width, height }, options: { dx, dy, rotate, scaleX, scaleY, skewX, skewY, interpolation },
     };
