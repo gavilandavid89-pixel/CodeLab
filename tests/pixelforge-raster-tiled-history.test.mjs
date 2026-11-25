@@ -119,7 +119,7 @@ test('tile operation history can undo and redo after the target layer is locked'
   const before = whole(doc, layerId);
   await fillTiledLayer(doc, layerId, 4, 4, { color: '#abcdef' });
   const after = whole(doc, layerId);
-  doc.activeLayer.locked = true;
+  doc.setLayerLocked(layerId, true);
   assert.equal(await doc.undo(), true);
   assert.deepEqual(whole(doc, layerId), before);
   assert.equal(await doc.redo(), true);
