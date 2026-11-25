@@ -93,3 +93,31 @@ test('tiled animation persists an explicit mode on every frame and frame-layer c
   restored.dispose();
   tiled.dispose();
 });
+
+
+test('tiled timeline supports blank frames, reorder, duration, and active-index-safe deletion without dense canvases', async () => {
+  const animation = new PixelForgeAnimation({ width: 4096, height: 4096, layerIds: ['ink', 'color'] });
+  const tiled = await TiledAnimationDocument.fromAnimation(animation, { tileSize: 128, maxDecodedCacheBytes: 0 });
+  const blank = tiled.createBlankFrame({ afterIndex: 0, durationMs: 125, authoringMode: 'illustration' });
+  assert.equal(blank.index, 1);
+  assert.equal(tiled.frameCount, 2);
+  assert.equal(tiled.getFrame(1).durationMs, 125);
+  assert.equal(tiled.getFrame(1).authoringMode, 'illustration');
+  assert.equal(tiled.stats.resourceCount, 0);
+  assert.equal(tiled.readRegion(1, 'ink', { x: 4000, y: 4000, width: 1, height: 1 }).byteLength, 4);
+
+  tiled.createBlankFrame({ afterIndex: 1, durationMs: 80, authoringMode: 'pixel-art' });
+  tiled.setActiveFrame(2);
+  tiled.moveFrame(2, 0);
+  assert.equal(tiled.activeFrameIndex, 0);
+  assert.equal(tiled.getFrame(0).durationMs, 80);
+  tiled.deleteFrame(1);
+  assert.equal(tiled.activeFrameIndex, 0);
+  tiled.deleteFrame(0);
+  assert.equal(tiled.activeFrameIndex, 0);
+  assert.equal(tiled.frameCount, 1);
+  assert.equal(tiled.setFps(24), 24);
+  assert.equal(tiled.fps, 24);
+  assert.throws(() => tiled.setFps(61), /FPS/);
+  tiled.dispose();
+});
