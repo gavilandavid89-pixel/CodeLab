@@ -252,3 +252,6 @@ The browser test also checks:
 - Browser runtime errors and captured per-mode canvas screenshots.
 
 CI uploads the screenshots and matrix evidence as the `pixelforge-editor-visual-matrix` artifact. These tests exercise the current visible dense editor and its presentation behavior. They do **not** claim that the sparse tiled adapter is already the editor's canonical model or that its primitives are connected to the UI; that integration still needs tool-by-tool parity and visual checks.
+
+
+**Defect found by the first real-browser run:** a new blank project displayed illustration as its active mode but retained the HTML pixel-art brush defaults (1 px square, 100% hardness). The mode metadata and pure configuration tests did not catch this startup-only visual mismatch. The editor bootstrap now applies the active drawing configuration to a fresh document before its first render; the browser matrix asserts the visible control defaults so this regression cannot return.
