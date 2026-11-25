@@ -22,10 +22,21 @@ import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingM
 const $ = selector => document.querySelector(selector);
 
 function installDocument(nextDocument) {
-  if (tiledPointerController) {
-    const previousController = tiledPointerController;
-    tiledPointerController = null;
-    tiledPointerDocument = null;
+  const previousDocument = doc;
+  const previousController = tiledPointerController;
+  tiledPointerController = null;
+  tiledPointerDocument = null;
+  if (activeStroke && previousDocument && !previousDocument.isTiled) {
+    previousDocument.endStroke(activeStroke, { commit: false });
+    activeStroke = null;
+    pointerId = null;
+  }
+  if (previousDocument?.isTiled) {
+    void (async () => {
+      await previousController?.dispose();
+      previousDocument.dispose();
+    })().catch(error => console.warn('Could not dispose previous tiled document:', error));
+  } else if (previousController) {
     void previousController.dispose().catch(error => console.warn('Could not settle previous tiled pointer controller:', error));
   }
   doc = nextDocument;
