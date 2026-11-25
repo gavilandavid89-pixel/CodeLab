@@ -51,6 +51,7 @@ export class TiledAnimationDocument {
   #height;
   #fps;
   #activeFrameIndex;
+  #thumbnailCache = new Map();
 
   constructor({ store, width, height, fps, layerIds, frames, activeFrameIndex = 0 }) {
     if (!(store instanceof SparseTileCelStore)) throw new TypeError('A SparseTileCelStore is required.');
@@ -223,6 +224,7 @@ export class TiledAnimationDocument {
       throw new TypeError('Tiled animation cel metadata must be an object.');
     }
     frame.layerMetadata[layerId] = normalizeCelMetadata(metadata, frame.authoringMode);
+    this.#thumbnailCache.delete(frame.id);
     return this.getLayerMetadata(frameIndex, layerId);
   }
 
@@ -244,6 +246,7 @@ export class TiledAnimationDocument {
     this.#store.getCelTileSize(next);
     frame.cels.set(layerId, next);
     this.#store.releaseCel(previous);
+    this.#thumbnailCache.delete(frame.id);
     return true;
   }
 
@@ -311,6 +314,10 @@ export class TiledAnimationDocument {
 
   compositeThumbnail(frameIndex, layerSettings = null, size = 48) {
     if (!Number.isInteger(size) || size < 1 || size > 256) throw new RangeError('Thumbnail size must be 1–256 pixels.');
+    const frame = this.#frame(frameIndex);
+    const cacheKey = frame.id + ':' + size + ':' + JSON.stringify(layerSettings);
+    const cached = this.#thumbnailCache.get(cacheKey);
+    if (cached) return { width: cached.width, height: cached.height, pixels: new Uint8ClampedArray(cached.pixels) };
     const scale = Math.min(size / this.#width, size / this.#height);
     const width = Math.max(1, Math.round(this.#width * scale));
     const height = Math.max(1, Math.round(this.#height * scale));
@@ -324,6 +331,7 @@ export class TiledAnimationDocument {
         pixels.set(row.subarray(source, source + 4), target);
       }
     }
+    this.#thumbnailCache.set(cacheKey, { width, height, pixels: new Uint8ClampedArray(pixels) });
     return { width, height, pixels };
   }
 
@@ -336,7 +344,7 @@ export class TiledAnimationDocument {
     const frame = this.#frame(frameIndex);
     const previousCelId = this.#cel(frame, layerId);
     const result = await this.#store.writeRegion(previousCelId, region, pixels);
-    if (result.changed) { frame.cels.set(layerId, result.celId); this.#store.releaseCel(previousCelId); }
+    if (result.changed) { frame.cels.set(layerId, result.celId); this.#store.releaseCel(previousCelId); this.#thumbnailCache.delete(frame.id); }
     return { changed: result.changed, celId: result.celId, changedTiles: result.changedTiles, removedTiles: result.removedTiles };
   }
 
@@ -363,6 +371,7 @@ export class TiledAnimationDocument {
       const frame = { id: crypto.randomUUID(), durationMs, authoringMode: mode, layerMetadata, cels };
       this.#frames.splice(afterIndex + 1, 0, frame);
       this.#activeFrameIndex = afterIndex + 1;
+      this.#thumbnailCache.clear();
       return this.getFrame(this.#activeFrameIndex);
     } catch (error) {
       for (const celId of cels.values()) this.#store.releaseCel(celId);
@@ -376,6 +385,7 @@ export class TiledAnimationDocument {
     if (fromIndex === toIndex) return this.getFrame(this.#activeFrameIndex);
     const [frame] = this.#frames.splice(fromIndex, 1);
     this.#frames.splice(toIndex, 0, frame);
+    this.#thumbnailCache.clear();
     if (this.#activeFrameIndex === fromIndex) this.#activeFrameIndex = toIndex;
     else if (fromIndex < this.#activeFrameIndex && toIndex >= this.#activeFrameIndex) this.#activeFrameIndex--;
     else if (fromIndex > this.#activeFrameIndex && toIndex <= this.#activeFrameIndex) this.#activeFrameIndex++;
@@ -410,6 +420,7 @@ export class TiledAnimationDocument {
         created.push({ frame, celId, retainedOrphan, orphan });
       }
       this.#layerIds.push(layerId);
+      this.#thumbnailCache.clear();
       for (const { frame, celId, orphan } of created) {
         frame.cels.set(layerId, celId);
         const source = orphan?.metadata || (copyFromLayerId ? frame.layerMetadata[copyFromLayerId] : null);
@@ -436,6 +447,7 @@ export class TiledAnimationDocument {
       return { frameId: frame.id, celId, metadata };
     });
     this.#layerIds = this.#layerIds.filter(id => id !== layerId);
+    this.#thumbnailCache.clear();
     return { layerId, frames };
   }
 
@@ -450,6 +462,7 @@ export class TiledAnimationDocument {
       frame.layerMetadata = Object.fromEntries(layerIds.map(id => [id, frame.layerMetadata[id]]));
     }
     this.#layerIds = [...layerIds];
+    this.#thumbnailCache.clear();
     return true;
   }
 
@@ -469,6 +482,7 @@ export class TiledAnimationDocument {
     };
     this.#frames.splice(afterIndex + 1, 0, frame);
     this.#activeFrameIndex = afterIndex + 1;
+    this.#thumbnailCache.clear();
     return this.getFrame(this.#activeFrameIndex);
   }
 
@@ -477,6 +491,7 @@ export class TiledAnimationDocument {
     const frame = this.#frame(index);
     for (const celId of frame.cels.values()) this.#store.releaseCel(celId);
     this.#frames.splice(index, 1);
+    this.#thumbnailCache.clear();
     if (index < this.#activeFrameIndex) this.#activeFrameIndex--;
     else if (index === this.#activeFrameIndex) this.#activeFrameIndex = Math.min(index, this.#frames.length - 1);
     return this.#frames.length;
@@ -541,6 +556,7 @@ export class TiledAnimationDocument {
   dispose() {
     for (const frame of this.#frames) for (const celId of frame.cels.values()) this.#store.releaseCel(celId);
     this.#frames = [];
+    this.#thumbnailCache.clear();
   }
 
   #frame(index) {
