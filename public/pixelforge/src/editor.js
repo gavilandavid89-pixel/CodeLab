@@ -2741,13 +2741,19 @@ $('#import-file').addEventListener('change', async event => {
       importedDrawingConfiguration = normalizeDrawingConfiguration({ availableModes: [PIXELFORGE_DRAWING_MODES.ILLUSTRATION, PIXELFORGE_DRAWING_MODES.PIXEL_ART], initialMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION, activeMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
     }
     await flushAutosave();
-    const importSnapshot = importedDoc.toJSON();
+    if (importedDoc.width * importedDoc.height >= TILED_DOCUMENT_THRESHOLD_PIXELS && !importedDoc.isTiled) {
+      importedDoc = await TiledRasterProjectDocument.fromDocument(importedDoc, {
+        drawingConfiguration: importedDrawingConfiguration,
+        projectMetadata: { drawingModel: {}, vectorModel: null },
+      });
+    }
+    const importSnapshot = importedDoc.isTiled ? await importedDoc.toManifest() : importedDoc.toJSON();
     importSnapshot.drawingConfiguration = structuredClone(importedDrawingConfiguration);
     if (importedDoc.animationData) importSnapshot.animation = importedDoc.animationData;
     const savedImport = await saveProject(importSnapshot);
     if (Number.isInteger(savedImport?.serverRevision)) importedDoc.serverRevision = savedImport.serverRevision;
     stopAnimationPlayback({ save: false });
-    doc = importedDoc; applyDrawingConfiguration(importSnapshot); animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
+    installDocument(importedDoc); applyDrawingConfiguration(importSnapshot); animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
     fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); referenceCenterUI?.refresh(); status('Import complete and saved to your CodeLab account', 'success');
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
