@@ -44,7 +44,7 @@ function normalizeRegion(region, width, height) {
   };
 }
 
-function normalizeLayer(layer) {
+function normalizeLayer(layer, fallbackMode = PIXELFORGE_DRAWING_MODES.PIXEL_ART) {
   if (!layer || typeof layer.id !== 'string' || !layer.id.trim() || layer.id.length > 180 ||
       typeof layer.name !== 'string' || !layer.name.trim() || layer.name.length > 180 ||
       typeof layer.visible !== 'boolean' || typeof layer.locked !== 'boolean' ||
@@ -69,7 +69,7 @@ function normalizeLayer(layer) {
     clipping: layer.clipping ?? null,
     references: structuredClone(layer.references || []),
     assets: structuredClone(layer.assets || []),
-    authoringMode: Object.values(PIXELFORGE_DRAWING_MODES).includes(layer.authoringMode) ? layer.authoringMode : null,
+    authoringMode: Object.values(PIXELFORGE_DRAWING_MODES).includes(layer.authoringMode) ? layer.authoringMode : fallbackMode,
     modeOverrides: structuredClone(layer.modeOverrides || {}),
     metadata: structuredClone(layer.metadata || {}),
   };
@@ -107,7 +107,8 @@ export class TiledRasterProjectDocument {
     if (!Array.isArray(layers) || !layers.length || layers.length > MAX_LAYERS) {
       throw new RangeError('Tiled project must contain 1–64 raster layers.');
     }
-    const normalized = layers.map(layer => ({ ...normalizeLayer(layer), celId: layer.celId }));
+    const normalizedDrawingConfiguration = normalizeDrawingConfiguration(drawingConfiguration);
+    const normalized = layers.map(layer => ({ ...normalizeLayer(layer, normalizedDrawingConfiguration.activeMode), celId: layer.celId }));
     if (new Set(normalized.map(layer => layer.id)).size !== normalized.length ||
         normalized.some(layer => typeof layer.celId !== 'string' || !layer.celId)) {
       throw new TypeError('Tiled project layer IDs and cel references must be unique and valid.');
@@ -122,7 +123,7 @@ export class TiledRasterProjectDocument {
     this.#height = height;
     this.#layers = normalized;
     this.#activeLayerId = activeLayerId;
-    this.#drawingConfiguration = normalizeDrawingConfiguration(drawingConfiguration);
+    this.#drawingConfiguration = normalizedDrawingConfiguration;
     if (!projectMetadata || typeof projectMetadata !== 'object' || Array.isArray(projectMetadata)) {
       throw new TypeError('Tiled project metadata must be an object.');
     }
