@@ -145,6 +145,6 @@ export async function fillTiledLayer(document, layerId, x, y, options = {}) {
   const entries = [...staged.values()].map(tile => ({
     x: tile.x, y: tile.y, before: tile.before, after: tile.after,
   }));
-  const committed = await document.strokeHistory.applyTileOperation(layerId, entries, { type: 'fill' });
+  const committed = await document.strokeHistory.applyTileOperation(layerId, entries, { type: 'fill', authoringMode: options.authoringMode ?? document.drawingConfiguration?.activeMode });
   return committed ? changedPixels : 0;
 }
