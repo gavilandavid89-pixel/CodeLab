@@ -1222,7 +1222,7 @@ async function switchSceneWorkspace(nextSection) {
       updateTitle();
       renderLayers();
       renderAnimationTimeline();
-      referenceCenterUI?.refresh();
+      refreshReferenceCenterUI();
     }
     status('Could not switch scene workspace: ' + error.message, 'error');
   }
@@ -2797,7 +2797,7 @@ $('#import-file').addEventListener('change', async event => {
     if (Number.isInteger(savedImport?.serverRevision)) importedDoc.serverRevision = savedImport.serverRevision;
     stopAnimationPlayback({ save: false });
     installDocument(importedDoc); applyDrawingConfiguration(importSnapshot); animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
-    fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); referenceCenterUI?.refresh(); status('Import complete and saved to your CodeLab account', 'success');
+    fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); refreshReferenceCenterUI(); status('Import complete and saved to your CodeLab account', 'success');
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
 });
@@ -3154,7 +3154,7 @@ async function boot() {
     fitCanvas();
     const captureLayout = params.get('capture') === '1' || params.get('capture') === 'video'
       ? fitArtworkForCapture() : null;
-    updateTitle(); renderLayers(); renderAnimationTimeline(); referenceCenterUI?.refresh();
+    updateTitle(); renderLayers(); renderAnimationTimeline(); refreshReferenceCenterUI();
     if (params.get('capture') === 'video') {
       if (!animation || animation.frameCount < 2) throw new Error('El proyecto no tiene una animación de al menos dos fotogramas.');
       animationLoop = false;
