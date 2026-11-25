@@ -848,7 +848,7 @@ async function main() {
     assert.equal(importedAfterSave.serverRevision, importedRevisionBeforeEdit + 1,
       'the first explicit save after import must advance the server revision instead of conflicting with its own import');
     const editorSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'src', 'editor.js'), 'utf8');
-    const importDocAssignmentAt = editorSource.indexOf('doc = importedDoc;');
+    const importDocAssignmentAt = editorSource.indexOf('installDocument(importedDoc);');
     const importAnimationRestoreAt = editorSource.indexOf('animation = importedDoc.animationData', importDocAssignmentAt);
     const importWorkspaceRebindAt = editorSource.indexOf('clearSelectionState(); resetAIWorkspaceForDocument();', importAnimationRestoreAt);
     assert.ok(importDocAssignmentAt >= 0 && importAnimationRestoreAt > importDocAssignmentAt && importWorkspaceRebindAt > importAnimationRestoreAt,
