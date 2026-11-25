@@ -361,6 +361,65 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await drawAt({ x: 126, y: 90 });
   await assertVisibleColor({ x: 126, y: 90 }, '#ffffff', '32px brush clipped to bottom-right edge');
 
-  await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence }, null, 2));
+  // Cross the real editor's dense-to-tiled threshold and verify the pixels
+  // painted by the pointer are actually visible in Chromium, not merely stored.
+  await page.locator('#new-document').click();
+  await page.locator('#new-width').fill('1024');
+  await page.locator('#new-height').fill('1024');
+  await page.locator('#create-new').click();
+  await page.waitForFunction(() => document.querySelector('#document-size').textContent.includes('1024 × 1024'));
+  [width, height] = (await page.locator('#document-size').textContent()).split('×').map(value => Number(value.trim()));
+  assert.equal(await page.locator('#canvas').getAttribute('data-storage-mode'), 'tiled',
+    'a 1024×1024 project must activate the sparse tiled editor path');
+  const tiledMatrix = [];
+  for (const mode of ['illustration', 'pixel-art']) {
+    await setMode(mode);
+    const color = mode === 'illustration' ? '#fa527d' : '#31d7a1';
+    await setColor(color);
+    await setSymmetry(0);
+    await setValue('#brush-size', mode === 'illustration' ? 9 : 1);
+    await setValue('#brush-hardness', mode === 'illustration' ? 55 : 100);
+    await setValue('#brush-opacity', 100);
+    await page.locator('#brush-shape').selectOption(mode === 'illustration' ? 'circle' : 'square');
+    const point = mode === 'illustration' ? { x: 2, y: 2 } : { x: 1023, y: 1023 };
+    await drawAt(point);
+    await assertVisibleColor(point, color, 'tiled/' + mode + '/edge');
+    tiledMatrix.push({ mode, point, visible: true });
+  }
+
+  // Symmetry must still affect the visible tiled canvas, including clipped
+  // mirrored points near the document boundary.
+  await setMode('pixel-art');
+  await setColor('#e8c35a');
+  await setValue('#brush-size', 3);
+  await setSymmetry(8);
+  const tiledOrigin = { x: 7, y: 11 };
+  await drawAt(tiledOrigin);
+  const tiledSymmetryPoints = expectedSymmetryPoints(tiledOrigin, width, height, 8);
+  assert.ok(tiledSymmetryPoints.length >= 4, 'tiled symmetry should retain its in-bounds reflected points');
+  for (const point of tiledSymmetryPoints) {
+    await assertVisibleColor(point, '#e8c35a', 'tiled/pixel-art/symmetry-8');
+  }
+  tiledMatrix.push({ mode: 'pixel-art', symmetry: 8, visiblePoints: tiledSymmetryPoints.length });
+
+  // Undo and redo are checked against the rendered surface, not just history
+  // counters: the center of a newly drawn isolated dab must return to baseline.
+  await setSymmetry(0);
+  await setValue('#brush-size', 1);
+  await setColor('#ffffff');
+  const historyPoint = { x: 510, y: 510 };
+  const historyBaseline = await sampleVisibleExact(historyPoint);
+  await drawAt(historyPoint);
+  await assertVisibleColor(historyPoint, '#ffffff', 'tiled/history/draw');
+  await page.locator('#undo').click();
+  await page.waitForTimeout(60);
+  assert.deepEqual(await sampleVisibleExact(historyPoint), historyBaseline,
+    'undo must restore the same visible pixel that existed before the tiled stroke');
+  await page.locator('#redo').click();
+  await page.waitForTimeout(60);
+  await assertVisibleColor(historyPoint, '#ffffff', 'tiled/history/redo');
+
+  await fs.promises.writeFile(path.join(artifactDir, 'tiled-visual-matrix.json'), JSON.stringify(tiledMatrix, null, 2));
+  await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence, tiledMatrix }, null, 2));
   await page.close();
 });
