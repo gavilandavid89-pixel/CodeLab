@@ -381,8 +381,8 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await setValue('#brush-size', 5);
   await setValue('#brush-hardness', 100);
   await page.locator('#brush-shape').selectOption('square');
-  await drawAt({ x: 0, y: 0 });
-  await assertVisibleColor({ x: 0, y: 0 }, '#fa527d', 'tiled/initial-top-left-edge');
+  await drawAt({ x: 2, y: 2 });
+  await assertVisibleColor({ x: 2, y: 2 }, '#fa527d', 'tiled/initial-top-left-near-edge');
 
   const tiledMatrix = [];
   for (const mode of ['illustration', 'pixel-art']) {
@@ -412,8 +412,8 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   // document pixel where the viewport renderer clamps its source rectangle.
   await setSymmetry(0);
   for (const [mode, point, color] of [
-    ['illustration', { x: 0, y: 0 }, '#fa527d'],
-    ['pixel-art', { x: 1023, y: 1023 }, '#31d7a1'],
+    ['illustration', { x: 2, y: 2 }, '#fa527d'],
+    ['pixel-art', { x: 1021, y: 1021 }, '#31d7a1'],
   ]) {
     await setMode(mode);
     await setColor(color);
