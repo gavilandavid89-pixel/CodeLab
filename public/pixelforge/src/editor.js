@@ -45,7 +45,7 @@ function installDocument(nextDocument) {
   doc = nextDocument;
   clearSelectionState();
   refreshReferenceCenterUI();
-  if (doc.isTiled && !['draw', 'erase', 'pan', 'eyedropper'].includes(tool)) setTool('draw');
+  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso'].includes(tool)) setTool('draw');
   return doc;
 }
 
@@ -2206,8 +2206,8 @@ $('#ai-accept-proposal').addEventListener('click', () => {
 mobileInspector.addEventListener('change', () => setInspectorPanel('properties'));
 setInspectorPanel('properties');
 function setTool(next) {
-  if (doc.isTiled && !['draw', 'erase', 'pan', 'eyedropper'].includes(next)) {
-    status('Sparse tiled projects currently support brush, eraser, eyedropper and pan. Other raster tools are being migrated.', 'warning');
+  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso'].includes(next)) {
+    status('This tool is not yet available for sparse tiled projects. Brush, eraser, fill, geometric selections, eyedropper and pan are supported.', 'warning');
     return;
   }
   if (cursorMode && !['draw', 'erase'].includes(next)) setCursorMode(false);
