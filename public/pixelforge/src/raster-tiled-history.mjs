@@ -43,6 +43,8 @@ export class TiledRasterStrokeHistory {
 
   get canUndo() { return this.#undo.length > 0; }
   get canRedo() { return this.#redo.length > 0; }
+  get undoStack() { return this.#undo.slice(); }
+  get redoStack() { return this.#redo.slice(); }
   get isStrokeActive() { return Boolean(this.#active); }
   get stats() {
     const bytes = stack => stack.reduce((sum, command) =>
@@ -59,7 +61,7 @@ export class TiledRasterStrokeHistory {
     this.#assertLive();
     if (this.#active) throw new Error('A tiled brush stroke is already active.');
     if (!this.#document.layers.some(layer => layer.id === layerId)) throw new Error('Unknown tiled brush layer.');
-    this.#active = { layerId, settings: { ...settings }, entries: [], bytes: 0 };
+    this.#active = { type: 'pixels', layerId, settings: { ...settings }, entries: [], bytes: 0 };
     return this.#active;
   }
 
