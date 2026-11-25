@@ -1,6 +1,7 @@
 import { createZipBlob } from './zip-export.js';
 import { readStoredZip } from './video-composer-core.mjs';
 import { TiledRasterProjectDocument } from './raster-tiled-adapter.mjs';
+import { TiledAnimationDocument } from './animation-tiled-adapter.mjs';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -378,6 +379,31 @@ function inferResourceDestination(path) {
   return 'project-files';
 }
 
+async function validateTiledAnimation(project, animation) {
+  if (animation == null) return 0;
+  if (animation.format !== 'pixelforge-tiled-animation') {
+    throw new TypeError('Tiled projects must store animation as pixelforge-tiled-animation.');
+  }
+  if (Number(animation.width) !== Number(project.width) ||
+      Number(animation.height) !== Number(project.height)) {
+    throw new RangeError('Tiled animation dimensions must match the project canvas.');
+  }
+  const layerIds = project.layers.map(layer => String(layer.id));
+  if (!Array.isArray(animation.layerIds) || animation.layerIds.length !== layerIds.length ||
+      animation.layerIds.some((id, index) => id !== layerIds[index])) {
+    throw new TypeError('Tiled animation layer IDs and order must match the project layer stack.');
+  }
+  const validationDocument = await TiledAnimationDocument.fromManifest(animation);
+  try {
+    if (validationDocument.frameCount !== animation.frames.length) {
+      throw new TypeError('Tiled animation frame count is inconsistent.');
+    }
+  } finally {
+    validationDocument.dispose();
+  }
+  return animation.frames.length;
+}
+
 function addResources(project, files, resources) {
   const provided = [...(project.packageResourceFiles || []), ...(resources || [])];
   const declared = new Map();
@@ -490,7 +516,7 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
       format: 'codelab', version: 2, editor: 'pixelforge',
       projectId: project.id, projectName: project.name,
       width: project.width, height: project.height,
-      layerCount: project.layers.length, frameCount: frames?.frames.length ?? 0,
+      layerCount: project.layers.length, frameCount: isTiled ? (project.animation?.frames?.length ?? 0) : (frames?.frames.length ?? 0),
       referenceCount: referenceCenter?.categories.reduce((sum, item) => sum + item.references.length, 0) ?? 0,
       resourceCount: resourceDeclarations.length, sceneSectionCount: scenes ? Object.keys(scenes.sections).length : 0,
       entryCount: entries.length,
@@ -586,7 +612,7 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
     };
     return {
       project, manifest, metadata: {
-        frameCount: 0, referenceCount: 0, resourceCount: resources.length,
+        frameCount: tiledFrameCount, referenceCount: 0, resourceCount: resources.length,
         sceneSectionCount: 0, scenes: {},
       },
     };
