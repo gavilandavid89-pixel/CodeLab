@@ -27,6 +27,22 @@ function validateGeometry(width, height) {
   }
 }
 
+function normalizeRegion(region, width, height) {
+  if (!region || !Number.isInteger(region.x) || !Number.isInteger(region.y) ||
+      !Number.isInteger(region.width) || !Number.isInteger(region.height) ||
+      region.width < 1 || region.height < 1 ||
+      region.x < 0 || region.y < 0 ||
+      region.x + region.width > width || region.y + region.height > height) {
+    throw new RangeError('Tiled project region is outside canvas bounds.');
+  }
+  return {
+    x: region.x,
+    y: region.y,
+    width: region.width,
+    height: region.height,
+  };
+}
+
 function normalizeLayer(layer) {
   if (!layer || typeof layer.id !== 'string' || !layer.id.trim() || layer.id.length > 180 ||
       typeof layer.name !== 'string' || !layer.name.trim() || layer.name.length > 180 ||
