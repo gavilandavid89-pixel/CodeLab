@@ -244,6 +244,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
 
   const matrix = [];
   for (const mode of ['illustration', 'pixel-art']) {
+    if (mode === 'pixel-art') await page.locator('#add-layer').click(); // Keep each mode's visual matrix on an independent, unowned cel.
     await setMode(mode);
     const color = mode === 'illustration' ? '#e34b72' : '#39d6a5';
     await setColor(color);
