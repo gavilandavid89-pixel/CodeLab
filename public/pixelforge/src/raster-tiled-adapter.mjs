@@ -239,7 +239,7 @@ export class TiledRasterProjectDocument {
         layers, activeLayerId: manifest.activeLayerId, drawingConfiguration: manifest.drawingConfiguration,
         projectMetadata: manifest.projectMetadata || {},
         revision: newIdentity ? 0 : manifest.revision, saveVersion: newIdentity ? 0 : manifest.saveVersion,
-        serverRevision: newIdentity ? 0 : manifest.serverRevision, dirty: newIdentity || manifest.dirty,
+        serverRevision: newIdentity ? 0 : manifest.serverRevision, dirty: newIdentity,
         drawingModel: manifest.drawingModel, vectorModel: manifest.vectorModel,
       });
     } catch (error) {
@@ -509,7 +509,6 @@ export class TiledRasterProjectDocument {
       id: this.#id, name: this.#name, width: this.#width, height: this.#height,
       activeLayerId: this.#activeLayerId,
       revision: this.#revision, saveVersion: this.#saveVersion, serverRevision: this.#serverRevision,
-      dirty: this.#dirty,
       drawingConfiguration: structuredClone(this.#drawingConfiguration),
       drawingModel: structuredClone(this.#drawingModel),
       vectorModel: this.#vectorModel === null ? null : structuredClone(this.#vectorModel),
