@@ -510,11 +510,13 @@ function fitCanvas() {
   render();
 }
 function fitArtworkForCapture() {
-  const pixels = doc.composite();
   let minX = doc.width, minY = doc.height, maxX = -1, maxY = -1;
   for (let y = 0; y < doc.height; y++) {
+    const pixels = doc.isTiled
+      ? doc.readCompositeRegion({ x: 0, y, width: doc.width, height: 1 }).pixels
+      : doc.composite().subarray(y * doc.width * 4, (y + 1) * doc.width * 4);
     for (let x = 0; x < doc.width; x++) {
-      if (pixels[(y * doc.width + x) * 4 + 3] <= 8) continue;
+      if (pixels[x * 4 + 3] <= 8) continue;
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
@@ -2281,6 +2283,7 @@ function pixelsToVisionDataUrl(pixels, width, height, maxDimension = 512) {
 
 function createEditorVisionSnapshot() {
   const layerSettings = doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+  if (doc.isTiled) throw new Error('AI vision snapshots are not enabled for sparse tiled projects yet.');
   const artworkImage = pixelsToVisionDataUrl(doc.composite(), doc.width, doc.height);
   let animationContext = null;
   if (animation) {
@@ -2960,7 +2963,7 @@ $('#export-png').addEventListener('click', async () => {
     const exportName = `${safeName(doc.name)}.png`;
     const exportContext = exportCanvas.getContext('2d', { alpha: true });
     if (!exportContext) throw new Error('Could not create the PNG export surface.');
-    exportContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
+    drawProjectCompositeToContext(exportContext);
     drawVectorOverlay(exportContext, vectorOverlay);
     const blob = await new Promise((resolve, reject) => exportCanvas.toBlob(
       value => value ? resolve(value) : reject(new Error('PNG encoder returned no data.')), 'image/png'
