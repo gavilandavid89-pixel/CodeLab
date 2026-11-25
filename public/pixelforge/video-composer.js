@@ -494,6 +494,7 @@ async function parseComposerPackage(file) {
         frame, layer, project,
       }))
     ))];
+    const sourceDrawingMode = project.drawingConfiguration?.activeMode === 'illustration' ? 'illustration' : 'pixel-art';
     const totalDurationMs = frames.reduce((sum, frame) => sum + Number(frame.durationMs), 0);
     return {
       manifest: {
@@ -501,9 +502,9 @@ async function parseComposerPackage(file) {
         width: project.width, height: project.height, fps: animation.fps,
         loop: animation.loop !== false, frameCount: frames.length, totalDurationMs,
         projectName: project.name,
-        sourceDrawingMode: project.drawingConfiguration?.activeMode === 'pixel-art' ? 'pixel-art' : 'illustration',
+        sourceDrawingMode,
         drawingModesPresent,
-        scalingMode: getVideoScalingMode(project.drawingConfiguration?.activeMode),
+        scalingMode: getVideoScalingMode(sourceDrawingMode),
       },
       frames, project: new Blob([JSON.stringify(project)], { type: 'application/json' }),
       entryCount: entries.size,
