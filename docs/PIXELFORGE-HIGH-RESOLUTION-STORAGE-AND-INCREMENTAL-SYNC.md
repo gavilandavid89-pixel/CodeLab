@@ -222,3 +222,12 @@ Additional tiled edge coverage verifies exact right/bottom canvas boundaries, re
 - Draw blending, partial-opacity erasing, circle hardness coverage, even/odd brush centers, segment interpolation, and clipping at canvas edges follow the same pixel math and sampling cadence as `RasterDocument.#dab()/strokeTo()`.
 - Added parity tests that compare the tiled output byte-for-byte against dense `RasterDocument` for mixed draw/erase strokes crossing tile boundaries and touching all canvas edges, plus validation/locked-layer/no-op sparse allocation cases.
 - This is an isolated editing primitive, not yet wired into the visible editor pointer lifecycle. Stroke undo/redo snapshots, selection-mask clipping, symmetry, and atomic multi-dab history still need migration before the editor can switch its canonical document model. Existing dense editor behavior and limits remain unchanged.
+
+
+### Transactional sparse stroke history
+
+- Added `TiledRasterStrokeHistory`, which groups bounded dab/segment edits into one stroke command and stores before/after snapshots only for changed dab rectangles. It supports commit, cancel, undo, and redo without allocating a full-canvas snapshot.
+- Undo applies entries in reverse order and redo applies them in forward order, preserving correctness when successive dab rectangles overlap.
+- Each active stroke has a configurable byte budget (16 MiB default). If the next dab would exceed it, the active stroke is rolled back before a range error is raised. Command count and retained undo bytes are bounded; a new committed stroke clears redo history.
+- Tests cover overlapping strokes, exact undo/redo restoration, cancellation, active-stroke guards, and byte-budget rollback.
+- This remains an opt-in migration primitive. It is not wired to the editor's pointer handlers or existing selection/symmetry/history stack; those integrations and end-to-end editor parity are still required before changing the editor's canonical document type.
