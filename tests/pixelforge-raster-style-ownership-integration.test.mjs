@@ -125,3 +125,14 @@ test('dense-to-tiled migration preserves per-pixel ownership metadata', async ()
   try { assert.deepEqual([...tiled.readOwnershipRegion(tiled.activeLayerId, { x: 6, y: 5, width: 1, height: 1 })], [1]); }
   finally { tiled.dispose(); }
 });
+
+test('dense animation ownership survives migration into tiled animation cels', async () => {
+  const dense = new RasterDocument(8, 8);
+  dense.activeLayer.authoringMode = 'pixel-art';
+  const stroke = dense.beginStroke({ color: '#ff9900', size: 1 });
+  dense.strokeTo(stroke, 1, 6); dense.endStroke(stroke);
+  const animation = PixelForgeAnimation.fromDocument(dense);
+  const tiled = await TiledAnimationDocument.fromAnimation(animation, { tileSize: 32 });
+  try { assert.deepEqual([...tiled.readOwnershipRegion(0, dense.activeLayerId, { x: 1, y: 6, width: 1, height: 1 })], [2]); }
+  finally { tiled.dispose(); }
+});
