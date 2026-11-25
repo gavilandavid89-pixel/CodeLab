@@ -354,9 +354,11 @@ export class TiledRasterProjectDocument {
     }
     const replacements = [];
     try {
-      for (const layer of this.#layers) replacements.push({
-        layer, nextCelId: takeOwnership ? references.get(layer.id) : this.#store.cloneCel(references.get(layer.id)),
-      });
+      for (const layer of this.#layers) {
+        const sourceCelId = references.get(layer.id);
+        this.#store.getCelTileSize(sourceCelId);
+        replacements.push({ layer, nextCelId: takeOwnership ? sourceCelId : this.#store.cloneCel(sourceCelId) });
+      }
     } catch (error) {
       if (!takeOwnership) for (const item of replacements) this.#store.releaseCel(item.nextCelId);
       throw error;
