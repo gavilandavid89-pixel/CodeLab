@@ -2,6 +2,8 @@
 
 **Entrada obligatoria:** antes de cualquier trabajo, leer este archivo y [la política operativa del agente](docs/agent-ai-bridge-policy.md). Para ubicar el resto, usar el [índice documental](docs/README.md).
 
+**Cambios de arquitectura:** antes de modificar o conectar componentes internos (frontend, runtime, API, worker, persistencia, Headless o Video Composer), leer también el [mapa de arquitectura interna](docs/CODELAB-INTERNAL-ARCHITECTURE.md). Este mapa orienta; los contratos especializados enlazados en él siguen siendo la referencia técnica de cada dominio.
+
 ## 0. Identidad y autenticación ya configuradas
 
 Reutilizar la conexión administrativa existente para resolver la cuenta ADMIN y el workspace destino. No pedir al usuario secretos ni reconfigurar autenticación por una variable ausente en el runtime Headless. La identidad ADMIN en Neon y el token de una ruta HTTP son capas distintas; diagnosticar la operación real y usar las acciones autorizadas disponibles antes de declarar un bloqueo. Seguir [la guía de recuperación ADMIN/bridge](docs/ADMIN-AUTH-AND-BRIDGE-RECOVERY.md).
