@@ -65,7 +65,8 @@ test('native CodeLab project drawing mode selects the matching Video Composer sc
   const editor = fs.readFileSync(new URL('../public/pixelforge/src/editor.js', import.meta.url), 'utf8');
   assert.match(editor, /sourceDrawingMode: drawingConfiguration\.activeMode/);
   assert.match(editor, /scalingMode: getVideoScalingMode\(drawingConfiguration\.activeMode\)/);
-  assert.match(js, /getVideoScalingMode\(project\.drawingConfiguration\?\.activeMode\)/);
+  assert.match(js, /const sourceDrawingMode = project\.drawingConfiguration\?\.activeMode === 'illustration' \? 'illustration' : 'pixel-art'/);
+  assert.match(js, /getVideoScalingMode\(sourceDrawingMode\)/);
   assert.match(js, /if \(\['smooth', 'pixelated'\]\.includes\(parsed\.manifest\.scalingMode\)\) \$\('#vc-scaling-mode'\)\.value = parsed\.manifest\.scalingMode/);
 });
 
