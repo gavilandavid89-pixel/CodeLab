@@ -376,31 +376,39 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     await setMode(mode);
     const color = mode === 'illustration' ? '#fa527d' : '#31d7a1';
     await setColor(color);
-    await setSymmetry(0);
-    await setValue('#brush-size', mode === 'illustration' ? 9 : 1);
+    await setValue('#brush-size', 5);
     await setValue('#brush-hardness', mode === 'illustration' ? 55 : 100);
     await setValue('#brush-opacity', 100);
-    await page.locator('#brush-shape').selectOption(mode === 'illustration' ? 'circle' : 'square');
-    const point = mode === 'illustration' ? { x: 2, y: 2 } : { x: 1023, y: 1023 };
-    await drawAt(point);
-    await assertVisibleColor(point, color, 'tiled/' + mode + '/edge');
-    tiledMatrix.push({ mode, point, visible: true });
+    for (const shape of ['square', 'circle']) {
+      await page.locator('#brush-shape').selectOption(shape);
+      for (const symmetry of [0, 2, 4, 8]) {
+        await setSymmetry(symmetry);
+        const point = { x: 120 + symmetry * 17 + (shape === 'circle' ? 11 : 0), y: 220 + (mode === 'pixel-art' ? 190 : 0) };
+        await drawAt(point);
+        const points = expectedSymmetryPoints(point, width, height, symmetry);
+        for (const visiblePoint of points) {
+          await assertVisibleColor(visiblePoint, color, 'tiled/' + mode + '/' + shape + '/symmetry-' + symmetry);
+        }
+        tiledMatrix.push({ mode, shape, symmetry, visiblePoints: points.length });
+      }
+    }
+    await page.locator('#canvas').screenshot({ path: path.join(artifactDir, 'editor-tiled-' + mode + '.png') });
   }
 
-  // Symmetry must still affect the visible tiled canvas, including clipped
-  // mirrored points near the document boundary.
-  await setMode('pixel-art');
-  await setColor('#e8c35a');
-  await setValue('#brush-size', 3);
-  await setSymmetry(8);
-  const tiledOrigin = { x: 7, y: 11 };
-  await drawAt(tiledOrigin);
-  const tiledSymmetryPoints = expectedSymmetryPoints(tiledOrigin, width, height, 8);
-  assert.ok(tiledSymmetryPoints.length >= 4, 'tiled symmetry should retain its in-bounds reflected points');
-  for (const point of tiledSymmetryPoints) {
-    await assertVisibleColor(point, '#e8c35a', 'tiled/pixel-art/symmetry-8');
+  // Exercise clipped edge dabs in both drawing modes, including the last
+  // document pixel where the viewport renderer clamps its source rectangle.
+  await setSymmetry(0);
+  for (const [mode, point, color] of [
+    ['illustration', { x: 0, y: 0 }, '#fa527d'],
+    ['pixel-art', { x: 1023, y: 1023 }, '#31d7a1'],
+  ]) {
+    await setMode(mode);
+    await setColor(color);
+    await setValue('#brush-size', 1);
+    await page.locator('#brush-shape').selectOption('square');
+    await drawAt(point);
+    await assertVisibleColor(point, color, 'tiled/' + mode + '/edge');
   }
-  tiledMatrix.push({ mode: 'pixel-art', symmetry: 8, visiblePoints: tiledSymmetryPoints.length });
 
   // Undo and redo are checked against the rendered surface, not just history
   // counters: the center of a newly drawn isolated dab must return to baseline.
@@ -418,6 +426,20 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await page.locator('#redo').click();
   await page.waitForTimeout(60);
   await assertVisibleColor(historyPoint, '#ffffff', 'tiled/history/redo');
+
+  // Repeated short taps can arrive before async tile writes settle. Every tap
+  // must become its own visible stroke, not a dropped gesture or uncaught error.
+  await setColor('#f5f5f5');
+  await setValue('#brush-size', 1);
+  const rapidPoints = [{ x: 400, y: 420 }, { x: 420, y: 420 }, { x: 440, y: 420 }, { x: 460, y: 420 }];
+  for (const point of rapidPoints) {
+    const screen = await screenPoint(point);
+    await page.mouse.move(screen.x, screen.y);
+    await page.mouse.down();
+    await page.mouse.up();
+  }
+  await page.waitForTimeout(120);
+  for (const point of rapidPoints) await assertVisibleColor(point, '#f5f5f5', 'tiled/rapid-tap');
 
   await fs.promises.writeFile(path.join(artifactDir, 'tiled-visual-matrix.json'), JSON.stringify(tiledMatrix, null, 2));
   await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence, tiledMatrix }, null, 2));
