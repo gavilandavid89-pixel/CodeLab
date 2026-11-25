@@ -511,6 +511,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await setColor('#3288ff');
   await drawAt(frame1Point);
   await assertVisibleColor(frame1Point, '#3288ff', 'tiled/timeline/frame-1-paint');
+  await page.waitForFunction(() => !document.querySelector('#undo')?.disabled, { timeout: 8000 });
   await page.locator('#undo').click();
   await page.waitForTimeout(60);
   assert.deepEqual(await sampleVisibleExact(frame1Point), frame1Baseline, 'frame 1 undo must only undo its own stroke');
