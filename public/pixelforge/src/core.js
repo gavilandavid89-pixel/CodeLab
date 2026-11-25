@@ -1078,25 +1078,39 @@ export class RasterDocument {
     }
     return changedPixels;
   }
-  setLayerPixels(id, pixels) {
+  setLayerPixels(id, pixels, { restore = false, ownershipTiles = null } = {}) {
     const layer = this.layers.find(item => item.id === id);
     if (!layer) throw new Error('Unknown layer ID.');
     if (layer.locked) throw new Error('The target layer is locked.');
     if (!(pixels instanceof Uint8Array) && !(pixels instanceof Uint8ClampedArray)) throw new TypeError('Layer pixels must be a typed RGBA buffer.');
     if (pixels.length !== this.width * this.height * 4) throw new RangeError('Layer pixel data length does not match document dimensions.');
-    const tilesBefore = new Map();
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2, tilesBefore = new Map();
     for (let y = 0; y < this.height; y += TILE_SIZE) for (let x = 0; x < this.width; x += TILE_SIZE) {
       const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE), key = `${tileX}:${tileY}`;
       tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
     }
-    layer.pixels.set(pixels);
+    let changedPixels = 0;
+    for (let y = 0; y < this.height; y++) for (let x = 0; x < this.width; x++) {
+      const pixel = y * this.width + x, offset = pixel * 4, owner = this.#ownerAt(layer, x, y);
+      if (!restore && owner !== 0 && owner !== styleOwner) continue;
+      if (layer.pixels[offset] === pixels[offset] && layer.pixels[offset + 1] === pixels[offset + 1] && layer.pixels[offset + 2] === pixels[offset + 2] && layer.pixels[offset + 3] === pixels[offset + 3]) continue;
+      layer.pixels.set(pixels.subarray(offset, offset + 4), offset);
+      if (!restore) this.#setOwner(layer, x, y, pixels[offset + 3] === 0 ? 0 : (owner || styleOwner));
+      changedPixels++;
+    }
+    if (restore && ownershipTiles instanceof Map) layer.ownershipTiles = cloneOwnershipTiles(ownershipTiles);
     this.#markAllCompositeDirty();
     const tiles = [...tilesBefore.entries()].map(([key, before]) => {
-      const [tileX, tileY] = key.split(':').map(Number);
-      return { tileX, tileY, before, after: this.#captureTile(layer, tileX, tileY) };
+      const [tileX, tileY] = key.split(':').map(Number), after = this.#captureTile(layer, tileX, tileY);
+      return { tileX, tileY, before, after };
+    }).filter(tile => {
+      for (let i = 0; i < tile.before.length; i += 4) if (tile.before[i] !== tile.after[i] || tile.before[i+1] !== tile.after[i+1] || tile.before[i+2] !== tile.after[i+2] || tile.before[i+3] !== tile.after[i+3]) return true;
+      const a = tile.before.owners, b = tile.after.owners;
+      if (!a || !b) return a !== b;
+      return a.some((value, index) => value !== b[index]);
     });
-    this.#record({ type: 'pixels', layerId: layer.id, tiles });
-    return { layerId: layer.id, changed: true, pixelBytes: pixels.length };
+    if (tiles.length) this.#record({ type: 'pixels', layerId: layer.id, tiles });
+    return { layerId: layer.id, changed: changedPixels > 0 || tiles.length > 0, changedPixels, pixelBytes: pixels.length };
   }
   sampleColorAt(x, y, { merged = true } = {}) {
     if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= this.width || y >= this.height) {
