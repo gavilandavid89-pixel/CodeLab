@@ -91,6 +91,12 @@ function buildAgentCompositionGuide() {
       ...packageData.frames.flatMap(frame => (frame.layerMetadata || []).map(item => item.authoringMode)),
       ...packageData.frames.flatMap(frame => (frame.cels || []).map(cel => cel.metadata?.authoringMode)),
     ].filter(mode => mode === 'illustration' || mode === 'pixel-art'))],
+    layerModesByFrame: packageData.manifest.layerModesByFrame || packageData.frames.map((frame, frameIndex) => ({
+      frameIndex, frameId: String(frame.id || frameIndex),
+      layers: (frame.layers || []).map(layer => ({
+        layerId: layer.layerId, layerName: layer.layerName, authoringMode: layer.authoringMode,
+      })),
+    })),
     output: {
       platform: $('#vc-aspect').value === '16:9' ? 'youtube-landscape' :
         $('#vc-aspect').value === '9:16' ? 'shorts-or-tiktok' :
@@ -105,6 +111,8 @@ function buildAgentCompositionGuide() {
       'Compose essential subjects, faces, text and action inside output.safeArea in sourceCanvas coordinates.',
       'Do not stretch or apply different horizontal and vertical scale factors.',
       'Do not modify source canvas dimensions, source pixels, animation timing, layers or cels.',
+      'Keep each layer authoring mode exactly as listed in layerModesByFrame; modes may be mixed in the same frame.',
+      'Use high-quality smoothing for illustration layers and nearest-neighbor sampling for pixel-art layers.',
       'The Video Composer applies the output aspect ratio only during preview and export.',
       $('#vc-fit-mode').value === 'cover'
         ? 'Pixels outside output.safeArea will be cropped from the final video.'
@@ -459,6 +467,7 @@ async function composeNativeFrame(project, frame) {
     const opacity = Math.max(0, Math.min(1, Number(meta.opacity ?? layer.opacity ?? 1)));
     const blendMode = String(meta.blendMode || layer.blendMode || 'normal');
     renderLayers.push({
+      layerId: String(layer.id), layerName: String(layer.name || layer.id),
       blob: layerBlob, authoringMode, x, y, scaleX: Number.isFinite(sx) ? sx : 1,
       scaleY: Number.isFinite(sy) ? sy : 1, rotation, opacity, blendMode,
     });
@@ -488,12 +497,19 @@ async function parseComposerPackage(file) {
       const composed = await composeNativeFrame(project, frame);
       frames.push({ ...frame, ...composed });
     }
-    const drawingModesPresent = [...new Set(animation.frames.flatMap(frame =>
-      project.layers.map(layer => resolveDrawingMode({
-        cel: (frame.cels || []).find(cel => String(cel.layerId) === String(layer.id)),
-        frame, layer, project,
-      }))
-    ))];
+    const layerModesByFrame = animation.frames.map((frame, frameIndex) => ({
+      frameIndex, frameId: String(frame.id || frameIndex),
+      layers: project.layers.map(layer => {
+        const cel = (frame.cels || []).find(item => String(item.layerId) === String(layer.id));
+        const metadata = (frame.layerMetadata || []).find(item => String(item.layerId || item.id) === String(layer.id)) || cel?.metadata || {};
+        return {
+          layerId: String(layer.id), layerName: String(layer.name || layer.id),
+          authoringMode: resolveDrawingMode({ cel, frame, layer, project }),
+          visible: layer.visible !== false && metadata.visible !== false,
+        };
+      }),
+    }));
+    const drawingModesPresent = [...new Set(layerModesByFrame.flatMap(frame => frame.layers.map(layer => layer.authoringMode)))];
     const sourceDrawingMode = project.drawingConfiguration?.activeMode === 'illustration' ? 'illustration' : 'pixel-art';
     const totalDurationMs = frames.reduce((sum, frame) => sum + Number(frame.durationMs), 0);
     return {
@@ -504,6 +520,7 @@ async function parseComposerPackage(file) {
         projectName: project.name,
         sourceDrawingMode,
         drawingModesPresent,
+        layerModesByFrame,
         scalingMode: getVideoScalingMode(sourceDrawingMode),
       },
       frames, project: new Blob([JSON.stringify(project)], { type: 'application/json' }),
