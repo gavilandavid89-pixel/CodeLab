@@ -857,7 +857,7 @@ function scheduleAutosave() {
     });
   }, 800);
 }
-async async function settleActiveInput() {
+async function settleActiveInput() {
   if (activeStroke || (doc.isTiled && tiledPointerController?.active)) await finishActiveStroke(true);
   drawHeld = false; drawHoldPointerId = null; updateDrawHoldUI();
 }
