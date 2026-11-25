@@ -7,7 +7,7 @@ import { buildConnectivityToolCatalog, connectObjects, joinPaths, closeGap, exte
 import { parseSVGToVectorModel } from './vector-studio.js';
 import { normalizeIllustrationScene, validateIllustrationScene, compileIllustrationScene } from './illustration-scene.js';
 import { createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
-import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, copyReferencePixelsToActiveFrameLayer, compositeReferenceFramePixels, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
+import { createDrawingModel, normalizeDrawingModel, inspectLayerPixels, inspectRasterObject, createAlphaComponentSelection, extractLineGuide, registerReferenceEntry, getReferenceEntry, buildReferenceFromProject, applyReferenceToDrawingModel, deserializePixels, serializePixels, setDrawingLayerRole, getCurrentState, setCurrentState, recordEnvironmentHistory, getEnvironmentHistoryEntry, copyReferencePixelsToActiveFrameLayer, compositeReferenceFramePixels, compositeReferenceFrameOwnership, DRAWING_SHEET_PRESETS, SEMANTIC_PALETTE } from './drawing-intelligence.js';
 
 const COLOR = /^#[0-9a-f]{6}$/i;
 const DENIED_ACTIONS = new Set([
@@ -486,7 +486,8 @@ export class AICommandSession {
           if (!entry) throw new Error('Reference entry was not found.');
           const frameIndex = integer(action.frameIndex, 'frameIndex');
           const pixels = compositeReferenceFramePixels(entry, frameIndex, doc.width, doc.height);
-          const copied = copyReferencePixelsToActiveFrameLayer({ drawingDocument: doc, pixels });
+          const ownershipTiles = compositeReferenceFrameOwnership(entry, frameIndex, doc.width, doc.height);
+          const copied = copyReferencePixelsToActiveFrameLayer({ drawingDocument: doc, pixels, ownershipTiles });
           result = {
             copied: true, referenceId: entry.id, frameIndex,
             targetLayerId: copied.layerId, targetLayerName: doc.activeLayer?.name || null,
