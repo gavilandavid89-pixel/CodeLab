@@ -988,7 +988,7 @@ function syncAnimationLayerStack(copyFromByNewId = new Map()) {
 }
 function markAnimationChanged() { doc.revision++; doc.saveVersion++; doc.dirty = true; }
 function canGrowAnimationLayer() {
-  return !animation || animation.memoryBytes + doc.width * doc.height * 4 * animation.frameCount <= 64 * 1024 * 1024;
+  return doc.isTiled || !animation || animation.memoryBytes + doc.width * doc.height * 4 * animation.frameCount <= 64 * 1024 * 1024;
 }
 function syncTiledAnimationFrame() {
   if (!(animation instanceof TiledAnimationDocument) || !doc.isTiled) return false;
@@ -2658,7 +2658,8 @@ $('#animation-delete-frame').addEventListener('click', () => {
 $('#animation-frame-left').addEventListener('click', () => {
   try {
     if (!animation || animation.activeFrameIndex <= 0) return;
-    captureAnimationFrame(); saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
+    captureAnimationFrame();
+    if (!(animation instanceof TiledAnimationDocument)) saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
     animation.moveFrame(animation.activeFrameIndex, animation.activeFrameIndex - 1);
     markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
   } catch (error) { status(error.message, 'error'); }
@@ -2666,7 +2667,8 @@ $('#animation-frame-left').addEventListener('click', () => {
 $('#animation-frame-right').addEventListener('click', () => {
   try {
     if (!animation || animation.activeFrameIndex >= animation.frameCount - 1) return;
-    captureAnimationFrame(); saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
+    captureAnimationFrame();
+    if (!(animation instanceof TiledAnimationDocument)) saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
     animation.moveFrame(animation.activeFrameIndex, animation.activeFrameIndex + 1);
     markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
   } catch (error) { status(error.message, 'error'); }
