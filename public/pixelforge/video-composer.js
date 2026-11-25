@@ -1,6 +1,6 @@
 import { parsePixelForgeVideoPackage, readStoredZip, buildConstantFrameRateSequence } from './src/video-composer-core.mjs';
 import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
-import { getCaptureDimensions, getSourceQualityAssessment, drawContentComposition } from './src/video-capture-layout.mjs';
+import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
 import { getVideoScalingMode } from './src/drawing-mode-config.mjs';
 
@@ -55,6 +55,61 @@ function outputDimensions() {
   return getCaptureDimensions($('#vc-resolution').value, $('#vc-aspect').value,
     packageData.manifest.width, packageData.manifest.height);
 }
+function currentCompositionGuide() {
+  if (!packageData) return null;
+  const { width, height } = outputDimensions();
+  return getCompositionGuide(packageData.manifest.width, packageData.manifest.height, width, height);
+}
+function refreshCompositionGuide() {
+  if (!packageData) {
+    $('#vc-copy-agent-guide').disabled = true;
+    $('#vc-guide-summary').textContent = 'Importa una animación para calcular el área segura.';
+    return;
+  }
+  const guide = currentCompositionGuide();
+  const fitMode = $('#vc-fit-mode').value;
+  const safe = guide.safeArea;
+  $('#vc-guide-summary').textContent = 'Zona segura: x ' + safe.x + ', y ' + safe.y + ' · ' + safe.width + ' × ' + safe.height +
+    ' px. ' + (fitMode === 'cover'
+      ? 'La exportación recortará fuera de esta zona.'
+      : 'Mantén aquí los elementos esenciales; el resto del lienzo también se conservará en la salida.');
+  $('#vc-copy-agent-guide').disabled = false;
+}
+function buildAgentCompositionGuide() {
+  const guide = currentCompositionGuide();
+  if (!guide) throw new Error('Importa una animación antes de copiar la guía.');
+  return {
+    schemaVersion: 1,
+    purpose: 'PixelForge Video Composer composition constraints',
+    sourceCanvas: guide.source,
+    output: {
+      aspect: $('#vc-aspect').value,
+      dimensions: guide.target,
+      fitMode: $('#vc-fit-mode').value,
+      safeArea: guide.safeArea,
+      normalizedSafeArea: guide.normalizedSafeArea,
+    },
+    instructions: [
+      'Compose essential subjects, faces, text and action inside output.safeArea in sourceCanvas coordinates.',
+      'Do not stretch or apply different horizontal and vertical scale factors.',
+      'Do not modify source canvas dimensions, source pixels, animation timing, layers or cels.',
+      'The Video Composer applies the output aspect ratio only during preview and export.',
+      $('#vc-fit-mode').value === 'cover'
+        ? 'Pixels outside output.safeArea will be cropped from the final video.'
+        : 'The full source artwork is preserved; any aspect-ratio mismatch is padded, never stretched.',
+    ],
+  };
+}
+async function copyAgentCompositionGuide() {
+  try {
+    const payload = JSON.stringify(buildAgentCompositionGuide(), null, 2);
+    if (!navigator.clipboard?.writeText) throw new Error('El navegador no permite copiar automáticamente. Usa un navegador con permiso de portapapeles.');
+    await navigator.clipboard.writeText(payload);
+    setStatus('Guía de composición copiada. Puedes pegarla en el contexto del agente.', 'success');
+  } catch (error) {
+    setStatus(error.message, 'error');
+  }
+}
 function refreshOutputDimensions() {
   if (!packageData) return;
   const { width, height } = outputDimensions();
@@ -72,6 +127,7 @@ function refreshOutputDimensions() {
       ? 'Origen ' + sourceLabel + ' → contenido reducido a ' + contentLabel + '. La salida conserva la proporción y reduce el detalle al tamaño elegido.'
       : 'Origen ' + sourceLabel + ' · salida ' + width + ' × ' + height + '. El contenido mantiene su tamaño de píxel original.';
   refreshMotionCadence();
+  refreshCompositionGuide();
 }
 function refreshMotionCadence() {
   if (!packageData) return;
@@ -220,6 +276,10 @@ function setEnabled(enabled) {
   $('#vc-output-fps').disabled = !enabled;
   $('#vc-format').disabled = !enabled;
   $('#vc-solid-bg').disabled = !enabled;
+  $('#vc-aspect').disabled = !enabled;
+  $('#vc-resolution').disabled = !enabled;
+  $('#vc-fit-mode').disabled = !enabled;
+  $('#vc-copy-agent-guide').disabled = !enabled;
 }
 function resetComposer() {
   stopPlayback();
@@ -251,6 +311,7 @@ function resetComposer() {
   $('#vc-timeline-count').textContent = '0 elementos';
   $('#vc-export-duration').textContent = '—';
   $('#vc-export-dimensions').textContent = '—';
+  refreshCompositionGuide();
   setEnabled(false);
 }
 async function renderFrame(index) {
@@ -277,6 +338,22 @@ async function renderFrame(index) {
   if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
   context.clearRect(0, 0, width, height);
   context.drawImage(currentBitmap, 0, 0);
+  const guide = currentCompositionGuide();
+  if (guide) {
+    const safe = guide.safeArea;
+    context.save();
+    context.fillStyle = 'rgba(8, 10, 16, 0.42)';
+    context.beginPath();
+    context.rect(0, 0, width, height);
+    context.rect(safe.x, safe.y, safe.width, safe.height);
+    context.fill('evenodd');
+    context.strokeStyle = '#b6aaff';
+    context.lineWidth = Math.max(1, Math.min(width, height) / 700);
+    context.setLineDash([Math.max(4, width / 180), Math.max(3, width / 260)]);
+    context.strokeRect(safe.x, safe.y, safe.width, safe.height);
+    context.restore();
+  }
+  ui.canvas.dataset.compositionGuide = 'true';
   ui.canvas.hidden = false;
   ui.empty.hidden = true;
   ui.scrubber.max = String(packageData.frames.length - 1);
@@ -579,6 +656,7 @@ async function exportVideo() {
       durationMs: total,
       backgroundColor: solidBackground ? '#101116' : null,
       scalingMode: $('#vc-scaling-mode').value,
+      fitMode: $('#vc-fit-mode').value,
       isCancelled: () => cancelRequested,
       onProgress: (value, label) => setProgress(value, label)
     });
@@ -633,8 +711,19 @@ $('#vc-checker').addEventListener('click', event => {
   event.currentTarget.setAttribute('aria-pressed', String(!enabled));
   ui.stage.classList.toggle('solid-bg', enabled);
 });
-$('#vc-resolution').addEventListener('change', refreshOutputDimensions);
-$('#vc-aspect').addEventListener('change', refreshOutputDimensions);
+$('#vc-resolution').addEventListener('change', () => {
+  refreshOutputDimensions();
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
+$('#vc-aspect').addEventListener('change', () => {
+  refreshOutputDimensions();
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
+$('#vc-fit-mode').addEventListener('change', () => {
+  refreshCompositionGuide();
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
+$('#vc-copy-agent-guide').addEventListener('click', copyAgentCompositionGuide);
 $('#vc-output-fps').addEventListener('change', refreshMotionCadence);
 $('#vc-scaling-mode').addEventListener('change', () => {
   ui.canvas.dataset.scalingMode = $('#vc-scaling-mode').value;
