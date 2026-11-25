@@ -1,6 +1,7 @@
 import { RasterDocument, screenToDocument, validateDimensions, rasterLinePoints, createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
 import { TiledRasterProjectDocument, PIXELFORGE_TILED_PROJECT_FORMAT } from './raster-tiled-adapter.mjs';
 import { TiledRasterPointerStrokeController } from './raster-tiled-pointer-controller.mjs';
+import { fillTiledLayer } from './raster-tiled-fill.mjs';
 import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById, deleteProject } from './persistence.js';
 
 import { preflightImageFile } from './image-import.js';
@@ -1472,10 +1473,22 @@ function performColorSelection(point) {
   } catch (error) { status(error.message, 'error'); }
 }
 function performFill(point) {
-  if (doc.isTiled) { status('Bucket fill is not yet available for sparse tiled projects.', 'warning'); return; }
   if (!point?.inside || flushInProgress) return;
+  const settings = { color, tolerance: fillTolerance, contiguous: fillContiguous, pattern: $('#fill-pattern').value, secondaryColor: backgroundColor, scale: Number($('#fill-scale').value) };
+  if (doc.isTiled) {
+    const targetDocument = doc, layerId = doc.activeLayerId;
+    void fillTiledLayer(targetDocument, layerId, point.x, point.y, settings).then(count => {
+      if (doc !== targetDocument) return;
+      if (count) { changed(); status(`Filled ${count.toLocaleString()} pixels`, 'success'); }
+      else status('Fill made no changes', 'neutral');
+      render();
+    }).catch(error => {
+      if (doc === targetDocument) status(error.message, 'error');
+    });
+    return;
+  }
   try {
-    const count = doc.fillAt(point.x, point.y, { color, tolerance: fillTolerance, contiguous: fillContiguous, pattern: $('#fill-pattern').value, secondaryColor: backgroundColor, scale: Number($('#fill-scale').value) });
+    const count = doc.fillAt(point.x, point.y, settings);
     if (count) { changed(); status(`Filled ${count.toLocaleString()} pixels`, 'success'); }
     else status('Fill made no changes', 'neutral');
   } catch (error) { status(error.message, 'error'); }
