@@ -233,12 +233,12 @@ function cloneLayer(layer) { return { ...layer, pixels: clonePixels(layer.pixels
 const TILE_SIZE = 64;
 function entryBytes(entry) {
   if (entry.type === 'pixels') return entry.tiles.reduce((sum, tile) => sum + tile.before.byteLength + tile.after.byteLength + (tile.before.owners?.byteLength || 0) + (tile.after.owners?.byteLength || 0), 64);
-  if (entry.type === 'document-crop') return entry.before.layers.reduce((sum, layer) => sum + layer.pixels.byteLength, 256);
-  if (entry.type === 'pixels-batch') return entry.layers.reduce((sum, layer) => sum + layer.tiles.reduce((tileSum, tile) => tileSum + tile.before.byteLength + tile.after.byteLength, 0), 64);
-  if (entry.type === 'layer-add') return (entry.addedLayer?.pixels.byteLength ?? 0) + 128;
-  if (entry.type === 'layer-delete') return (entry.removedLayer?.pixels.byteLength ?? 0) + 128;
+  if (entry.type === 'document-crop') return entry.before.layers.reduce((sum, layer) => sum + layer.pixels.byteLength + [...(layer.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + tile.byteLength, 0), 256);
+  if (entry.type === 'pixels-batch') return entry.layers.reduce((sum, layer) => sum + layer.tiles.reduce((tileSum, tile) => tileSum + tile.before.byteLength + tile.after.byteLength + (tile.before.owners?.byteLength || 0) + (tile.after.owners?.byteLength || 0), 0), 64);
+  if (entry.type === 'layer-add') return (entry.addedLayer?.pixels.byteLength ?? 0) + [...(entry.addedLayer?.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + tile.byteLength, 0) + 128;
+  if (entry.type === 'layer-delete') return (entry.removedLayer?.pixels.byteLength ?? 0) + [...(entry.removedLayer?.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + tile.byteLength, 0) + 128;
   if (entry.type === 'document-state') {
-    const bytes = state => (state?.layers ?? []).reduce((sum, layer) => sum + (layer.pixels?.byteLength ?? 0), 0);
+    const bytes = state => (state?.layers ?? []).reduce((sum, layer) => sum + (layer.pixels?.byteLength ?? 0) + [...(layer.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + tile.byteLength, 0), 0);
     return bytes(entry.before) + bytes(entry.after) + 512;
   }
   if (entry.type === 'vector-model') return JSON.stringify(entry.before ?? null).length * 2 + JSON.stringify(entry.after ?? null).length * 2 + 128;
