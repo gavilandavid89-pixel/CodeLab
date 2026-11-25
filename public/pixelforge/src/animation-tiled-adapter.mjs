@@ -255,7 +255,8 @@ export class TiledAnimationDocument {
       if (takeOwnership && next === previous) return false;
       throw new TypeError('A distinct sparse cel reference is required.');
     }
-    this.#store.getCelTileSize(next);
+    const geometry = this.#store.getCelDimensions(next);
+    if (geometry.width !== this.#width || geometry.height !== this.#height) throw new RangeError('Replacement animation cel geometry does not match the timeline.');
     frame.cels.set(layerId, next);
     this.#store.releaseCel(previous);
     this.#thumbnailCache.delete(frame.id);
@@ -421,12 +422,17 @@ export class TiledAnimationDocument {
     if (copyFromLayerId !== null && !this.#layerIds.includes(copyFromLayerId)) throw new Error('Unknown source animation layer ID.');
     const created = [];
     try {
-      this.#store.getCelTileSize(activeCelId);
+      const activeGeometry = this.#store.getCelDimensions(activeCelId);
+      if (activeGeometry.width !== this.#width || activeGeometry.height !== this.#height) throw new RangeError('New animation layer cel geometry does not match the timeline.');
       for (let index = 0; index < this.#frames.length; index++) {
         const frame = this.#frames[index], orphan = orphanFrames?.get(frame.id);
         let celId, retainedOrphan = false;
         if (index === this.#activeFrameIndex) celId = activeCelId;
-        else if (orphan?.celId) { celId = orphan.celId; retainedOrphan = true; this.#store.getCelTileSize(celId); }
+        else if (orphan?.celId) {
+          celId = orphan.celId; retainedOrphan = true;
+          const geometry = this.#store.getCelDimensions(celId);
+          if (geometry.width !== this.#width || geometry.height !== this.#height) throw new RangeError('Orphan animation cel geometry does not match the timeline.');
+        }
         else if (copyFromLayerId) celId = this.#store.cloneCel(this.#cel(frame, copyFromLayerId));
         else celId = this.#store.createBlankCel({ width: this.#width, height: this.#height, tileSize: this.#store.getCelTileSize(this.#cel(frame, this.#layerIds[0])) });
         created.push({ frame, celId, retainedOrphan, orphan });
