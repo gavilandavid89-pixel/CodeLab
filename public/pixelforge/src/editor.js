@@ -402,11 +402,12 @@ function resetAIWorkspaceForDocument() {
     aiCommandSession = null;
     aiCoordinator = null;
     aiPanelVisible = false;
-    $('#ai-panel-toggle').disabled = true;
+    $('#ai-tab').disabled = true;
+    if ($('#ai-tab').classList.contains('active')) setInspectorPanel('properties');
     updateAIWorkspaceUI();
     return;
   }
-  $('#ai-panel-toggle').disabled = false;
+  $('#ai-tab').disabled = false;
   aiWorkspace = new AIWorkspace(doc);
   aiCommandSession = new AICommandSession(aiWorkspace);
   aiCoordinator = aiProvider ? new AIEditCoordinator({ workspace: aiWorkspace, session: aiCommandSession, provider: aiProvider }) : null;
@@ -2611,7 +2612,7 @@ $('#save').addEventListener('click', async () => {
 $('#export-project').addEventListener('click', async () => {
   if (doc.isTiled) { status('Sparse tiled projects are saved to your account; ZIP package export is being migrated.', 'warning'); return; }
   try {
-    settleActiveInput();
+    await settleActiveInput();
     stopAnimationPlayback();
     const snapshot = await buildProjectSnapshot();
     const exported = await exportPixelForgeCodeLabPackage(snapshot);
