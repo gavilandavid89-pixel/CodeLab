@@ -415,7 +415,10 @@ export class TiledAnimationDocument {
         const source = orphan?.metadata || (copyFromLayerId ? frame.layerMetadata[copyFromLayerId] : null);
         frame.layerMetadata[layerId] = normalizeCelMetadata({ ...(source || metadata), ...metadata, id: layerId }, frame.authoringMode);
       }
-      for (const { orphan } of created) if (orphan?.celId && orphan.celId !== activeCelId) orphan.celId = null;
+      for (const { frame, orphan } of created) if (orphan?.celId) {
+        if (frame === this.#frames[this.#activeFrameIndex] && orphan.celId !== activeCelId) this.#store.releaseCel(orphan.celId);
+        orphan.celId = null;
+      }
       return this.#layerIds.length;
     } catch (error) {
       for (const { celId, retainedOrphan } of created) if (!retainedOrphan) this.#store.releaseCel(celId);
