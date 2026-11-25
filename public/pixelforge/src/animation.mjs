@@ -246,10 +246,19 @@ export class PixelForgeAnimation {
   get activeFrame() { return this.getFrame(this.#activeFrameIndex); }
   get layerIds() { return [...this.#layerIds]; }
   get totalDurationMs() { return this.#frames.reduce((sum, frame) => sum + frame.durationMs, 0); }
-  get memoryBytes() { return this.#frames.length * this.#layerIds.length * this.#width * this.#height * 4; }
+  get memoryBytes() {
+    const rgbaBytes = this.#frames.length * this.#layerIds.length * this.#width * this.#height * 4;
+    const ownershipBytes = this.#frames.reduce((sum, frame) => sum + this.#layerIds.reduce((layerSum, id) => layerSum + (frame.layerMetadata?.get(id)?.ownershipTiles || []).reduce((n, tile) => {
+      const width = Math.min(64, this.#width - tile.tileX * 64), height = Math.min(64, this.#height - tile.tileY * 64);
+      return n + (width > 0 && height > 0 ? width * height : 0);
+    }, 0), 0), 0);
+    return rgbaBytes + ownershipBytes;
+  }
   get thumbnailCacheBytes() { return this.#thumbnailCacheBytes; }
   get estimatedJSONBytes() {
-    return estimateAnimationJSONBytes({ width: this.#width, height: this.#height, layerCount: this.#layerIds.length, frameCount: this.#frames.length });
+    const base = estimateAnimationJSONBytes({ width: this.#width, height: this.#height, layerCount: this.#layerIds.length, frameCount: this.#frames.length });
+    const ownerJsonBytes = this.#frames.reduce((sum, frame) => sum + this.#layerIds.reduce((n, id) => n + (frame.layerMetadata?.get(id)?.ownershipTiles || []).reduce((m, tile) => m + (tile.owners?.length || 0), 0), 0), 0);
+    return base + ownerJsonBytes;
   }
 
   getFrame(index) {
