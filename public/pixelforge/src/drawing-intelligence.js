@@ -521,7 +521,7 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
     })),
     frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({
       index, frameId: frame.id, durationMs: frame.durationMs,
-      layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixels: cel.pixels || null, ownershipTiles: structuredClone(frame.layerMetadata?.find(item => item.layerId === cel.layerId)?.ownershipTiles || []) })),
+      layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixels: cel.pixels || null, ownershipTiles: structuredClone(frame.layerMetadata?.find(item => item.layerId === cel.layerId)?.ownershipTiles || []), metadata: structuredClone(frame.layerMetadata?.find(item => item.layerId === cel.layerId) || {}) })),
     })) : [],
   };
 }
@@ -532,7 +532,7 @@ export function compositeReferenceFrameOwnership(entry, frameIndex, width, heigh
   if (!frame) throw new Error('Reference frame was not found.');
   const owners = new Uint8Array(width * height);
   for (const source of frame.layers || []) {
-    if (typeof source.pixels !== 'string') continue;
+    if (typeof source.pixels !== 'string' || source.metadata?.visible === false || Number(source.metadata?.opacity ?? 1) <= 0) continue;
     const pixels = deserializePixels(source.pixels);
     if (pixels.length !== width * height * 4) throw new RangeError('Reference frame layer pixels have invalid dimensions.');
     const sourceOwners = new Uint8Array(width * height);
