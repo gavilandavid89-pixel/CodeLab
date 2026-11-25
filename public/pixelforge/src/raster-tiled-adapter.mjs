@@ -322,6 +322,63 @@ export class TiledRasterProjectDocument {
     return this.#layers.map(({ celId, ...layer }) => ({ ...structuredClone(layer), celId }));
   }
   get stats() { return { ...this.#store.stats, history: this.#strokeHistory.stats }; }
+
+  /** Internal animation bridge: frame cels share this document's immutable tile store. */
+  createAnimationBridgeSeed() {
+    const frames = [];
+    try {
+      frames.push({
+        id: globalThis.crypto?.randomUUID?.(),
+        durationMs: 1000 / 12,
+        authoringMode: this.#drawingConfiguration.activeMode,
+        layerMetadata: Object.fromEntries(this.#layers.map(layer => {
+          const { celId, ...metadata } = layer;
+          return [layer.id, structuredClone(metadata)];
+        })),
+        cels: new Map(this.#layers.map(layer => [layer.id, this.#store.cloneCel(layer.celId)])),
+      });
+      return { store: this.#store, width: this.#width, height: this.#height, fps: 12, layerIds: this.layerIds, frames };
+    } catch (error) {
+      for (const frame of frames) for (const celId of frame.cels.values()) this.#store.releaseCel(celId);
+      throw error;
+    }
+  }
+
+  cloneLayerCelReference(layerId) { return this.#store.cloneCel(this.#cel(layerId).celId); }
+
+  replaceLayerCelReferences(references) {
+    if (!(references instanceof Map) || references.size !== this.#layers.length ||
+        this.#layers.some(layer => !references.has(layer.id))) {
+      throw new TypeError('Animation frame cel references must match the current raster layer stack.');
+    }
+    const replacements = [];
+    try {
+      for (const layer of this.#layers) replacements.push({
+        layer, nextCelId: this.#store.cloneCel(references.get(layer.id)),
+      });
+    } catch (error) {
+      for (const item of replacements) this.#store.releaseCel(item.nextCelId);
+      throw error;
+    }
+    for (const { layer, nextCelId } of replacements) {
+      const previousCelId = layer.celId;
+      layer.celId = nextCelId;
+      this.#store.releaseCel(previousCelId);
+    }
+    this.#markChanged();
+    return true;
+  }
+
+  swapStrokeHistory(nextHistory) {
+    if (!nextHistory || typeof nextHistory.undo !== 'function' || typeof nextHistory.redo !== 'function' ||
+        typeof nextHistory.dispose !== 'function') throw new TypeError('A compatible tiled stroke history is required.');
+    if (nextHistory === this.#strokeHistory) return this.#strokeHistory;
+    const previous = this.#strokeHistory;
+    this.#strokeHistory = nextHistory;
+    return previous;
+  }
+
+  createStrokeHistory(options) { return new TiledRasterStrokeHistory(this, options); }
   getVectorModel() { return this.#vectorModel === null ? null : structuredClone(this.#vectorModel); }
   setVectorModel(model) {
     if (model !== null && (!model || typeof model !== 'object' || Array.isArray(model))) throw new TypeError('Vector model must be an object or null.');
