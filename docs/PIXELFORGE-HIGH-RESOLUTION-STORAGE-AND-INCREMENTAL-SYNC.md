@@ -231,3 +231,11 @@ Additional tiled edge coverage verifies exact right/bottom canvas boundaries, re
 - Each active stroke has a configurable byte budget (16 MiB default). If the next dab would exceed it, the active stroke is rolled back before a range error is raised. Command count and retained undo bytes are bounded; a new committed stroke clears redo history.
 - Tests cover overlapping strokes, exact undo/redo restoration, cancellation, active-stroke guards, and byte-budget rollback.
 - This remains an opt-in migration primitive. It is not wired to the editor's pointer handlers or existing selection/symmetry/history stack; those integrations and end-to-end editor parity are still required before changing the editor's canonical document type.
+
+
+### Sparse pointer gesture lifecycle
+
+- Added a DOM-independent `TiledRasterPointerStrokeController` that groups pointer-down, pointer-move segments, pointer-up, pointer-cancel, and lost-pointer-capture into the transactional sparse history API.
+- Pointer IDs are isolated: events from a second pointer are ignored, out-of-canvas movement is ignored without corrupting the active stroke, pointer cancellation/lost capture rolls back, and controller disposal cancels an active gesture.
+- CI tests verify one undoable command per gesture, pointer ownership, outside-canvas movement, cancellation, lost capture, and disposal.
+- The controller is a tested integration seam, not yet connected to `editor.js`: the visible editor still constructs `RasterDocument` and its existing tools, selection masks, symmetry, fills, transforms, animation, and persistence remain dense-model dependencies. Do not infer that the UI is already running on sparse tiles.
