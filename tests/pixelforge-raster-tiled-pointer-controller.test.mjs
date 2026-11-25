@@ -79,3 +79,33 @@ test('pointer writes are serialized when move and pointer-up arrive before the f
   await controller.dispose();
   document.dispose();
 });
+
+
+test('pointer controller resolves the current document history for every new frame gesture', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 64, height: 64, tileSize: 32 });
+  const layerId = doc.activeLayerId;
+  const controller = new TiledRasterPointerStrokeController(doc);
+  const draw = async (pointerId, x, y, color) => {
+    await controller.pointerDown({ pointerId, layerId, point: { x, y }, settings: { color, size: 3, shape: 'square', hardness: 1, opacity: 1 } });
+    await controller.pointerUp({ pointerId });
+  };
+  await draw(1, 8, 8, '#ff0000');
+  const frame0History = doc.strokeHistory;
+  assert.equal(frame0History.canUndo, true);
+
+  const blankFrame1History = doc.swapStrokeHistory(doc.createStrokeHistory());
+  await draw(2, 40, 40, '#0000ff');
+  const frame1History = doc.strokeHistory;
+  assert.notEqual(frame1History, frame0History);
+  assert.equal(frame1History.canUndo, true, 'new gesture must write to the swapped-in frame history');
+  assert.equal(frame0History.canUndo, true, 'previous frame history must remain retained');
+  assert.equal(await doc.undo(), true);
+  assert.equal(doc.readRegion(layerId, { x: 40, y: 40, width: 1, height: 1 })[3], 0);
+  assert.equal(frame0History.canUndo, true);
+
+  doc.swapStrokeHistory(frame0History).dispose();
+  assert.equal(await doc.undo(), true);
+  assert.equal(doc.readRegion(layerId, { x: 8, y: 8, width: 1, height: 1 })[3], 0);
+  await controller.dispose();
+  doc.dispose();
+});
