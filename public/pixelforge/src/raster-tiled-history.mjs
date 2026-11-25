@@ -142,7 +142,8 @@ export class TiledRasterStrokeHistory {
     const size = Math.round(stroke.settings.size ?? 1);
     const region = dabRegion(this.#document, x, y, size);
     const before = copyPixels(this.#document.readRegion(stroke.layerId, region));
-    const entryBytes = before.byteLength * 2;
+    const beforeOwners = this.#document.readOwnershipRegion?.(stroke.layerId, region) ?? null;
+    const entryBytes = before.byteLength * 2 + (beforeOwners?.byteLength || 0) * 2;
     if (stroke.bytes + entryBytes > this.#maxBytes) {
       await this.cancelStroke();
       throw new RangeError('Stroke exceeded the sparse undo history byte budget and was rolled back.');
@@ -150,8 +151,9 @@ export class TiledRasterStrokeHistory {
     const result = await applyTiledBrushDab(this.#document, stroke.layerId, x, y, stroke.settings);
     if (!result.changed) return result;
     const after = copyPixels(this.#document.readRegion(stroke.layerId, region));
-    stroke.entries.push({ region, before, after });
-    stroke.bytes += before.byteLength + after.byteLength;
+    const afterOwners = this.#document.readOwnershipRegion?.(stroke.layerId, region) ?? null;
+    stroke.entries.push({ region, before, after, beforeOwners, afterOwners });
+    stroke.bytes += before.byteLength + after.byteLength + (beforeOwners?.byteLength || 0) + (afterOwners?.byteLength || 0);
     return result;
   }
 
@@ -195,7 +197,7 @@ export class TiledRasterStrokeHistory {
     this.#active = null;
     for (let index = command.entries.length - 1; index >= 0; index--) {
       const entry = command.entries[index];
-      await this.#document.writeRegion(command.layerId, entry.region, entry.before, { restore: true });
+      await this.#document.writeRegion(command.layerId, entry.region, entry.before, { restore: true, owners: entry.beforeOwners });
     }
     return command.entries.length > 0;
   }
@@ -217,7 +219,7 @@ export class TiledRasterStrokeHistory {
         await this.#document.writeRegion(command.layerId, entry.region, entry.before);
       }
     } else {
-      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, before }) => ({ x, y, pixels: before })), { maxBytes: this.#maxBytes, allowLocked: true, restore: true });
+      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, before, beforeOwners }) => ({ x, y, pixels: before, owners: beforeOwners })), { maxBytes: this.#maxBytes, allowLocked: true, restore: true });
     }
     this.#redo.push(command);
     return true;
@@ -235,9 +237,9 @@ export class TiledRasterStrokeHistory {
       return true;
     }
     if (command.entries[0]?.region) {
-      for (const entry of command.entries) await this.#document.writeRegion(command.layerId, entry.region, entry.after, { restore: true });
+      for (const entry of command.entries) await this.#document.writeRegion(command.layerId, entry.region, entry.after, { restore: true, owners: entry.afterOwners });
     } else {
-      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes, allowLocked: true });
+      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, after, afterOwners }) => ({ x, y, pixels: after, owners: afterOwners })), { maxBytes: this.#maxBytes, allowLocked: true });
     }
     this.#undo.push(command);
     return true;
