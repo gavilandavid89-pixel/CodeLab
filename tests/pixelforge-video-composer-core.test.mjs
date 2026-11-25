@@ -227,6 +227,7 @@ test('Video Composer exposes an agent-readable composition guide and routes fit 
   const encoder = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder.mjs', import.meta.url), 'utf8');
   const worker = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder-worker.mjs', import.meta.url), 'utf8');
   assert.match(html, /id="vc-fit-mode"/);
+  assert.match(html, /value="cover" selected/);
   assert.match(html, /id="vc-copy-agent-guide"/);
   assert.match(js, /getCompositionGuide/);
   assert.match(js, /normalizedSafeArea/);
