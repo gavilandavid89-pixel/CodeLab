@@ -2652,6 +2652,7 @@ $('#animation-delete-frame').addEventListener('click', () => {
       syncTiledAnimationLayerStack(); syncTiledAnimationFrame();
       doc.swapStrokeHistory(doc.createStrokeHistory()).dispose();
       animation.deleteFrame(animation.activeFrameIndex);
+      pruneTiledAnimationOrphanCels();
       tiledAnimationHistory.get(currentId)?.dispose(); tiledAnimationHistory.delete(currentId);
       restoreTiledFrameHistory(animationFrameId(animation.activeFrameIndex));
       applyTiledAnimationFrame(animation.activeFrameIndex);
