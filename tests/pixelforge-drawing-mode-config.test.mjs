@@ -74,3 +74,39 @@ test('per-layer mode profiles store only non-default exceptions and restore them
   assert.equal('illustration' in overrides, false);
   assert.equal(overrides['pixel-art'].brushSize, 3);
 });
+
+
+test('projects with both modes survive repeated switches without mutating mode-specific profiles', () => {
+  const config = normalizeDrawingConfiguration({
+    version: 1,
+    availableModes: ['illustration', 'pixel-art'],
+    initialMode: 'illustration',
+    activeMode: 'illustration',
+  });
+  let overrides = {};
+  overrides = updateDrawingModeOverrides(overrides, 'illustration', {
+    ...getDrawingModePresentation('illustration'), brushSize: 11, brushHardness: 61,
+  });
+  overrides = updateDrawingModeOverrides(overrides, 'pixel-art', {
+    ...getDrawingModePresentation('pixel-art'), brushSize: 2, brushHardness: 100,
+  });
+  let active = config;
+  for (const mode of ['pixel-art', 'illustration', 'pixel-art', 'illustration']) {
+    active = switchDrawingMode(active, mode);
+    assert.equal(normalizeDrawingModeProfile('illustration', overrides.illustration).brushSize, 11);
+    assert.equal(normalizeDrawingModeProfile('pixel-art', overrides['pixel-art']).brushSize, 2);
+    assert.equal(active.availableModes.length, 2);
+  }
+  assert.equal(active.activeMode, 'illustration');
+});
+
+test('invalid or duplicated mode metadata is normalized to the enabled two-mode contract', () => {
+  const config = normalizeDrawingConfiguration({
+    availableModes: ['illustration', 'illustration', 'pixel-art', 'future-mode'],
+    initialMode: 'future-mode',
+    activeMode: 'future-mode',
+  });
+  assert.deepEqual(config.availableModes, ['illustration', 'pixel-art']);
+  assert.equal(config.initialMode, 'illustration');
+  assert.equal(config.activeMode, 'illustration');
+});
