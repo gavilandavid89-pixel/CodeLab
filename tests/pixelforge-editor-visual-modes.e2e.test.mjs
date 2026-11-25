@@ -38,6 +38,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   timeout: 150000, concurrency: false,
 }, async t => {
   await fs.promises.mkdir(artifactDir, { recursive: true });
+  const savedProjectSnapshots = [];
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
     if (url.pathname === '/api/pixelforge/mode') {
@@ -51,6 +52,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
         for await (const chunk of request) body += chunk;
         let project = {};
         try { project = JSON.parse(body).project || {}; } catch {}
+        savedProjectSnapshots.push(structuredClone(project));
         response.writeHead(200, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ project: { ...project, serverRevision: 1 } }));
       } else {
@@ -440,6 +442,19 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   }
   await page.waitForTimeout(120);
   for (const point of rapidPoints) await assertVisibleColor(point, '#f5f5f5', 'tiled/rapid-tap');
+
+  // Wait for the real editor autosave and inspect the payload received by the
+  // mock account API. A tiled canvas must persist a tile manifest, not a dense
+  // base64 pixel buffer or a legacy project snapshot.
+  await page.waitForTimeout(1100);
+  const savedTiled = [...savedProjectSnapshots].reverse().find(project => project.format === 'pixelforge-tiled-project');
+  assert.ok(savedTiled, 'the editor must autosave the sparse tiled manifest through the account persistence path');
+  assert.equal(savedTiled.width, 1024);
+  assert.equal(savedTiled.height, 1024);
+  assert.equal(savedTiled.layers.length, 1);
+  assert.ok(savedTiled.layers[0].cel, 'each tiled layer must persist its cel manifest');
+  assert.ok(!Object.hasOwn(savedTiled.layers[0], 'pixels'),
+    'the tiled persistence payload must not contain a full dense layer pixel string');
 
   await fs.promises.writeFile(path.join(artifactDir, 'tiled-visual-matrix.json'), JSON.stringify(tiledMatrix, null, 2));
   await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence, tiledMatrix }, null, 2));
