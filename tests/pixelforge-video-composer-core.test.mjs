@@ -238,6 +238,8 @@ test('Video Composer exposes an agent-readable composition guide and routes fit 
   assert.match(js, /getCompositionGuide/);
   assert.match(js, /normalizedSafeArea/);
   assert.match(js, /drawingModesPresent/);
+  assert.match(js, /layerModesByFrame/);
+  assert.match(js, /Keep each layer authoring mode exactly as listed in layerModesByFrame/);
   assert.match(js, /Do not stretch or apply different horizontal and vertical scale factors/);
   assert.match(encoder, /fitMode:options\.fitMode/);
   assert.match(worker, /fitMode = 'contain'/);
