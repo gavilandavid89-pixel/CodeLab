@@ -958,6 +958,7 @@ function captureAnimationFrame() {
 function applyAnimationFramePixels(index) {
   if (!animation) return;
   const frameId = animationFrameId(index);
+  const frameAuthoringMode = animation.getFrame(index).authoringMode || PIXELFORGE_DRAWING_MODES.PIXEL_ART;
   const previousRevision = doc.revision, previousSaveVersion = doc.saveVersion;
   const replacements = doc.layers.map(layer => ({ layerId: layer.id, pixels: animation.getLayerPixels(index, layer.id) }));
   const frameLayerMetadata = doc.layers.map((layer, layerIndex) => animation.getLayerMetadata(index, layer.id) || { id: layer.id, index: layerIndex + 1 });
@@ -988,7 +989,7 @@ function applyAnimationFramePixels(index) {
       layer.references = structuredClone(metadata.references || []);
       layer.assets = structuredClone(metadata.assets || []);
       layer.metadata = structuredClone(metadata.metadata || {});
-      layer.authoringMode = ['illustration', 'pixel-art'].includes(metadata.authoringMode) ? metadata.authoringMode : null;
+      layer.authoringMode = ['illustration', 'pixel-art'].includes(metadata.authoringMode) ? metadata.authoringMode : frameAuthoringMode;
       layer.modeOverrides = metadata.modeOverrides && typeof metadata.modeOverrides === 'object' && !Array.isArray(metadata.modeOverrides)
         ? structuredClone(metadata.modeOverrides) : {};
     }
@@ -1026,6 +1027,8 @@ function ensureAnimation() {
   if (!animation) {
     if (cropPreview || transformPreview) throw new Error('Finish or cancel the active preview before starting an animation timeline.');
     animation = PixelForgeAnimation.fromDocument(doc, { fps: Number($('#animation-fps').value) || 12 });
+    animation.setFrameAuthoringMode(0, drawingConfiguration.activeMode);
+    for (const layer of doc.layers) animation.setLayerMetadata(0, layer.id, { ...animation.getLayerMetadata(0, layer.id), authoringMode: layer.authoringMode || drawingConfiguration.activeMode });
     animationFrameHistory.set(animationFrameId(0), { history: [...doc.history], future: [...doc.future], historyBytes: doc.historyBytes });
     renderAnimationTimeline();
   }
