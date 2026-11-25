@@ -165,7 +165,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
         if (!best || error < best.error) best = { rgba, offset: { x: dx, y: dy }, error };
       }
       return best;
-    }, screen);
+    }, { ...screen, hex });
   };
   const expectedRgb = hex => [1, 3, 5].map(offset => Number.parseInt(hex.slice(offset, offset + 2), 16));
   const assertVisibleColor = async (point, hex, label) => {
