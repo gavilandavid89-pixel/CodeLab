@@ -70,3 +70,26 @@ test('tiled animation manifest reader rejects corrupt tile resources', async () 
   await assert.rejects(() => TiledAnimationDocument.fromManifest(manifest), /SHA-256 integrity check failed/);
   tiled.dispose();
 });
+
+
+test('tiled animation persists an explicit mode on every frame and frame-layer cel', async () => {
+  const animation = new PixelForgeAnimation({ width: 32, height: 32, layerIds: ['illustration-layer', 'pixel-layer'] });
+  const tiled = await TiledAnimationDocument.fromAnimation(animation);
+  tiled.setFrameAuthoringMode(0, 'illustration');
+  tiled.setLayerMetadata(0, 'illustration-layer', { authoringMode: 'illustration', brushHardness: 35 });
+  tiled.setLayerMetadata(0, 'pixel-layer', { authoringMode: 'pixel-art', interpolation: 'nearest' });
+  const manifest = await tiled.toManifest();
+  assert.equal(manifest.frames[0].authoringMode, 'illustration');
+  assert.equal(manifest.frames[0].cels[0].metadata.authoringMode, 'illustration');
+  assert.equal(manifest.frames[0].cels[1].metadata.authoringMode, 'pixel-art');
+
+  const restored = await TiledAnimationDocument.fromManifest(manifest);
+  assert.equal(restored.getFrame(0).authoringMode, 'illustration');
+  assert.equal(restored.getLayerMetadata(0, 'illustration-layer').authoringMode, 'illustration');
+  assert.equal(restored.getLayerMetadata(0, 'pixel-layer').authoringMode, 'pixel-art');
+  restored.cloneFrame(0);
+  assert.equal(restored.getFrame(1).authoringMode, 'illustration');
+  assert.equal(restored.getLayerMetadata(1, 'pixel-layer').authoringMode, 'pixel-art');
+  restored.dispose();
+  tiled.dispose();
+});
