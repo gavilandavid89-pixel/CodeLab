@@ -1131,7 +1131,7 @@ export class RasterDocument {
         x: layer.x, y: layer.y, scaleX: layer.scaleX, scaleY: layer.scaleY, rotation: layer.rotation, angle: layer.angle,
         blendMode: layer.blendMode, blur: layer.blur, brightness: layer.brightness, contrast: layer.contrast, saturation: layer.saturation,
         mask: structuredClone(layer.mask), clipping: structuredClone(layer.clipping), references: structuredClone(layer.references || []),
-        assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}), authoringMode: layer.authoringMode ?? null, modeOverrides: structuredClone(layer.modeOverrides || {}), pixels: bytesToBase64(layer.pixels)
+        assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}), authoringMode: layer.authoringMode ?? null, modeOverrides: structuredClone(layer.modeOverrides || {}), ownershipTiles: [...(layer.ownershipTiles || new Map())].map(([key, owners]) => { const [tileX, tileY] = key.split(':').map(Number); const x = tileX * TILE_SIZE, y = tileY * TILE_SIZE; return { x, y, width: Math.min(TILE_SIZE, this.width - x), height: Math.min(TILE_SIZE, this.height - y), owners: bytesToBase64(owners) }; }), pixels: bytesToBase64(layer.pixels)
       })),
       drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
       vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)),
@@ -1167,11 +1167,23 @@ export class RasterDocument {
       if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new RangeError('Layer opacity must be between 0 and 1.');
       const pixels = base64ToBytes(item.pixels, data.width * data.height * 4);
       if (pixels.length !== data.width * data.height * 4) throw new RangeError('Layer pixel data length does not match document dimensions.');
+      const ownershipTiles = new Map();
+      if (item.ownershipTiles !== undefined && !Array.isArray(item.ownershipTiles)) throw new TypeError('Layer ownershipTiles must be an array.');
+      for (const tile of item.ownershipTiles || []) {
+        if (!tile || !Number.isInteger(tile.x) || !Number.isInteger(tile.y) || tile.x < 0 || tile.y < 0 || tile.x % TILE_SIZE || tile.y % TILE_SIZE || tile.x >= data.width || tile.y >= data.height) throw new TypeError('Invalid layer ownership tile coordinate.');
+        const tileWidth = Math.min(TILE_SIZE, data.width - tile.x), tileHeight = Math.min(TILE_SIZE, data.height - tile.y);
+        if (tile.width !== tileWidth || tile.height !== tileHeight) throw new TypeError('Ownership tile dimensions do not match the canvas.');
+        const owners = base64ToBytes(tile.owners, tileWidth * tileHeight);
+        if (owners.some(owner => owner > 2) || !owners.some(owner => owner !== 0)) throw new TypeError('Ownership tile contains invalid or empty owner data.');
+        const key = `${tile.x / TILE_SIZE}:${tile.y / TILE_SIZE}`;
+        if (ownershipTiles.has(key)) throw new TypeError('Duplicate layer ownership tile.');
+        ownershipTiles.set(key, owners);
+      }
       const numeric = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
       const finiteOrState = (value, fallback) => ['inexistente', 'no_aplicable'].includes(value) ? value : numeric(value, fallback);
       return {
         id: newLayerId, name: item.name.trim().slice(0, 180) || `Layer ${index + 1}`,
-        visible: item.visible !== false, opacity, locked: Boolean(item.locked), pixels,
+        visible: item.visible !== false, opacity, locked: Boolean(item.locked), pixels, ownershipTiles,
         x: numeric(item.x, 0), y: numeric(item.y, 0), scaleX: numeric(item.scaleX, 1), scaleY: numeric(item.scaleY, 1),
         rotation: numeric(item.rotation, 0), angle: finiteOrState(item.angle, 0), blendMode: String(item.blendMode || 'normal'),
         blur: finiteOrState(item.blur, 0), brightness: finiteOrState(item.brightness, 0), contrast: finiteOrState(item.contrast, 0), saturation: finiteOrState(item.saturation, 0),
