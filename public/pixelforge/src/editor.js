@@ -1157,6 +1157,7 @@ function ensureAnimation() {
     if (doc.isTiled) {
       animation = TiledAnimationDocument.fromTiledProjectDocument(doc, { fps: Number($('#animation-fps').value) || 12 });
       tiledAnimationHistory.clear();
+      markAnimationChanged(); scheduleAutosave();
       renderAnimationTimeline();
       return animation;
     }
