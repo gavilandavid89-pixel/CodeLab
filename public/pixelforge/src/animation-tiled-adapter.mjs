@@ -8,6 +8,18 @@
  * bounded region reads or writes.
  */
 import { SparseTileCelStore, DEFAULT_CEL_TILE_SIZE } from './animation-tiles.mjs';
+import { PIXELFORGE_DRAWING_MODES } from './drawing-mode-config.mjs';
+
+const VALID_DRAWING_MODES = Object.values(PIXELFORGE_DRAWING_MODES);
+const DEFAULT_DRAWING_MODE = PIXELFORGE_DRAWING_MODES.PIXEL_ART;
+function normalizeAuthoringMode(value, fallback = DEFAULT_DRAWING_MODE) {
+  return VALID_DRAWING_MODES.includes(value) ? value : fallback;
+}
+function normalizeCelMetadata(value, fallbackMode) {
+  const metadata = value && typeof value === 'object' && !Array.isArray(value) ? structuredClone(value) : {};
+  metadata.authoringMode = normalizeAuthoringMode(metadata.authoringMode, fallbackMode);
+  return metadata;
+}
 
 export const PIXELFORGE_TILED_ANIMATION_FORMAT = 'pixelforge-tiled-animation';
 export const PIXELFORGE_TILED_ANIMATION_VERSION = 1;
@@ -60,7 +72,8 @@ export class TiledAnimationDocument {
     this.#frames = frames.map(frame => ({
       id: frame.id,
       durationMs: frame.durationMs,
-      layerMetadata: structuredClone(frame.layerMetadata || {}),
+      authoringMode: normalizeAuthoringMode(frame.authoringMode),
+      layerMetadata: Object.fromEntries(Object.entries(frame.layerMetadata || {}).map(([layerId, metadata]) => [layerId, normalizeCelMetadata(metadata, normalizeAuthoringMode(frame.authoringMode))])),
       cels: new Map(frame.cels),
     }));
     this.#activeFrameIndex = activeFrameIndex;
@@ -81,14 +94,15 @@ export class TiledAnimationDocument {
         const frame = animation.getFrame(frameIndex);
         const cels = new Map();
         const layerMetadata = {};
+        const frameAuthoringMode = normalizeAuthoringMode(frame.authoringMode ?? animation.getFrameMetadata?.(frameIndex)?.authoringMode);
         for (const layerId of animation.layerIds) {
           const pixels = animation.getLayerPixels(frameIndex, layerId);
           cels.set(layerId, await store.createCelFromPixels(pixels, {
             width: animation.width, height: animation.height, tileSize,
           }));
-          layerMetadata[layerId] = animation.getLayerMetadata?.(frameIndex, layerId) ?? {};
+          layerMetadata[layerId] = normalizeCelMetadata(animation.getLayerMetadata?.(frameIndex, layerId), frameAuthoringMode);
         }
-        frames.push({ id: frame.id, durationMs: frame.durationMs, cels, layerMetadata });
+        frames.push({ id: frame.id, durationMs: frame.durationMs, authoringMode: frameAuthoringMode, cels, layerMetadata });
       }
       return new TiledAnimationDocument({
         store, width: animation.width, height: animation.height, fps: animation.fps,
@@ -130,8 +144,9 @@ export class TiledAnimationDocument {
         }
         frameIds.add(frame.id);
         const cels = new Map();
+        const authoringMode = normalizeAuthoringMode(frame.authoringMode);
         const layerMetadata = {};
-        const restoredFrame = { id: frame.id, durationMs: frame.durationMs, cels, layerMetadata };
+        const restoredFrame = { id: frame.id, durationMs: frame.durationMs, authoringMode, cels, layerMetadata };
         frames.push(restoredFrame);
         for (const entry of frame.cels) {
           if (!entry || !manifest.layerIds.includes(entry.layerId) || cels.has(entry.layerId) ||
@@ -140,7 +155,7 @@ export class TiledAnimationDocument {
           }
           const celId = await store.createCel(entry.cel);
           cels.set(entry.layerId, celId);
-          layerMetadata[entry.layerId] = structuredClone(entry.metadata || {});
+          layerMetadata[entry.layerId] = normalizeCelMetadata(entry.metadata, authoringMode);
         }
         if (cels.size !== manifest.layerIds.length) throw new TypeError('Tiled animation frame is missing a layer cel.');
       }
@@ -165,13 +180,13 @@ export class TiledAnimationDocument {
   getFrame(index) {
     assertFrameIndex(index, this.#frames.length);
     const frame = this.#frames[index];
-    return Object.freeze({ id: frame.id, durationMs: frame.durationMs, index });
+    return Object.freeze({ id: frame.id, durationMs: frame.durationMs, authoringMode: frame.authoringMode, index });
   }
 
   getLayerMetadata(frameIndex, layerId) {
     const frame = this.#frame(frameIndex);
     this.#cel(frame, layerId);
-    return structuredClone(frame.layerMetadata[layerId] || {});
+    return normalizeCelMetadata(frame.layerMetadata[layerId], frame.authoringMode);
   }
 
   setLayerMetadata(frameIndex, layerId, metadata) {
@@ -180,7 +195,7 @@ export class TiledAnimationDocument {
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
       throw new TypeError('Tiled animation cel metadata must be an object.');
     }
-    frame.layerMetadata[layerId] = structuredClone(metadata);
+    frame.layerMetadata[layerId] = normalizeCelMetadata(metadata, frame.authoringMode);
     return this.getLayerMetadata(frameIndex, layerId);
   }
 
@@ -206,6 +221,7 @@ export class TiledAnimationDocument {
     const frame = {
       id: crypto.randomUUID(),
       durationMs: source.durationMs,
+      authoringMode: source.authoringMode,
       layerMetadata: structuredClone(source.layerMetadata),
       cels: new Map([...source.cels].map(([layerId, celId]) => [layerId, this.#store.cloneCel(celId)])),
     };
@@ -245,10 +261,10 @@ export class TiledAnimationDocument {
         cels.push({
           layerId,
           cel: await this.#store.exportCel(this.#cel(frame, layerId)),
-          metadata: structuredClone(frame.layerMetadata[layerId] || {}),
+          metadata: normalizeCelMetadata(frame.layerMetadata[layerId], frame.authoringMode),
         });
       }
-      frames.push({ id: frame.id, durationMs: frame.durationMs, cels });
+      frames.push({ id: frame.id, durationMs: frame.durationMs, authoringMode: frame.authoringMode, cels });
     }
     return {
       format: PIXELFORGE_TILED_ANIMATION_FORMAT,
