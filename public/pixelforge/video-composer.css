@@ -29,3 +29,5 @@
 .vc-composition-guide small{font-size:9px;line-height:1.55;color:var(--muted)}
 .vc-composition-guide .vc-export-button{width:100%;margin:0;font-size:10px}
 .vc-preview-stage canvas[data-composition-guide="true"]{outline:1px solid rgba(167,154,255,.25)}
+
+@media(max-width:620px){.vc-export-panel>.vc-composition-guide{grid-column:1/-1}}
