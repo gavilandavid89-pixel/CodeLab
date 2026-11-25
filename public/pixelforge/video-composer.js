@@ -355,7 +355,8 @@ async function composeNativeFrame(project, frame) {
     const sx = Number(meta.scaleX ?? 1), sy = Number(meta.scaleY ?? 1);
     const rotation = Number(meta.rotation ?? 0);
     context.save();
-    const authoringMode = meta.authoringMode === 'pixel-art' ? 'pixel-art' : meta.authoringMode === 'illustration' ? 'illustration' : null;
+    const layerAuthoringMode = layer.authoringMode === 'pixel-art' ? 'pixel-art' : layer.authoringMode === 'illustration' ? 'illustration' : null;
+    const authoringMode = meta.authoringMode === 'pixel-art' ? 'pixel-art' : meta.authoringMode === 'illustration' ? 'illustration' : layerAuthoringMode;
     context.imageSmoothingEnabled = authoringMode !== 'pixel-art';
     if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
     context.globalAlpha = Math.max(0, Math.min(1, Number(meta.opacity ?? layer.opacity ?? 1)));
