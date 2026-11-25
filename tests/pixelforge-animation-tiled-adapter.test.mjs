@@ -165,3 +165,29 @@ test('tiled animation shares the project tile store and swaps frame cel referenc
   animation.dispose();
   project.dispose();
 });
+
+
+test('tiled animation layer removal returns retained cels and restores them by stable frame ID', async () => {
+  const store = new SparseTileCelStore({ maxDecodedCacheBytes: 0 });
+  const base = store.createBlankCel({ width: 64, height: 64, tileSize: 32 });
+  const animation = new TiledAnimationDocument({
+    store, width: 64, height: 64, fps: 12, layerIds: ['base'],
+    frames: [{ id: 'frame-a', durationMs: 100, authoringMode: 'pixel-art', layerMetadata: { base: { name: 'Base' } }, cels: new Map([['base', base]]) }],
+  });
+  const extra = store.createBlankCel({ width: 64, height: 64, tileSize: 32 });
+  const red = new Uint8ClampedArray(32 * 32 * 4); red.set([220, 40, 30, 255]);
+  const write = await store.writeRegion(extra, { x: 0, y: 0, width: 32, height: 32 }, red);
+  store.releaseCel(extra);
+  animation.addLayer('ink', { activeCelId: write.celId, metadata: { name: 'Ink', opacity: 0.8 } });
+  animation.createBlankFrame({ durationMs: 80 });
+  const removed = animation.removeLayer('ink');
+  assert.equal(removed.frames.length, 2);
+  const orphanFrames = new Map(removed.frames.map(item => [item.frameId, item]));
+  const blankActive = store.createBlankCel({ width: 64, height: 64, tileSize: 32 });
+  animation.addLayer('ink', { activeCelId: blankActive, metadata: { name: 'Ink' }, orphanFrames });
+  assert.deepEqual([...animation.readRegion(0, 'ink', { x: 0, y: 0, width: 1, height: 1 })], [220, 40, 30, 255]);
+  assert.equal(animation.readRegion(1, 'ink', { x: 0, y: 0, width: 1, height: 1 })[3], 0);
+  assert.equal(animation.getLayerMetadata(0, 'ink').name, 'Ink');
+  assert.equal(removed.frames.every(item => item.celId === null), true);
+  animation.dispose();
+});
