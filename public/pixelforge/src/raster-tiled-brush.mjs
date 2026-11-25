@@ -98,7 +98,7 @@ export async function applyTiledBrushDab(document, layerId, x, y, settings = {})
   }
   if (!changedPixels) return { changed: false, changedTiles: 0, changedPixels: 0, blockedPixels: 0 };
   const result = await document.writeRegionWithOwnership(layerId, region, pixels, { authoringMode, operation: brush.mode === 'erase' ? 'erase' : 'draw' });
-  return { ...result, changedPixels: result.changed ? changedPixels : 0, blockedPixels: result.blockedPixels || 0 };
+  return { ...result, changedPixels: result.changedPixels || 0, blockedPixels: result.blockedPixels || 0 };
 }
 
 /**
