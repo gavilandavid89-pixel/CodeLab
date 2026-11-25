@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import { PixelForgeAnimation } from '../public/pixelforge/src/animation.mjs';
 import { TiledAnimationDocument } from '../public/pixelforge/src/animation-tiled-adapter.mjs';
+import { SparseTileCelStore } from '../public/pixelforge/src/animation-tiles.mjs';
 
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
@@ -96,8 +97,13 @@ test('tiled animation persists an explicit mode on every frame and frame-layer c
 
 
 test('tiled timeline supports blank frames, reorder, duration, and active-index-safe deletion without dense canvases', async () => {
-  const animation = new PixelForgeAnimation({ width: 4096, height: 4096, layerIds: ['ink', 'color'] });
-  const tiled = await TiledAnimationDocument.fromAnimation(animation, { tileSize: 128, maxDecodedCacheBytes: 0 });
+  const store = new SparseTileCelStore({ maxDecodedCacheBytes: 0 });
+  const layerIds = ['ink', 'color'];
+  const cels = new Map(layerIds.map(layerId => [layerId, store.createBlankCel({ width: 4096, height: 4096, tileSize: 128 })]));
+  const tiled = new TiledAnimationDocument({
+    store, width: 4096, height: 4096, fps: 12, layerIds,
+    frames: [{ id: 'base-frame', durationMs: 100, authoringMode: 'pixel-art', cels }],
+  });
   const blank = tiled.createBlankFrame({ afterIndex: 0, durationMs: 125, authoringMode: 'illustration' });
   assert.equal(blank.index, 1);
   assert.equal(tiled.frameCount, 2);
