@@ -114,6 +114,15 @@
         <label for="vc-aspect">Formato de pantalla</label>
         <select id="vc-aspect"><option value="16:9" selected>YouTube horizontal · 16:9</option><option value="9:16">TikTok / Shorts vertical · 9:16</option><option value="1:1">Publicación cuadrada · 1:1</option><option value="auto">Adaptar al lienzo original</option></select>
       </div>
+      <div class="vc-form-group">
+        <label for="vc-fit-mode">Ajuste del contenido · sin deformar</label>
+        <select id="vc-fit-mode"><option value="contain" selected>Conservar todo · añadir bandas si hace falta</option><option value="cover">Llenar el formato · recortar bordes</option></select>
+        <small>Ambas opciones conservan la proporción. Nunca se estira el dibujo.</small>
+      </div>
+      <section class="vc-composition-guide" aria-live="polite">
+        <div><strong>Guía de composición para el agente</strong><small id="vc-guide-summary">Importa una animación para calcular el área segura.</small></div>
+        <button class="vc-export-button vc-secondary-button" id="vc-copy-agent-guide" type="button" disabled>Copiar guía para agente</button>
+      </section>
       <div class="vc-capture-mode">
         <strong>Qué quieres capturar</strong>
         <p><b>Contenido:</b> lienzo grande y tira de fotogramas, sin herramientas.</p>
