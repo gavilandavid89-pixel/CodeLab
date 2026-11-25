@@ -13,6 +13,7 @@ on:
       - "tests/pixelforge-raster-tiled-brush.test.mjs"
       - "tests/pixelforge-raster-tiled-history.test.mjs"
       - "tests/pixelforge-raster-tiled-pointer-controller.test.mjs"
+      - "tests/pixelforge-editor-visual-modes.e2e.test.mjs"
       - "tests/pixelforge-raster-tiled-adapter.test.mjs"
       - "public/pixelforge/src/animation-tiled-adapter.mjs"
       - "public/pixelforge/src/drawing-mode-config.mjs"
@@ -55,6 +56,7 @@ on:
       - "tests/pixelforge-raster-tiled-adapter.test.mjs"
       - "public/pixelforge/src/animation-tiles.mjs"
       - "public/pixelforge/src/editor.js"
+      - "tests/pixelforge-editor-visual-modes.e2e.test.mjs"
       - ".github/workflows/pixelforge-animation-core.yml"
 
 permissions:
@@ -97,6 +99,10 @@ jobs:
         run: node --experimental-default-type=module --test tests/pixelforge-raster-tiled-history.test.mjs
       - name: Test sparse tiled pointer stroke lifecycle
         run: node --experimental-default-type=module --test tests/pixelforge-raster-tiled-pointer-controller.test.mjs
+      - name: Test visible editor drawing mode and symmetry matrix in Chromium
+        env:
+          PIXELFORGE_VISUAL_ARTIFACT_DIR: ${{ runner.temp }}/pixelforge-editor-visual-matrix
+        run: node --test tests/pixelforge-editor-visual-modes.e2e.test.mjs
       - name: Test persisted drawing mode configuration
         run: node --experimental-default-type=module --test tests/pixelforge-drawing-mode-config.test.mjs
       - name: Test Headless drawing mode preservation
@@ -111,3 +117,11 @@ jobs:
         run: node --experimental-default-type=module --test tests/pixelforge-video-composer-core.test.mjs
       - name: Guard original editor feature parity
         run: node --test tests/pixelforge-feature-parity.test.mjs
+
+      - name: Upload PixelForge visual matrix evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelforge-editor-visual-matrix
+          path: ${{ runner.temp }}/pixelforge-editor-visual-matrix/
+          if-no-files-found: ignore
