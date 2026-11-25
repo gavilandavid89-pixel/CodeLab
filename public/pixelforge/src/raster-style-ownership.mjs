@@ -34,11 +34,15 @@ export function guardStyleOwnedPixels({ before, after, owners, authoringMode, op
   for (let pixel = 0; pixel < nextOwners.length; pixel++) {
     const offset = pixel * 4, currentOwner = nextOwners[pixel];
     if (currentOwner > PIXEL_STYLE_OWNER.PIXEL_ART) throw new TypeError('Pixel ownership plane contains an unsupported owner value.');
+    const proposedChanged = pixels[offset] !== before[offset] || pixels[offset + 1] !== before[offset + 1] ||
+      pixels[offset + 2] !== before[offset + 2] || pixels[offset + 3] !== before[offset + 3];
     if (operation !== 'restore' && currentOwner !== PIXEL_STYLE_OWNER.UNOWNED && currentOwner !== owner) {
-      pixels.set(before.subarray(offset, offset + 4), offset); blockedPixels++; continue;
+      if (proposedChanged) { pixels.set(before.subarray(offset, offset + 4), offset); blockedPixels++; }
+      continue;
     }
     if (operation === 'erase' && currentOwner !== owner) {
-      pixels.set(before.subarray(offset, offset + 4), offset); blockedPixels++; continue;
+      if (proposedChanged) { pixels.set(before.subarray(offset, offset + 4), offset); blockedPixels++; }
+      continue;
     }
     const changed = pixels[offset] !== before[offset] || pixels[offset + 1] !== before[offset + 1] ||
       pixels[offset + 2] !== before[offset + 2] || pixels[offset + 3] !== before[offset + 3];
