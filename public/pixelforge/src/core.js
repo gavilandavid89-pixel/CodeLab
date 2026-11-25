@@ -762,12 +762,19 @@ export class RasterDocument {
     validateDimensions(width, height);
     if (width * height * 4 * this.layers.length > MAX_DOCUMENT_BYTES) throw new RangeError('Crop exceeds the document pixel-memory budget.');
     this.layers = this.layers.map(layer => {
-      const pixels = new Uint8ClampedArray(width * height * 4);
+      const pixels = new Uint8ClampedArray(width * height * 4), ownershipTiles = new Map();
       for (let row = 0; row < height; row++) {
         const from = ((y + row) * this.width + x) * 4;
         pixels.set(layer.pixels.subarray(from, from + width * 4), row * width * 4);
       }
-      return { ...layer, pixels };
+      for (let row = 0; row < height; row++) for (let col = 0; col < width; col++) {
+        const owner = this.#ownerAt(layer, x + col, y + row); if (!owner) continue;
+        const tileX = Math.floor(col / TILE_SIZE), tileY = Math.floor(row / TILE_SIZE), key = `${tileX}:${tileY}`;
+        const tileWidth = Math.min(TILE_SIZE, width - tileX * TILE_SIZE), tileHeight = Math.min(TILE_SIZE, height - tileY * TILE_SIZE);
+        let owners = ownershipTiles.get(key); if (!owners) { owners = new Uint8Array(tileWidth * tileHeight); ownershipTiles.set(key, owners); }
+        owners[(row - tileY * TILE_SIZE) * tileWidth + col - tileX * TILE_SIZE] = owner;
+      }
+      return { ...layer, pixels, ownershipTiles };
     });
     this.width = width; this.height = height;
     if (!this.layers.some(layer => layer.id === this.activeLayerId)) this.activeLayerId = this.layers[0].id;
@@ -1258,6 +1265,7 @@ export class RasterDocument {
     doc.revision = newIdentity ? 0 : (data.revision ?? 0);
     doc.saveVersion = newIdentity ? 0 : (data.saveVersion ?? doc.revision);
     doc.serverRevision = newIdentity ? 0 : (data.serverRevision ?? 0);
+    estimateRasterProjectJSONBytes(doc.layers);
     doc.history = []; doc.future = []; doc.historyBytes = 0; doc.dirty = false;
     return doc;
   }
