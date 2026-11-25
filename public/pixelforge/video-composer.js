@@ -2,7 +2,7 @@ import { parsePixelForgeVideoPackage, readStoredZip, buildConstantFrameRateSeque
 import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
 import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
-import { getVideoScalingMode } from './src/drawing-mode-config.mjs';
+import { getVideoScalingMode, resolveDrawingMode } from './src/drawing-mode-config.mjs';
 
 const $ = selector => document.querySelector(selector);
 const ui = {
@@ -86,7 +86,10 @@ function buildAgentCompositionGuide() {
     drawingModesPresent: [...new Set([
       packageData.manifest.sourceDrawingMode,
       ...packageData.frames.map(frame => frame.authoringMode),
+      ...(packageData.manifest.drawingModesPresent || []),
+      ...packageData.frames.flatMap(frame => (frame.layers || []).map(layer => layer.authoringMode)),
       ...packageData.frames.flatMap(frame => (frame.layerMetadata || []).map(item => item.authoringMode)),
+      ...packageData.frames.flatMap(frame => (frame.cels || []).map(cel => cel.metadata?.authoringMode)),
     ].filter(mode => mode === 'illustration' || mode === 'pixel-art'))],
     output: {
       platform: $('#vc-aspect').value === '16:9' ? 'youtube-landscape' :
@@ -426,6 +429,7 @@ async function composeNativeFrame(project, frame) {
   if (!context) throw new Error('No se pudo crear el lienzo para componer el fotograma.');
   const metadataByLayer = new Map((frame.layerMetadata || []).map(item => [String(item.layerId || item.id), item]));
   const celsByLayer = new Map((frame.cels || []).map(item => [String(item.layerId), item]));
+  const renderLayers = [];
   for (const layer of project.layers) {
     const cel = celsByLayer.get(String(layer.id));
     if (!cel) throw new Error('El fotograma no contiene el cel de la capa ' + layer.name + '.');
@@ -438,18 +442,24 @@ async function composeNativeFrame(project, frame) {
     const source = document.createElement('canvas');
     source.width = width; source.height = height;
     source.getContext('2d').putImageData(new ImageData(pixels, width, height), 0, 0);
+    const layerBlob = await new Promise((resolve, reject) => source.toBlob(value =>
+      value ? resolve(value) : reject(new Error('No se pudo preparar el cel de la capa ' + layer.name + '.')), 'image/png'));
+    const authoringMode = resolveDrawingMode({ cel, frame, layer, project });
     const x = Number(meta.x ?? meta.position?.x ?? 0);
     const y = Number(meta.y ?? meta.position?.y ?? 0);
     const sx = Number(meta.scaleX ?? 1), sy = Number(meta.scaleY ?? 1);
     const rotation = Number(meta.rotation ?? 0);
+    const opacity = Math.max(0, Math.min(1, Number(meta.opacity ?? layer.opacity ?? 1)));
+    const blendMode = String(meta.blendMode || layer.blendMode || 'normal');
+    renderLayers.push({
+      blob: layerBlob, authoringMode, x, y, scaleX: Number.isFinite(sx) ? sx : 1,
+      scaleY: Number.isFinite(sy) ? sy : 1, rotation, opacity, blendMode,
+    });
     context.save();
-    const layerAuthoringMode = layer.authoringMode === 'pixel-art' ? 'pixel-art' : layer.authoringMode === 'illustration' ? 'illustration' : null;
-    const authoringMode = meta.authoringMode === 'pixel-art' ? 'pixel-art' : meta.authoringMode === 'illustration' ? 'illustration' : layerAuthoringMode;
     context.imageSmoothingEnabled = authoringMode !== 'pixel-art';
     if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
-    context.globalAlpha = Math.max(0, Math.min(1, Number(meta.opacity ?? layer.opacity ?? 1)));
-    const blend = String(meta.blendMode || layer.blendMode || 'normal');
-    if (['source-over','multiply','screen','overlay','darken','lighten','difference','exclusion','lighter'].includes(blend)) context.globalCompositeOperation = blend;
+    context.globalAlpha = opacity;
+    if (['source-over','multiply','screen','overlay','darken','lighten','difference','exclusion','lighter'].includes(blendMode)) context.globalCompositeOperation = blendMode;
     context.translate(width / 2 + x, height / 2 + y);
     context.rotate(rotation * Math.PI / 180);
     context.scale(Number.isFinite(sx) ? sx : 1, Number.isFinite(sy) ? sy : 1);
@@ -457,7 +467,7 @@ async function composeNativeFrame(project, frame) {
     context.restore();
   }
   const blob = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('No se pudo codificar el fotograma compuesto como PNG.')), 'image/png'));
-  return blob;
+  return { blob, layers: renderLayers, width, height };
 }
 async function parseComposerPackage(file) {
   const entries = await readStoredZip(file);
@@ -468,8 +478,10 @@ async function parseComposerPackage(file) {
     if (!animation?.frames?.length) throw new Error('El proyecto nativo no contiene una línea de tiempo exportable.');
     const frames = [];
     for (const frame of animation.frames) {
-      frames.push({ ...frame, blob: await composeNativeFrame(project, frame) });
+      const composed = await composeNativeFrame(project, frame);
+      frames.push({ ...frame, ...composed });
     }
+    const drawingModesPresent = [...new Set(frames.flatMap(frame => frame.layers.map(layer => layer.authoringMode)))];
     const totalDurationMs = frames.reduce((sum, frame) => sum + Number(frame.durationMs), 0);
     return {
       manifest: {
@@ -478,6 +490,7 @@ async function parseComposerPackage(file) {
         loop: animation.loop !== false, frameCount: frames.length, totalDurationMs,
         projectName: project.name,
         sourceDrawingMode: project.drawingConfiguration?.activeMode === 'pixel-art' ? 'pixel-art' : 'illustration',
+        drawingModesPresent,
         scalingMode: getVideoScalingMode(project.drawingConfiguration?.activeMode),
       },
       frames, project: new Blob([JSON.stringify(project)], { type: 'application/json' }),
