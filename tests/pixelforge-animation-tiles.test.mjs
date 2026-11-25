@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import {
-  encodeSparseTiles, decodeSparseTiles, diffSparseTiles,
+  encodeSparseTiles, decodeSparseTiles, diffSparseTiles, diffSparseOwnershipTiles,
   DEFAULT_CEL_TILE_SIZE, SparseTileCelStore,
 } from '../public/pixelforge/src/animation-tiles.mjs';
 
@@ -70,6 +70,51 @@ test('tile codec validates dimensions and tile sizes', async () => {
   await assert.rejects(() => encodeSparseTiles(new Uint8Array(4), { width: 0, height: 1 }), /dimensions/);
 });
 
+
+test('sparse cel patch synchronizes ownership changes even when RGBA is unchanged', async () => {
+  const width = 64, height = 64;
+  const pixels = makePixels(width, height);
+  pixels.set([10, 20, 30, 255], 0);
+  const owners = new Uint8Array(width * height);
+  owners[0] = 1;
+  const changedOwners = new Uint8Array(owners);
+  changedOwners[0] = 2;
+  const before = await encodeSparseTiles(pixels, { width, height });
+  before.ownershipTiles = [{
+    x: 0, y: 0, width, height,
+    sha256: await crypto.subtle.digest('SHA-256', owners).then(bytes => [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('')),
+    owners: Buffer.from(owners).toString('base64'),
+  }];
+  const after = await encodeSparseTiles(pixels, { width, height });
+  after.ownershipTiles = [{
+    x: 0, y: 0, width, height,
+    sha256: await crypto.subtle.digest('SHA-256', changedOwners).then(bytes => [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('')),
+    owners: Buffer.from(changedOwners).toString('base64'),
+  }];
+  const diff = diffSparseOwnershipTiles(before, after);
+  assert.equal(diff.added.length, 0);
+  assert.equal(diff.changed.length, 1);
+  assert.equal(diff.removed.length, 0);
+  assert.deepEqual(diffSparseTiles(before, after), { added: [], changed: [], removed: [] });
+
+  const store = new SparseTileCelStore();
+  const first = await store.createCel(before);
+  const second = await store.createCel(after);
+  const patch = await store.createPatch(first, second, {
+    projectId: 'project-owner', baseRevision: 4, operationId: 'owner-op',
+    frameId: 'frame-owner', layerId: 'layer-owner',
+  });
+  assert.equal(patch.version, 2);
+  assert.deepEqual(patch.summary, {
+    added: 0, changed: 0, removed: 0,
+    ownershipAdded: 0, ownershipChanged: 1, ownershipRemoved: 0,
+  });
+  assert.equal(patch.operations.length, 1);
+  assert.equal(patch.operations[0].type, 'ownership.put');
+  assert.equal(patch.operations[0].owners, after.ownershipTiles[0].owners);
+  store.releaseCel(first);
+  store.releaseCel(second);
+});
 
 test('sparse cel store deduplicates immutable tiles and applies copy-on-write edits', async () => {
   const width = 128, height = 64;
