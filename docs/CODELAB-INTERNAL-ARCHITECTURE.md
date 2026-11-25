@@ -29,8 +29,8 @@ Separar siempre estas responsabilidades:
 | Frontend público | `public/` | UI, navegación y experiencias de estudio | Autorizar operaciones ni saltarse validaciones del servidor |
 | PixelForge editor | `public/pixelforge/src/editor.js` | Orquestar edición, herramientas, capas, documento activo, modos y UI del editor | Que toda ruta tiled tenga ya paridad con el modelo denso |
 | Modelo raster PixelForge | `public/pixelforge/src/core.js` | Documento raster y capas en el modelo denso heredado | Que el límite denso desaparezca por existir un adaptador sparse |
-| Animación PixelForge | `public/pixelforge/src/animation.mjs` | Timeline, frames, cels y metadatos de animación densa | Que la animación tiled sea ya el modelo canónico del editor |
-| Almacenamiento sparse/tiled | `public/pixelforge/src/animation-tiles.mjs`, `raster-tiled-adapter.mjs` y módulos relacionados | Recursos RGBA dispersos, referencias, copy-on-write, lectura/escritura regional y adaptadores | Que el store en memoria sea almacenamiento durable o que todas las herramientas lo usen |
+| Animación PixelForge | `public/pixelforge/src/animation.mjs` y `animation-tiled-adapter.mjs` | Timeline densa heredada y timeline sparse para documentos tiled | Que el adaptador dense-to-tiled se use para iniciar nuevas animaciones tiled |
+| Almacenamiento sparse/tiled | `public/pixelforge/src/animation-tiles.mjs`, `raster-tiled-adapter.mjs`, `animation-tiled-adapter.mjs` y módulos relacionados | Recursos RGBA dispersos, referencias compartidas proyecto/animación, copy-on-write, lectura/escritura regional e historial por frame | Que el store en memoria sea almacenamiento durable remoto o que todas las herramientas densas estén migradas |
 | Runtime Headless de PixelForge | `public/pixelforge/src/headless.js` y artefacto del workflow correspondiente | Exponer operaciones de proyecto para automatización/edición fuera de la UI | Que sea el worker de CodeLab o que reciba credenciales internas |
 | Video Composer | `public/pixelforge/video-composer.js`, `src/video-capture-layout.mjs`, encoder y worker | Capturar/componer frames y codificar salida respetando geometría, sampling y timeline | Que cambiar FPS invente poses o que el formato de salida cambie el lienzo fuente |
 | Bridge/worker de órdenes | `agent-bridge-worker.mjs` y coordinación desde `server.js` | Reclamar y completar órdenes persistidas y autorizadas; guardar resultados | Que una notificación sea la orden durable o que el worker sea el agente IA |
@@ -163,10 +163,10 @@ Después de editar:
 |---|---|---|
 | Modos illustration/pixel-art | Persistencia y propagación en documentos densos, Headless y paquetes estructurados | No significa que todas las herramientas tiled estén migradas |
 | Cambio de modo | No destructivo y basado en metadatos | No debe reescribir píxeles ni geometría |
-| Capas y cels tiled | Adaptadores sparse y operaciones regionales implementadas | Todavía no son el modelo canónico completo del editor |
+| Capas y cels tiled | Documento tiled usado como modelo activo en proyectos de alta resolución; referencias sparse y operaciones regionales | Algunas herramientas densas y flujos auxiliares aún no tienen paridad |
 | Herramientas tiled | Brush/eraser, fill y gradientes transaccionales, selecciones geométricas y contornos de línea/rectángulo/elipse | Magic wand y transforms requieren migración/paridad |
-| Historia tiled | Historia de trazos en alcance limitado | Operaciones de metadatos de capa y operaciones generales aún requieren integración |
-| Animación tiled | Adaptador de migración/manifiesto | La ruta densa del editor sigue siendo la ruta integrada; no afirmar paridad completa |
+| Historia tiled | Historia transaccional de trazos y operaciones de metadatos de capa; timeline conserva un historial independiente por frame | No implica que todos los comandos densos tengan equivalente tiled |
+| Animación tiled | Timeline integrada en el editor: frame switching por referencias compartidas, add/duplicate/delete/reorder, FPS/duración, onion skin regional, thumbnails sparse, playback, autosave y export por lotes | Mantener explícitas las limitaciones de herramientas tiled y no convertir cels a buffers RGBA completos |
 | Video nativo mixto | Compositor/exportador por capa conserva modo y sampling | Paquetes legacy aplanados no pueden recuperar metadatos por capa ausentes |
 | Almacenamiento remoto tiled | Diseño y piezas aisladas | No asumir persistencia privada de tiles ni sync incremental end-to-end |
 
@@ -200,7 +200,7 @@ Este cuadro es una fotografía técnica y debe actualizarse con código y prueba
 - `raster-tiled-adapter.mjs` is the project-level owner of layer-to-cel references; it swaps a layer reference only after a successful store batch.
 - `raster-tiled-history.mjs` records bounded before/after tile payloads for atomic operations. The fill command is one history item, not a sequence of per-pixel edits.
 - `raster-tiled-fill.mjs` performs scanline discovery and stages changes before committing. It enforces an explicit queue limit and history byte budget. The UI dispatches tiled documents to this path from `editor.js`.
-- This is a first tiled tool integration, not full editor parity. Selection masks, magic wand, transforms, layer metadata history and tiled animation remain separate migration gates.
+- This is a partial tiled editor integration, not full editor parity. Geometric selection and layer metadata history are integrated; magic wand and dense transform workflows remain separate migration gates.
 
 
 ### Tiled linear gradient boundary
@@ -221,3 +221,16 @@ Este cuadro es una fotografía técnica y debe actualizarse con código y prueba
 ### Tiled layer metadata history
 
 The tiled editor layer panel uses document-level layer transactions for add/duplicate/delete/rename, visibility, lock, opacity and reorder. Undo snapshots retain shared cel references and metadata only; they do not clone full-canvas pixel buffers. History ownership releases retained references when commands are discarded, cleared or disposed. The same configured byte/command bounds apply, and operations that cannot fit the metadata snapshot budget must restore their pre-operation state.
+
+
+### Tiled animation timeline integration
+
+- `TiledAnimationDocument.fromTiledProjectDocument()` creates the initial frame by cloning only cel references from the active tiled project. The animation and project share one `SparseTileCelStore`; no width × height RGBA frame buffer is allocated.
+- `getFrameCelReference()` and `replaceFrameCelReference()` transfer copy-on-write cel ownership between the animation model and active project document. Geometry is checked before replacement.
+- `editor.js` parks the active `TiledRasterStrokeHistory` by stable frame ID when switching frames and restores that frame's history on return. Histories retain their own immutable before/after tile snapshots; undo in one frame cannot mutate another frame.
+- Frame operations preserve stable IDs, durations, authoring modes and per-layer metadata. Layer removal returns retained cel references; the editor keeps these as undoable orphans and releases them when no retained layer-state command can restore the layer.
+- Timeline thumbnails are downsampled by bounded row reads and cached by frame/cel state. Onion skin composites only the visible document region for adjacent frames. Playback uses the stored frame durations and the timeline clock.
+- Native autosave stores the tiled animation manifest beside the tiled project manifest. Restore validates layer order, dimensions, frame limits and cel geometry/hash before installing the active frame.
+- ZIP animation and sprite-sheet exports composite 16-row batches into output canvases. Temporary JavaScript RGBA buffers are bounded; final PNG canvas dimensions necessarily match the requested export.
+- Browser E2E coverage verifies the visible timeline on a tiled document: blank-frame isolation, frame-local undo, duplication, reorder/delete, onion skin and sparse autosave. Unit contracts verify shared store references, layer orphan restoration and independent history swaps.
+- Magic-wand selection, dense transforms, AI vision snapshots and scene workspaces remain unavailable for tiled projects. Do not infer their support from the timeline integration.
