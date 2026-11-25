@@ -8,6 +8,7 @@ import {
   getVideoScalingMode,
   normalizeDrawingModeProfile,
   updateDrawingModeOverrides,
+  resolveDrawingMode,
 } from '../public/pixelforge/src/drawing-mode-config.mjs';
 
 test('legacy projects restore a compatible pixel-art mode without changing canvas data', () => {
@@ -109,4 +110,13 @@ test('invalid or duplicated mode metadata is normalized to the enabled two-mode 
   assert.deepEqual(config.availableModes, ['illustration', 'pixel-art']);
   assert.equal(config.initialMode, 'illustration');
   assert.equal(config.activeMode, 'illustration');
+});
+
+
+test('content drawing mode resolves from cel to frame to layer before project default', () => {
+  const project = { drawingConfiguration: { availableModes: ['illustration', 'pixel-art'], initialMode: 'illustration', activeMode: 'pixel-art' } };
+  assert.equal(resolveDrawingMode({ project }), 'pixel-art');
+  assert.equal(resolveDrawingMode({ project, layer: { authoringMode: 'illustration' } }), 'illustration');
+  assert.equal(resolveDrawingMode({ project, layer: { authoringMode: 'illustration' }, frame: { authoringMode: 'pixel-art' } }), 'pixel-art');
+  assert.equal(resolveDrawingMode({ project, layer: { authoringMode: 'illustration' }, frame: { authoringMode: 'pixel-art' }, cel: { metadata: { authoringMode: 'illustration' } } }), 'illustration');
 });
