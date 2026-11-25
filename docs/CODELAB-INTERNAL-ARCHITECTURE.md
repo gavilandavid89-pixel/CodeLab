@@ -193,3 +193,11 @@ Este cuadro es una fotografía técnica y debe actualizarse con código y prueba
 - Cuando un módulo cambie de propietario, actualizar el mapa y los documentos especializados en el mismo PR.
 - No copiar aquí esquemas SQL completos, endpoints exhaustivos ni formatos binarios: enlazar la especificación que los posee.
 - Si dos documentos discrepan, respetar la jerarquía de autoridad de `docs/README.md` y corregir el documento desactualizado; no inventar una tercera interpretación.
+
+
+### Sparse tiled fill and operation history
+- `animation-tiles.mjs` owns immutable content-addressed tile resources and cel copy-on-write. `writeTileBatch()` stages all changed tiles in a cloned cel and exposes the new cel only after the complete batch succeeds.
+- `raster-tiled-adapter.mjs` is the project-level owner of layer-to-cel references; it swaps a layer reference only after a successful store batch.
+- `raster-tiled-history.mjs` records bounded before/after tile payloads for atomic operations. The fill command is one history item, not a sequence of per-pixel edits.
+- `raster-tiled-fill.mjs` performs scanline discovery and stages changes before committing. It enforces an explicit queue limit and history byte budget. The UI dispatches tiled documents to this path from `editor.js`.
+- This is a first tiled tool integration, not full editor parity. Selection masks, magic wand, transforms, layer metadata history and tiled animation remain separate migration gates.
