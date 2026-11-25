@@ -43,8 +43,10 @@ export function guardStyleOwnedPixels({ before, after, owners, authoringMode, op
     const changed = pixels[offset] !== before[offset] || pixels[offset + 1] !== before[offset + 1] ||
       pixels[offset + 2] !== before[offset + 2] || pixels[offset + 3] !== before[offset + 3];
     if (changed) changedPixels++;
-    if (pixels[offset + 3] === 0) nextOwners[pixel] = PIXEL_STYLE_OWNER.UNOWNED;
-    else if (operation !== 'restore' && currentOwner === PIXEL_STYLE_OWNER.UNOWNED) nextOwners[pixel] = owner;
+    if (operation !== 'restore') {
+      if (pixels[offset + 3] === 0) nextOwners[pixel] = PIXEL_STYLE_OWNER.UNOWNED;
+      else if (currentOwner === PIXEL_STYLE_OWNER.UNOWNED) nextOwners[pixel] = owner;
+    }
   }
   return { pixels, owners: nextOwners, changedPixels, blockedPixels };
 }
