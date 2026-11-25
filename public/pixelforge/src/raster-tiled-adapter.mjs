@@ -322,6 +322,7 @@ export class TiledRasterProjectDocument {
     return this.#layers.map(({ celId, ...layer }) => ({ ...structuredClone(layer), celId }));
   }
   get stats() { return { ...this.#store.stats, history: this.#strokeHistory.stats }; }
+  get tileStore() { return this.#store; }
 
   /** Internal animation bridge: frame cels share this document's immutable tile store. */
   createAnimationBridgeSeed() {
@@ -346,7 +347,7 @@ export class TiledRasterProjectDocument {
 
   cloneLayerCelReference(layerId) { return this.#store.cloneCel(this.#cel(layerId).celId); }
 
-  replaceLayerCelReferences(references) {
+  replaceLayerCelReferences(references, { takeOwnership = false } = {}) {
     if (!(references instanceof Map) || references.size !== this.#layers.length ||
         this.#layers.some(layer => !references.has(layer.id))) {
       throw new TypeError('Animation frame cel references must match the current raster layer stack.');
@@ -354,10 +355,10 @@ export class TiledRasterProjectDocument {
     const replacements = [];
     try {
       for (const layer of this.#layers) replacements.push({
-        layer, nextCelId: this.#store.cloneCel(references.get(layer.id)),
+        layer, nextCelId: takeOwnership ? references.get(layer.id) : this.#store.cloneCel(references.get(layer.id)),
       });
     } catch (error) {
-      for (const item of replacements) this.#store.releaseCel(item.nextCelId);
+      if (!takeOwnership) for (const item of replacements) this.#store.releaseCel(item.nextCelId);
       throw error;
     }
     for (const { layer, nextCelId } of replacements) {
