@@ -1101,8 +1101,8 @@ async function main() {
       'large imports must be stored as sparse tiled manifests rather than dense layer buffers');
     assert.equal(largeStored.layers.length, 3, 'all raster layers must survive chunked persistence');
     assert.equal(largeStored.serverRevision, 1, 'chunked import must receive the first server revision');
-    assert.equal(await accountPage.locator('#add-layer').isDisabled(), true,
-      'layer authoring stays disabled until sparse layer-history operations are undo-safe');
+    assert.equal(await accountPage.locator('#add-layer').isEnabled(), true,
+      'sparse layer authoring must be available with transactional layer-history support');
     failChunkOnce = true;
     // Force a real sparse raster edit so the retry tests a tile-manifest chunk
     // upload rather than an unsupported dense-only layer operation.
