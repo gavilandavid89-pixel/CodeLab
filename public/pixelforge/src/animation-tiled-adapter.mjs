@@ -9,6 +9,7 @@
  */
 import { SparseTileCelStore, DEFAULT_CEL_TILE_SIZE } from './animation-tiles.mjs';
 import { PIXELFORGE_DRAWING_MODES } from './drawing-mode-config.mjs';
+import { guardStyleOwnedPixels } from './raster-style-ownership.mjs';
 
 const VALID_DRAWING_MODES = Object.values(PIXELFORGE_DRAWING_MODES);
 const DEFAULT_DRAWING_MODE = PIXELFORGE_DRAWING_MODES.PIXEL_ART;
@@ -356,12 +357,33 @@ export class TiledAnimationDocument {
     return this.#store.readRegion(this.#cel(frame, layerId), region);
   }
 
-  async writeRegion(frameIndex, layerId, region, pixels) {
+  readOwnershipRegion(frameIndex, layerId, region) {
+    const frame = this.#frame(frameIndex);
+    return this.#store.readOwnershipRegion(this.#cel(frame, layerId), region);
+  }
+
+  async writeRegion(frameIndex, layerId, region, pixels, { authoringMode, operation = 'draw', restore = false, owners: ownerSnapshot = null } = {}) {
     const frame = this.#frame(frameIndex);
     const previousCelId = this.#cel(frame, layerId);
-    const result = await this.#store.writeRegion(previousCelId, region, pixels);
+    let result;
+    if (restore) {
+      result = ownerSnapshot instanceof Uint8Array
+        ? await this.#store.writeRegionWithOwnership(previousCelId, region, pixels, ownerSnapshot)
+        : await this.#store.writeRegion(previousCelId, region, pixels);
+    } else {
+      const before = this.#store.readRegion(previousCelId, region);
+      const owners = this.#store.readOwnershipRegion(previousCelId, region);
+      const mode = authoringMode ?? frame.layerMetadata?.[layerId]?.authoringMode ?? frame.authoringMode;
+      const guarded = guardStyleOwnedPixels({ before, after: pixels, owners, authoringMode: mode, operation });
+      if (!guarded.changedPixels && guarded.owners.every((value, index) => value === owners[index])) {
+        return { changed: false, celId: previousCelId, changedTiles: 0, blockedPixels: guarded.blockedPixels, changedPixels: 0 };
+      }
+      result = await this.#store.writeRegionWithOwnership(previousCelId, region, guarded.pixels, guarded.owners);
+      result.blockedPixels = guarded.blockedPixels;
+      result.changedPixels = guarded.changedPixels;
+    }
     if (result.changed) { frame.cels.set(layerId, result.celId); this.#store.releaseCel(previousCelId); this.#thumbnailCache.delete(frame.id); }
-    return { changed: result.changed, celId: result.celId, changedTiles: result.changedTiles, removedTiles: result.removedTiles };
+    return { changed: result.changed, celId: result.celId, changedTiles: result.changedTiles, removedTiles: result.removedTiles, blockedPixels: result.blockedPixels || 0, changedPixels: result.changedPixels || 0 };
   }
 
   createBlankFrame({ afterIndex = this.#activeFrameIndex, durationMs = 100, authoringMode } = {}) {
