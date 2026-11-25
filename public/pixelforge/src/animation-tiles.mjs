@@ -436,7 +436,7 @@ export class SparseTileCelStore {
     try {
       const ownership = await this.writeOwnershipRegion(intermediateId, region, owners);
       if (ownership.celId !== intermediateId) this.releaseCel(intermediateId);
-      return { celId: ownership.celId, changed: rgba.changed || ownership.changed, changedTiles: rgba.changedTiles + ownership.changedTiles };
+      return { celId: ownership.celId, changed: rgba.changed || ownership.changed, changedTiles: rgba.changedTiles, changedOwnershipTiles: ownership.changedTiles };
     } catch (error) {
       if (intermediateId !== celId) this.releaseCel(intermediateId);
       throw error;
