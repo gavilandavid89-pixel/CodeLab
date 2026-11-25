@@ -499,6 +499,7 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
     parts: parts.map(part => ({
       ...part,
       pixels: sourceLayers.find(layer => layer.id === part.layerId)?.pixels || null,
+      ownershipTiles: structuredClone(sourceLayers.find(layer => layer.id === part.layerId)?.ownershipTiles || []),
     })),
     geometry: {
       canvas: { width: project.width, height: project.height },
@@ -516,6 +517,7 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
     layerSnapshot: sourceLayers.map((layer, index) => ({
       id: layer.id, name: layer.name, index, opacity: layer.opacity, visible: layer.visible, locked: layer.locked,
       pixels: layer.pixels || null,
+      ownershipTiles: structuredClone(layer.ownershipTiles || []),
     })),
     frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({
       index, frameId: frame.id, durationMs: frame.durationMs,
@@ -524,7 +526,7 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
   };
 }
 
-export function copyReferencePixelsToActiveFrameLayer({ drawingDocument, animation = null, pixels } = {}) {
+export function copyReferencePixelsToActiveFrameLayer({ drawingDocument, animation = null, pixels, ownershipTiles = [] } = {}) {
   const layer = drawingDocument?.activeLayer;
   if (!drawingDocument || !layer) throw new TypeError('An active PixelForge layer is required.');
   if (layer.locked) throw new Error('The active PixelForge layer is locked.');
@@ -532,13 +534,15 @@ export function copyReferencePixelsToActiveFrameLayer({ drawingDocument, animati
     throw new TypeError('Reference pixels must match the active canvas RGBA8 dimensions.');
   }
   const copy = new Uint8Array(pixels);
+  const ownerMap = new Map((ownershipTiles || []).map(tile => [`${tile.x / 64}:${tile.y / 64}`, deserializePixels(tile.owners)]));
   if (animation) {
     if (typeof animation.setLayerPixels !== 'function' || !Number.isInteger(animation.activeFrameIndex)) {
       throw new TypeError('The active animation frame cannot accept reference pixels.');
     }
     animation.setLayerPixels(animation.activeFrameIndex, layer.id, new Uint8Array(copy));
+    if (typeof animation.setLayerMetadata === 'function') animation.setLayerMetadata(animation.activeFrameIndex, layer.id, { ...animation.getLayerMetadata(animation.activeFrameIndex, layer.id), ownershipTiles: ownerMap });
   }
-  drawingDocument.setLayerPixels(layer.id, copy);
+  drawingDocument.setLayerPixels(layer.id, copy, { restore: true, ownershipTiles: ownerMap });
   drawingDocument.dirty = true;
   return { layerId: layer.id, frameIndex: animation?.activeFrameIndex ?? null, copiedBytes: copy.byteLength };
 }
