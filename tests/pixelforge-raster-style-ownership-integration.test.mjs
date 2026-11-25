@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
 import { applyTiledBrushDab } from '../public/pixelforge/src/raster-tiled-brush.mjs';
 import { fillTiledLayer } from '../public/pixelforge/src/raster-tiled-fill.mjs';
+import { PixelForgeAnimation } from '../public/pixelforge/src/animation.mjs';
+import { TiledAnimationDocument } from '../public/pixelforge/src/animation-tiled-adapter.mjs';
 
 function project() { return TiledRasterProjectDocument.createBlank({ width: 8, height: 8, tileSize: 32 }); }
 
@@ -87,4 +89,24 @@ test('bucket fill tile history restores the ownership plane on undo and redo', a
     await doc.redo();
     assert.ok([...doc.readOwnershipRegion(layerId, region)].every(owner => owner === 2));
   } finally { doc.dispose(); }
+});
+
+test('animation cels enforce style isolation and retain ownership across frame cloning and manifest reload', async () => {
+  const legacy = new PixelForgeAnimation({ width: 8, height: 8, layerIds: ['paint'] });
+  const animation = await TiledAnimationDocument.fromAnimation(legacy, { tileSize: 32 });
+  try {
+    const region = { x: 2, y: 2, width: 1, height: 1 };
+    await animation.writeRegion(0, 'paint', region, new Uint8ClampedArray([255, 0, 0, 255]), { authoringMode: 'pixel-art' });
+    const blocked = await animation.writeRegion(0, 'paint', region, new Uint8ClampedArray([0, 255, 0, 255]), { authoringMode: 'illustration' });
+    assert.equal(blocked.changed, false);
+    assert.equal(blocked.blockedPixels, 1);
+    assert.deepEqual([...animation.readOwnershipRegion(0, 'paint', region)], [2]);
+    animation.cloneFrame(0);
+    assert.deepEqual([...animation.readOwnershipRegion(1, 'paint', region)], [2]);
+    const manifest = await animation.toManifest();
+    assert.equal(manifest.frames[1].cels[0].cel.ownershipTiles.length, 1);
+    const restored = await TiledAnimationDocument.fromManifest(manifest);
+    try { assert.deepEqual([...restored.readOwnershipRegion(1, 'paint', region)], [2]); }
+    finally { restored.dispose(); }
+  } finally { animation.dispose(); }
 });
