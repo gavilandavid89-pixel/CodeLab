@@ -1044,13 +1044,12 @@ async function main() {
     await accountPage.locator('#projects-button').click().catch(() => {});
     const referenceCleanup = await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { method: 'DELETE', headers: authHeaders });
     assert.equal(referenceCleanup.status, 200, 'the E2E reference fixture should be removable after the test');
-    // The cleanup check opens the Saved Projects modal; dismiss it before the
-    // PostgreSQL tiled-import scenario interacts with editor tools underneath.
-    assert.equal(await accountPage.locator('#projects-dialog').evaluate(dialog => dialog.open), true,
-      'the Saved Projects dialog should be open after the cleanup check');
+    // Opening Saved Projects awaits autosave and project-list rendering inside
+    // an async click handler. Wait for showModal() rather than racing the handler.
+    await accountPage.locator('#projects-dialog').waitFor({ state: 'visible' });
+    await accountPage.waitForFunction(() => document.querySelector('#projects-dialog')?.open === true);
     await accountPage.locator('#close-projects').click();
-    assert.equal(await accountPage.locator('#projects-dialog').evaluate(dialog => dialog.open), false,
-      'the Saved Projects dialog must be closed before continuing the editor integration flow');
+    await accountPage.waitForFunction(() => document.querySelector('#projects-dialog')?.open === false);
 
     if (usesPostgres) {
     // A 3-layer 2048×1024 document exceeds the single-request threshold but stays within
