@@ -57,20 +57,30 @@ export function getCompositionGuide(sourceWidth, sourceHeight, targetWidth, targ
   };
 }
 
-export function getSourceQualityAssessment(sourceWidth, sourceHeight, outputWidth, outputHeight) {
+export function getSourceQualityAssessment(sourceWidth, sourceHeight, outputWidth, outputHeight, { fitMode = 'contain' } = {}) {
   if (![sourceWidth, sourceHeight, outputWidth, outputHeight].every(value => Number.isFinite(value) && value > 0)) {
     throw new RangeError('Source and output dimensions must be positive finite numbers.');
   }
-  const rect = containRect(sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight);
-  const scale = rect.width / sourceWidth;
+  const covering = fitMode === 'cover';
+  const sourceRect = covering
+    ? coverSourceRect(sourceWidth, sourceHeight, outputWidth, outputHeight)
+    : { x: 0, y: 0, width: sourceWidth, height: sourceHeight };
+  const scale = covering
+    ? Math.max(outputWidth / sourceRect.width, outputHeight / sourceRect.height)
+    : Math.min(outputWidth / sourceWidth, outputHeight / sourceHeight);
+  const rect = covering
+    ? { width: outputWidth, height: outputHeight }
+    : containRect(sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight);
   return {
     scale,
     upscaled: scale > 1.001,
     downscaled: scale < 0.999,
     sourceWidth,
     sourceHeight,
+    sourceCrop: sourceRect,
     contentWidth: rect.width,
     contentHeight: rect.height,
+    fitMode: covering ? 'cover' : 'contain',
   };
 }
 
