@@ -120,7 +120,7 @@ export class TiledRasterStrokeHistory {
     this.#assertLive();
     if (this.#active) throw new Error('A tiled brush stroke is already active.');
     if (!this.#document.layers.some(layer => layer.id === layerId)) throw new Error('Unknown tiled brush layer.');
-    this.#active = { type: 'pixels', layerId, settings: { ...settings }, entries: [], bytes: 0 };
+    this.#active = { type: 'pixels', layerId, settings: { ...settings, authoringMode: settings.authoringMode ?? this.#document.drawingConfiguration?.activeMode }, entries: [], bytes: 0 };
     return this.#active;
   }
 
@@ -183,7 +183,7 @@ export class TiledRasterStrokeHistory {
     this.#active = null;
     for (let index = command.entries.length - 1; index >= 0; index--) {
       const entry = command.entries[index];
-      await this.#document.writeRegion(command.layerId, entry.region, entry.before);
+      await this.#document.writeRegion(command.layerId, entry.region, entry.before, { restore: true });
     }
     return command.entries.length > 0;
   }
@@ -205,7 +205,7 @@ export class TiledRasterStrokeHistory {
         await this.#document.writeRegion(command.layerId, entry.region, entry.before);
       }
     } else {
-      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, before }) => ({ x, y, pixels: before })), { maxBytes: this.#maxBytes, allowLocked: true });
+      await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, before }) => ({ x, y, pixels: before })), { maxBytes: this.#maxBytes, allowLocked: true, restore: true });
     }
     this.#redo.push(command);
     return true;
@@ -223,7 +223,7 @@ export class TiledRasterStrokeHistory {
       return true;
     }
     if (command.entries[0]?.region) {
-      for (const entry of command.entries) await this.#document.writeRegion(command.layerId, entry.region, entry.after);
+      for (const entry of command.entries) await this.#document.writeRegion(command.layerId, entry.region, entry.after, { restore: true });
     } else {
       await this.#document.writeTileBatch(command.layerId, command.entries.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes, allowLocked: true });
     }
