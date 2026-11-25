@@ -67,3 +67,48 @@ test('history rejects undo during an active stroke and validates limits', async 
   history.dispose();
   doc.dispose();
 });
+
+import { fillTiledLayer } from '../public/pixelforge/src/raster-tiled-fill.mjs';
+
+test('tiled flood fill stages sparse tiles atomically and supports undo/redo', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 80, height: 64, tileSize: 32 });
+  const layerId = doc.activeLayerId;
+  const before = whole(doc, layerId);
+  const changed = await fillTiledLayer(doc, layerId, 2, 3, { color: '#2a7be4' });
+  assert.equal(changed, 80 * 64);
+  const painted = whole(doc, layerId);
+  assert.notDeepEqual(painted, before);
+  assert.equal(doc.history.at(-1).type, 'fill');
+  assert.equal(await doc.undo(), true);
+  assert.deepEqual(whole(doc, layerId), before);
+  assert.equal(await doc.redo(), true);
+  assert.deepEqual(whole(doc, layerId), painted);
+  doc.dispose();
+});
+
+test('tiled contiguous fill respects boundaries and leaves disconnected regions untouched', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 12, height: 8, tileSize: 32 });
+  const layerId = doc.activeLayerId;
+  const wall = new Uint8ClampedArray(8 * 4);
+  for (let i = 0; i < 8; i++) wall.set([0, 0, 0, 255], i * 4);
+  await doc.writeRegion(layerId, { x: 5, y: 0, width: 1, height: 8 }, wall);
+  const changed = await fillTiledLayer(doc, layerId, 1, 1, { color: '#ff0000' });
+  assert.equal(changed, 5 * 8);
+  const pixels = whole(doc, layerId);
+  assert.deepEqual([...pixels.slice((1 * 12 + 1) * 4, (1 * 12 + 1) * 4 + 4)], [255, 0, 0, 255]);
+  assert.deepEqual([...pixels.slice((1 * 12 + 7) * 4, (1 * 12 + 7) * 4 + 4)], [0, 0, 0, 0]);
+  doc.dispose();
+});
+
+test('tiled fill rejects its working/history budget before changing any cel', async () => {
+  const doc = TiledRasterProjectDocument.createBlank({ width: 32, height: 32, tileSize: 32 });
+  const layerId = doc.activeLayerId;
+  const before = whole(doc, layerId);
+  await assert.rejects(
+    () => fillTiledLayer(doc, layerId, 0, 0, { color: '#00ff00', maxBytes: 8 }),
+    /byte budget/
+  );
+  assert.deepEqual(whole(doc, layerId), before);
+  assert.equal(doc.history.length, 0);
+  doc.dispose();
+});
