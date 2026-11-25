@@ -420,6 +420,23 @@ export class TiledRasterProjectDocument {
     return this.#store.readRegion(this.#cel(layerId).celId, region);
   }
 
+  readOwnershipRegion(layerId, region) {
+    return this.#store.readOwnershipRegion(this.#cel(layerId).celId, region);
+  }
+
+  async writeRegionWithOwnership(layerId, region, pixels, owners) {
+    const layer = this.#cel(layerId);
+    if (layer.locked) throw new Error('The target layer is locked.');
+    const previousCelId = layer.celId;
+    const result = await this.#store.writeRegionWithOwnership(previousCelId, region, pixels, owners);
+    if (result.changed) {
+      layer.celId = result.celId;
+      this.#markChanged();
+      this.#store.releaseCel(previousCelId);
+    }
+    return { changed: result.changed, changedTiles: result.changedTiles, celId: result.celId };
+  }
+
   /**
    * Composite only a bounded viewport-sized region. This is intentionally
    * separate from toLegacyProjectJSON()/composeCel(): callers rendering a
