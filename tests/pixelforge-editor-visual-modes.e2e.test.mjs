@@ -121,7 +121,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     for (let attempt = 0; attempt < 4; attempt++) {
       await page.mouse.move(screen.x, screen.y);
       const readout = await page.locator('#coordinate-readout').textContent();
-      const match = readout.match(/x: (-?\\d+) · y: (-?\\d+)/);
+      const match = readout.match(/x: (-?\d+) · y: (-?\d+)/);
       if (!match) break;
       const dx = x - Number(match[1]), dy = y - Number(match[2]);
       if (dx === 0 && dy === 0) return screen;
