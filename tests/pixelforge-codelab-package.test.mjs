@@ -107,6 +107,13 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   project.id = 'structured_pixelforge_source';
   project.animation = { ...showcase.animation.toJSON(), loop: showcase.loop };
   project.drawingConfiguration = { version: 1, availableModes: ['illustration', 'pixel-art'], initialMode: 'illustration', activeMode: 'pixel-art' };
+  project.layers[0].authoringMode = 'illustration';
+  project.animation.frames[0].authoringMode = 'illustration';
+  project.animation.frames[0].cels[0].metadata = { ...(project.animation.frames[0].cels[0].metadata || {}), authoringMode: 'pixel-art', modeOverrides: { illustration: { brushSize: 7 } } };
+  if (project.animation.frames[1]) {
+    project.animation.frames[1].authoringMode = 'pixel-art';
+    project.animation.frames[1].cels[0].metadata = { ...(project.animation.frames[1].cels[0].metadata || {}), authoringMode: 'illustration' };
+  }
   attachSceneWorkspaces(project);
   const exported = createPixelForgeCodeLabPackageZip(project, {
     resources: [{ path: 'Entorno/assets/palette.txt', contentType: 'text/plain', bytes: Buffer.from('palette=warm') }],
@@ -155,6 +162,14 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   assert.equal(imported.entries.has('reference.center/reference.center'), true);
   assert.equal(imported.entries.has('reference.personaje/hero-hero-master/reference.json'), true);
   assert.deepEqual(imported.project.drawingConfiguration, project.drawingConfiguration, 'project drawing modes must survive CodeLab ZIP round-trip');
+  assert.equal(imported.project.layers[0].authoringMode, 'illustration', 'base layer authoring mode must survive the package');
+  assert.equal(imported.project.animation.frames[0].authoringMode, 'illustration', 'frame authoring mode must survive the package');
+  assert.equal(imported.project.animation.frames[0].cels[0].metadata.authoringMode, 'pixel-art', 'per-cel authoring mode must survive the package');
+  assert.deepEqual(imported.project.animation.frames[0].cels[0].metadata.modeOverrides, { illustration: { brushSize: 7 } }, 'per-cel mode profiles must survive the package');
+  if (project.animation.frames[1]) {
+    assert.equal(imported.project.animation.frames[1].authoringMode, 'pixel-art');
+    assert.equal(imported.project.animation.frames[1].cels[0].metadata.authoringMode, 'illustration');
+  }
   assert.equal(imported.project.animation.frames.length, project.animation.frames.length);
   assert.equal(imported.project.animation.frames[0].cels.length, project.layers.length);
   assert.equal(imported.project.animation.frames[0].layerMetadata[0].parentFrameId, imported.project.animation.frames[0].id);
