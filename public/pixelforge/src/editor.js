@@ -1448,8 +1448,11 @@ function moveStroke(event) {
     const point = docPoint(event);
     if (point.inside) {
       const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
-      const operation = tiledGestureTail.then(() =>
-        tiledPointerController.pointerMove({ pointerId: event.pointerId, points }));
+      const controller = tiledPointerController, targetDocument = doc;
+      const operation = tiledGestureTail.then(() => {
+        if (doc !== targetDocument || tiledPointerController !== controller) return { changed: false, ignored: true };
+        return controller.pointerMove({ pointerId: event.pointerId, points });
+      });
       tiledGestureTail = operation.catch(() => {});
       void operation.then(() => render()).catch(error => {
         if (pointerId === event.pointerId) pointerId = null;
@@ -1493,15 +1496,18 @@ function moveStroke(event) {
 }
 function finishActiveStroke(commit = true) {
   if (doc.isTiled && tiledPointerController?.active) {
-    const id = pointerId;
-    const operation = tiledGestureTail.then(() => commit
-      ? tiledPointerController.pointerUp({ pointerId: id })
-      : tiledPointerController.pointerCancel(id));
+    const id = pointerId, controller = tiledPointerController, targetDocument = doc;
+    const operation = tiledGestureTail.then(() => {
+      if (doc !== targetDocument || tiledPointerController !== controller) return false;
+      return commit
+        ? controller.pointerUp({ pointerId: id })
+        : controller.pointerCancel(id);
+    });
     tiledGestureTail = operation.catch(() => {});
-    return operation.then(() => {
+    return operation.then(finished => {
       if (pointerId === id) pointerId = null;
-      changed();
-      return true;
+      if (finished && doc === targetDocument) changed();
+      return Boolean(finished);
     }).catch(error => {
       if (pointerId === id) pointerId = null;
       status(error.message, 'error');
