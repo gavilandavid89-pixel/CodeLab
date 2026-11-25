@@ -67,4 +67,22 @@ A UI warning or a disabled toolbar button is not sufficient protection.
 
 ## Current implementation boundary (2026-11-25)
 
-The current tiled cel format stores RGBA tiles only. The editor already persists mode profiles per layer/cel, and the tiled animation bridge shares cel references across frames, but there is not yet a per-pixel ownership plane or a write-boundary guard. Therefore mixed-style protection is **not implemented yet**. Do not claim that the two styles are isolated until the storage format, every raster write path, history, animation, persistence, and the tests above are integrated.
+### Implemented in the tiled path
+
+- Sparse cel-local ownership tiles now use values `0/1/2` and are read/written by bounded region APIs.
+- Ownership tiles are validated on manifest load (coordinates, dimensions, allowed values, canonical base64 and SHA-256) and are exported with independent hashes.
+- Cel copy-on-write clones ownership data; native tiled project and tiled animation manifests carry the ownership tiles. Legacy cels without the field load as unowned.
+- The shared tiled raster adapter guards both bounded region writes and tile-batch writes. The tiled animation adapter guards frame/layer cel region writes.
+- Brush and eraser use the guard; fill and gradient go through guarded tile-batch writes; shape outlines use the guarded stroke/brush path.
+- Stroke and tile-operation history capture RGBA and ownership snapshots together and restore both on undo/redo/cancel.
+- Integration tests cover project-manifest round-trip, legacy unowned import, both cross-style directions, erasing, brush ownership, fill undo/redo, and animation frame clone/manifest round-trip.
+
+### Still incomplete — do not mark the feature fully released
+
+- The animation adapter's frame-level ownership is guarded on region writes, but other animation mutation APIs and all AI/headless/scripted write entry points still need an explicit audit.
+- Server/remote cel patch generation (`createPatch`) currently diffs RGBA tiles only; ownership tile deltas are not yet represented in that patch protocol.
+- Legacy RGBA export intentionally has no ownership channel. Re-importing such an export treats its pixels as unowned; native tiled manifest/animation manifest round-trips are the ownership-preserving paths.
+- Selection cut/paste, transform, and any direct tile-store callers must be audited to prove they route through the guarded boundary or use a privileged, explicit restore path.
+- CI for the latest changes is still running; the implementation is not CI-verified until the workflows finish successfully.
+
+Mixed-style protection is now implemented across the tiled raster brush, eraser, fill, gradient, shape, region-write and tile-batch paths, plus tiled animation region writes. It is **not yet complete across every editing, AI/headless, remote-patch, and legacy export path**. Do not advertise the whole feature as finished until those remaining gates and the CI suite pass.
