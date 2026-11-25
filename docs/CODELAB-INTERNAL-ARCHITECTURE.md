@@ -201,3 +201,9 @@ Este cuadro es una fotografía técnica y debe actualizarse con código y prueba
 - `raster-tiled-history.mjs` records bounded before/after tile payloads for atomic operations. The fill command is one history item, not a sequence of per-pixel edits.
 - `raster-tiled-fill.mjs` performs scanline discovery and stages changes before committing. It enforces an explicit queue limit and history byte budget. The UI dispatches tiled documents to this path from `editor.js`.
 - This is a first tiled tool integration, not full editor parity. Selection masks, magic wand, transforms, layer metadata history and tiled animation remain separate migration gates.
+
+
+### Tiled geometric selection boundary
+- `TiledRasterProjectDocument.setSelectionMask()` accepts a dimension-matched Uint8Array and owns a copy. Current mask storage is deliberately a bounded compatibility representation (one byte per pixel, up to 16 MiB under current canvas-area limits), not yet a packed sparse-mask resource format.
+- Editor rectangular, elliptical and lasso selections can now be used on tiled projects. Brush/eraser dabs and transactional flood fill respect the active mask. Flood fill cannot cross an unselected pixel.
+- Magic-wand selection remains blocked because its existing implementation requires a dense full-layer RGBA buffer. Do not enable it until a tile/region-aware color selection implementation exists.
