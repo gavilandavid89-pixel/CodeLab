@@ -28,6 +28,27 @@ function makePixelProject(id, name, width = 2, height = 2) {
   };
 }
 
+function makeDistinctTilePixels(width, height, layerIndex, tileSize = 64) {
+  const pixels = Buffer.alloc(width * height * 4);
+  const columns = Math.ceil(width / tileSize), rows = Math.ceil(height / tileSize);
+  for (let tileY = 0; tileY < rows; tileY++) {
+    for (let tileX = 0; tileX < columns; tileX++) {
+      const tileIndex = tileY * columns + tileX;
+      const rgba = [tileIndex & 255, (tileIndex >>> 8) & 255, layerIndex + 32, 255];
+      const left = tileX * tileSize, top = tileY * tileSize;
+      const right = Math.min(width, left + tileSize), bottom = Math.min(height, top + tileSize);
+      for (let y = top; y < bottom; y++) {
+        for (let x = left; x < right; x++) {
+          const offset = (y * width + x) * 4;
+          pixels[offset] = rgba[0]; pixels[offset + 1] = rgba[1];
+          pixels[offset + 2] = rgba[2]; pixels[offset + 3] = rgba[3];
+        }
+      }
+    }
+  }
+  return pixels.toString('base64');
+}
+
 async function main() {
   const health = await (await fetch(base + '/api/health')).json();
   const usesPostgres = health.persistence === 'postgresql';
@@ -1029,11 +1050,11 @@ async function main() {
     // the 64 MiB raw raster budget. The upload is interrupted once and must resume safely.
     const largeFixture = makePixelProject('chunked-import-fixture', 'Large chunked artwork', 2048, 1024);
     const layerBytes = 2048 * 1024 * 4;
-    largeFixture.layers[0].pixels = Buffer.alloc(layerBytes).toString('base64');
+    largeFixture.layers[0].pixels = makeDistinctTilePixels(2048, 1024, 0);
     for (let index = 2; index <= 3; index++) {
       largeFixture.layers.push({
         id: 'layer-chunked-' + index, name: 'Layer ' + index, visible: true, opacity: 1, locked: false,
-        pixels: Buffer.alloc(layerBytes).toString('base64')
+        pixels: makeDistinctTilePixels(2048, 1024, index - 1)
       });
     }
     const largeUploadIp = '198.51.100.77';
@@ -1070,22 +1091,36 @@ async function main() {
       .projects.find(project => project.name === 'Large chunked artwork (imported)');
     assert.ok(largeMetadata, 'large chunked import must be durably listed in the account');
     const largeStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: largeUploadHeaders })).json()).project;
+    assert.equal(largeStored.format, 'pixelforge-tiled-project',
+      'large imports must be stored as sparse tiled manifests rather than dense layer buffers');
     assert.equal(largeStored.layers.length, 3, 'all raster layers must survive chunked persistence');
     assert.equal(largeStored.serverRevision, 1, 'chunked import must receive the first server revision');
+    assert.equal(await accountPage.locator('#add-layer').isDisabled(), true,
+      'layer authoring stays disabled until sparse layer-history operations are undo-safe');
     failChunkOnce = true;
-    // Import may reopen the saved-project picker; close it before interacting with the layer stack.
-    if (await projectsDialog.isVisible()) {
-      await accountPage.keyboard.press('Escape');
-      await projectsDialog.waitFor({ state: 'hidden' });
-    }
-    await accountPage.locator('#add-layer').click();
+    // Force a real sparse raster edit so the retry tests a tile-manifest chunk
+    // upload rather than an unsupported dense-only layer operation.
+    await accountPage.locator('#brush-tool').click();
+    await accountPage.locator('#brush-size').evaluate(element => {
+      element.value = '9';
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const largeCanvasBox = await accountPage.locator('#canvas').boundingBox();
+    assert.ok(largeCanvasBox, 'the imported tiled canvas should have a measurable browser viewport');
+    await accountPage.mouse.click(
+      largeCanvasBox.x + largeCanvasBox.width / 2,
+      largeCanvasBox.y + largeCanvasBox.height / 2
+    );
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Unsaved changes'),
+      null, { timeout: 15000 });
     await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Autosave unavailable'),
       null, { timeout: 60000 });
     await accountPage.locator('#save').click();
     await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'),
       null, { timeout: 60000 });
     const resumedStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: largeUploadHeaders })).json()).project;
-    assert.equal(resumedStored.layers.length, 4, 'retry after a dropped chunk must persist the complete edited document');
+    assert.equal(resumedStored.format, 'pixelforge-tiled-project');
+    assert.equal(resumedStored.layers.length, 3, 'retry after a dropped chunk must preserve every imported sparse layer');
     assert.equal(resumedStored.serverRevision, 2, 'resumed chunk upload must commit exactly one new server revision');
     fs.rmSync(largeFixturePath, { force: true });
     // Free the deliberately huge fixture before testing the independent project-count
