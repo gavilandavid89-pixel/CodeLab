@@ -333,9 +333,11 @@ export class TiledRasterProjectDocument {
     if (mask !== null && (!(mask instanceof Uint8Array) || mask.length !== this.#width * this.#height)) {
       throw new TypeError('Selection mask must be a Uint8Array matching tiled project dimensions.');
     }
-    // One byte per pixel is a bounded compatibility mask (maximum 16 MiB at
-    // current geometry limits); raster pixels themselves remain sparse.
-    this.#selectionMask = mask === null ? null : new Uint8Array(mask);
+    // Keep the editor-owned transient mask by reference: selection gestures
+    // regenerate it frequently, and copying a 16 MiB mask on every pointermove
+    // would create avoidable allocation pressure. Callers replace, not mutate,
+    // masks after passing them here.
+    this.#selectionMask = mask;
   }
   clearHistory() { this.#strokeHistory.clear(); }
   async undo() { return this.#strokeHistory.undo(); }
