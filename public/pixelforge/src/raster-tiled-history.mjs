@@ -92,8 +92,6 @@ export class TiledRasterStrokeHistory {
     }).length * 2;
     const bytes = estimate(before) + estimate(after);
     if (bytes > this.#maxBytes) {
-      this.#document.releaseLayerState(before);
-      this.#document.releaseLayerState(after);
       throw new RangeError('Layer operation exceeded the sparse undo history byte budget.');
     }
     for (const command of this.#redo) this.#releaseCommand(command);
@@ -169,6 +167,7 @@ export class TiledRasterStrokeHistory {
     this.#active = null;
     if (!command.entries.length) return false;
     this.#undo.push(command);
+    for (const command of this.#redo) this.#releaseCommand(command);
     this.#redo = [];
     while (this.#undo.length > this.#maxCommands ||
       this.#undo.reduce((sum, item) => sum + item.bytes, 0) > this.#maxBytes) {

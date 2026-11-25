@@ -305,13 +305,21 @@ test('tiled layer metadata operations are undoable and preserve shared cel resou
   assert.equal(doc.stats.resourceCount, 0);
 });
 
-test('tiled layer history rejects over-budget metadata snapshots without leaking cel references', () => {
+test('tiled layer history rejects over-budget operations atomically without leaking cel references', () => {
   const doc = TiledRasterProjectDocument.createBlank({ width: 32, height: 32, tileSize: 32 });
   const constrained = new TiledRasterStrokeHistory(doc, { maxBytes: 8 });
+  const beforeName = doc.activeLayer.name;
+  const originalHistory = doc.strokeHistory;
+  // The document's normal history owns the transaction; a constrained history
+  // is exercised directly to prove its bounded snapshot ownership contract.
   const before = doc.captureLayerState();
   const after = doc.captureLayerState();
   assert.throws(() => constrained.recordLayerState('rename', before, after), /byte budget/);
+  doc.releaseLayerState(before);
+  doc.releaseLayerState(after);
   assert.equal(doc.stats.celCount, 1);
+  assert.equal(doc.activeLayer.name, beforeName);
+  assert.equal(originalHistory.canUndo, false);
   constrained.dispose();
   doc.dispose();
 });

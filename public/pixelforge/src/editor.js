@@ -2432,7 +2432,12 @@ const viewportCenter = () => ({ x: canvas.clientWidth / 2, y: canvas.clientHeigh
 $('#zoom-in').addEventListener('click', () => zoomAt(viewportCenter(), zoom * 1.25));
 $('#zoom-out').addEventListener('click', () => zoomAt(viewportCenter(), zoom / 1.25));
 $('#add-layer').addEventListener('click', () => {
-  try { if (!doc.isTiled && !canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const layer = runLayerMutation('add', () => doc.addLayer()); layer.authoringMode = drawingConfiguration.activeMode; changed(); renderLayers(); status('Layer added', 'success'); }
+  try { if (!doc.isTiled && !canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const layer = runLayerMutation('add', () => {
+    const created = doc.addLayer();
+    if (doc.isTiled) doc.updateLayer(created.id, { authoringMode: drawingConfiguration.activeMode });
+    else created.authoringMode = drawingConfiguration.activeMode;
+    return created;
+  }); changed(); renderLayers(); status('Layer added', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#animation-add-frame').addEventListener('click', () => {
