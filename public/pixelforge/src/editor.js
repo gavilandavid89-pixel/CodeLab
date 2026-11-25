@@ -2869,6 +2869,10 @@ async function boot() {
       : 'pixelforge.palette.v1:' + encodeURIComponent(auth.user.provider) + ':' + encodeURIComponent(auth.user.id);
     userPalette = loadUserPalette();
     renderUserPalette();
+    // Apply the configured defaults to a fresh blank document as well as
+    // restored projects. Without this, the mode selector starts in illustration
+    // while the HTML controls silently retain pixel-art brush defaults.
+    applyDrawingConfiguration({ drawingConfiguration });
     resizeCanvas();
     if (params.get('createDemo') === 'walk-crouch-24') {
       const existingProjects = guestMode && params.get('capture') === 'video' ? [] : await listSavedProjects();
