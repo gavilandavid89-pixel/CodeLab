@@ -396,6 +396,23 @@ export class HeadlessEditorRuntime {
     this.#animationHistoryBytes = 0;
   }
 
+  #stampActiveDrawingMode() {
+    const mode = this.#drawingConfiguration.activeMode;
+    if (!['illustration', 'pixel-art'].includes(mode)) return false;
+    const layer = this.#workspace.sandbox.activeLayer;
+    if (!layer) return false;
+    layer.authoringMode = mode;
+    const frame = this.#sandboxAnimation.frames[this.#sandboxAnimation.activeFrameIndex];
+    if (frame) {
+      frame.authoringMode = mode;
+      const cel = frame.cels?.find(item => item.layerId === layer.id);
+      if (cel) cel.metadata = { ...(cel.metadata || {}), authoringMode: mode };
+      const metadata = frame.layerMetadata?.find(item => item.layerId === layer.id);
+      if (metadata) metadata.authoringMode = mode;
+    }
+    return true;
+  }
+
   #pushAnimationHistory(stack, snapshot) {
     const bytes = JSON.stringify(snapshot).length;
     stack.push({ snapshot, bytes });
@@ -625,6 +642,16 @@ export class HeadlessEditorRuntime {
       const synchronized = synchronizeAnimationLayers(this.#sandboxAnimation, this.#workspace.sandbox);
       if (JSON.stringify(synchronized) !== before) {
         this.#sandboxAnimation = synchronized;
+        this.#animationDirty = this.#animationDiffersFromCommitted();
+      }
+      const contentActions = new Set([
+        'layer.add', 'canvas.draw_line', 'canvas.draw_stroke', 'canvas.fill',
+        'canvas.clear_region', 'canvas.copy_region', 'canvas.paste_region',
+        'canvas.draw_shape', 'canvas.fill_gradient', 'canvas.flip_region',
+        'canvas.create_outline', 'canvas.replace_color', 'canvas.transform_region',
+        'drawing.reference.copy_part', 'drawing.reference.copy_frame',
+      ]);
+      if (contentActions.has(action?.name) && this.#stampActiveDrawingMode()) {
         this.#animationDirty = this.#animationDiffersFromCommitted();
       }
     }
