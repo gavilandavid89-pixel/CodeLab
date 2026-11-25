@@ -57,7 +57,7 @@ export class TiledRasterStrokeHistory {
     };
   }
 
-  async applyTileOperation(layerId, entries, { type = 'tile-operation' } = {}) {
+  async applyTileOperation(layerId, entries, { type = 'tile-operation', authoringMode = this.#document.drawingConfiguration?.activeMode } = {}) {
     this.#assertLive();
     if (this.#active) throw new Error('Commit or cancel the active stroke before applying a tile operation.');
     if (!this.#document.layers.some(layer => layer.id === layerId)) throw new Error('Unknown tiled operation layer.');
@@ -79,7 +79,7 @@ export class TiledRasterStrokeHistory {
       const region = { x: entry.x, y: entry.y, width: Math.min(tileSize, this.#document.width - entry.x), height: Math.min(tileSize, this.#document.height - entry.y) };
       entry.beforeOwners = this.#document.readOwnershipRegion(layerId, region);
     }
-    const result = await this.#document.writeTileBatch(layerId, normalized.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes });
+    const result = await this.#document.writeTileBatch(layerId, normalized.map(({ x, y, after }) => ({ x, y, pixels: after })), { maxBytes: this.#maxBytes, authoringMode });
     if (!result.changed) return false;
     for (const entry of normalized) {
       if (typeof this.#document.readOwnershipRegion !== 'function') continue;
