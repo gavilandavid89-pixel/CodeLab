@@ -109,10 +109,10 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   project.drawingConfiguration = { version: 1, availableModes: ['illustration', 'pixel-art'], initialMode: 'illustration', activeMode: 'pixel-art' };
   project.layers[0].authoringMode = 'illustration';
   project.animation.frames[0].authoringMode = 'illustration';
-  project.animation.frames[0].cels[0].metadata = { ...(project.animation.frames[0].cels[0].metadata || {}), authoringMode: 'pixel-art', modeOverrides: { illustration: { brushSize: 7 } } };
+  project.animation.frames[0].layerMetadata[0] = { ...(project.animation.frames[0].layerMetadata[0] || {}), authoringMode: 'pixel-art', modeOverrides: { illustration: { brushSize: 7 } } };
   if (project.animation.frames[1]) {
     project.animation.frames[1].authoringMode = 'pixel-art';
-    project.animation.frames[1].cels[0].metadata = { ...(project.animation.frames[1].cels[0].metadata || {}), authoringMode: 'illustration' };
+    project.animation.frames[1].layerMetadata[0] = { ...(project.animation.frames[1].layerMetadata[0] || {}), authoringMode: 'illustration' };
   }
   attachSceneWorkspaces(project);
   const exported = createPixelForgeCodeLabPackageZip(project, {
