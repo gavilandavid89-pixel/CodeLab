@@ -636,6 +636,7 @@ export class PixelForgeAnimation {
     const frames = data.frames.map(frame => ({
       id: frame.id,
       durationMs: frame.durationMs,
+      authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
       cels: frame.cels.map(cel => ({
         layerId: cel.layerId,
         pixels: decodeBase64(cel.pixels, byteLength),
