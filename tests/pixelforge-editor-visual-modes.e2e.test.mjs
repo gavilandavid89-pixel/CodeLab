@@ -491,6 +491,51 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.deepEqual(await sampleVisibleExact(eraserPoint), eraserBaseline,
     'redo of eraser must restore the original rendered pixel');
 
+  // The tiled document now uses the real editor timeline. Verify frame isolation,
+  // independent undo stacks, shared-cel duplication, reorder/delete, onion skin,
+  // and sparse persistence through the browser UI.
+  await page.locator('#animation-add-frame').click();
+  await page.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent.includes('1 frame'));
+  const frame0Point = { x: 650, y: 650 };
+  const frame0Baseline = await sampleVisibleExact(frame0Point);
+  await setColor('#e84a5f');
+  await drawAt(frame0Point);
+  await assertVisibleColor(frame0Point, '#e84a5f', 'tiled/timeline/frame-0-paint');
+
+  await page.locator('#animation-add-frame').click();
+  await page.waitForFunction(() => document.querySelector('#animation-frame-count')?.textContent.includes('2 frames'));
+  assert.equal(await page.locator('.animation-frame').count(), 2);
+  const frame1Point = { x: 750, y: 750 };
+  const frame1Baseline = await sampleVisibleExact(frame1Point);
+  assert.deepEqual(await sampleVisibleExact(frame0Point), frame0Baseline, 'new blank frame must not inherit pixels from frame 0');
+  await setColor('#3288ff');
+  await drawAt(frame1Point);
+  await assertVisibleColor(frame1Point, '#3288ff', 'tiled/timeline/frame-1-paint');
+  await page.locator('#undo').click();
+  await page.waitForTimeout(60);
+  assert.deepEqual(await sampleVisibleExact(frame1Point), frame1Baseline, 'frame 1 undo must only undo its own stroke');
+
+  await page.locator('.animation-frame').nth(0).click();
+  await page.waitForTimeout(60);
+  await assertVisibleColor(frame0Point, '#e84a5f', 'tiled/timeline/frame-0-retained');
+  await page.locator('#animation-duplicate-frame').click();
+  await page.waitForTimeout(60);
+  assert.equal(await page.locator('.animation-frame').count(), 3);
+  await assertVisibleColor(frame0Point, '#e84a5f', 'tiled/timeline/duplicated-frame');
+  await page.locator('#animation-frame-left').click();
+  await page.locator('#animation-frame-right').click();
+  await page.waitForTimeout(60);
+  await page.locator('#animation-delete-frame').click();
+  await page.waitForTimeout(60);
+  assert.equal(await page.locator('.animation-frame').count(), 2);
+  await page.locator('.animation-frame').nth(1).click();
+  await page.waitForTimeout(60);
+  assert.deepEqual(await sampleVisibleExact(frame0Point), frame0Baseline, 'the original blank frame must remain independent after duplicate/delete');
+  await page.locator('.animation-frame').nth(0).click();
+  await page.waitForTimeout(60);
+  await assertVisibleColor(frame0Point, '#e84a5f', 'tiled/timeline/original-frame-after-delete');
+  await page.locator('#animation-onion').check();
+  await page.waitForTimeout(40);
   // Wait for the real editor autosave and inspect the payload received by the
   // mock account API. A tiled canvas must persist a tile manifest, not a dense
   // base64 pixel buffer or a legacy project snapshot.
@@ -504,6 +549,10 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.ok(savedTiled.layers[0].cel, 'each tiled layer must persist its cel manifest');
   assert.ok(!Object.hasOwn(savedTiled.layers[0], 'pixels'),
     'the tiled persistence payload must not contain a full dense layer pixel string');
+  assert.equal(savedTiled.animation?.format, 'pixelforge-tiled-animation', 'tiled timeline must persist a sparse animation manifest');
+  assert.equal(savedTiled.animation?.frames.length, 2, 'saved timeline must preserve the final frame count');
+  assert.ok(!Object.hasOwn(savedTiled.animation.frames[0].cels[0].cel, 'pixels'),
+    'tiled animation cels must not serialize full-frame RGBA buffers');
 
   await fs.promises.writeFile(path.join(artifactDir, 'tiled-visual-matrix.json'), JSON.stringify(tiledMatrix, null, 2));
   await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence, tiledMatrix }, null, 2));
