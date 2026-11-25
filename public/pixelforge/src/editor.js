@@ -328,6 +328,13 @@ $('#record-video')?.addEventListener('click', async event => {
 function updateAIWorkspaceUI() {
   const state = $('#ai-workspace-state');
   const dot = document.querySelector('.ai-state-dot');
+  if (!aiWorkspace) {
+    if (state) state.textContent = 'AI proposals are unavailable for sparse tiled projects.';
+    if (dot) dot.dataset.kind = 'warning';
+    $('#ai-accept-proposal').disabled = true;
+    $('#ai-discard-proposal').disabled = true;
+    return;
+  }
   const summary = aiWorkspace.proposalSummary;
   const sourceStale = Boolean(summary?.stale);
   if (summary) {
@@ -359,6 +366,7 @@ function updateAIWorkspaceUI() {
   $('#ai-preview-size').textContent = aiWorkspace.sandbox.width + ' × ' + aiWorkspace.sandbox.height + ' px';
 }
 function renderAIWorkspacePreview() {
+  if (!aiWorkspace) return;
   const preview = $('#ai-preview-canvas');
   if (!preview) return;
   const sandbox = aiWorkspace.sandbox;
@@ -388,6 +396,16 @@ function renderAIWorkspacePreview() {
 }
 function resetAIWorkspaceForDocument() {
   activeAIRequestController?.abort();
+  if (doc.isTiled) {
+    aiWorkspace = null;
+    aiCommandSession = null;
+    aiCoordinator = null;
+    aiPanelVisible = false;
+    $('#ai-panel-toggle').disabled = true;
+    updateAIWorkspaceUI();
+    return;
+  }
+  $('#ai-panel-toggle').disabled = false;
   aiWorkspace = new AIWorkspace(doc);
   aiCommandSession = new AICommandSession(aiWorkspace);
   aiCoordinator = aiProvider ? new AIEditCoordinator({ workspace: aiWorkspace, session: aiCommandSession, provider: aiProvider }) : null;
@@ -395,6 +413,7 @@ function resetAIWorkspaceForDocument() {
   if (aiPanelVisible) renderAIWorkspacePreview();
 }
 function syncAIWorkspaceFromUser() {
+  if (!aiWorkspace) return;
   const result = aiWorkspace.syncFromUser();
   if (result.status === 'synced') {
     $('#ai-workspace-state').textContent = 'Mirroring your canvas';
@@ -974,6 +993,7 @@ function switchAnimationFrame(index, { autosave = true } = {}) {
   return true;
 }
 function ensureAnimation() {
+  if (doc.isTiled) throw new Error('Animation editing is not yet available for sparse tiled projects.');
   if (!animation) {
     if (cropPreview || transformPreview) throw new Error('Finish or cancel the active preview before starting an animation timeline.');
     animation = PixelForgeAnimation.fromDocument(doc, { fps: Number($('#animation-fps').value) || 12 });
@@ -1020,6 +1040,7 @@ function applyActiveLayerModeProfile(mode) {
 }
 function applyDrawingConfiguration(snapshot, { legacyDefault = PIXELFORGE_DRAWING_MODES.PIXEL_ART } = {}) {
   drawingConfiguration = normalizeDrawingConfiguration(snapshot?.drawingConfiguration, { legacyDefault });
+  if (doc.isTiled && JSON.stringify(doc.drawingConfiguration) !== JSON.stringify(drawingConfiguration)) doc.drawingConfiguration = drawingConfiguration;
   const control = $('#drawing-mode');
   if (control) {
     control.value = drawingConfiguration.activeMode;
@@ -1044,6 +1065,7 @@ function applyDrawingConfiguration(snapshot, { legacyDefault = PIXELFORGE_DRAWIN
 function setDrawingMode(mode, { persist = true } = {}) {
   captureActiveLayerModeProfile(drawingConfiguration.activeMode);
   drawingConfiguration = switchDrawingMode(drawingConfiguration, mode);
+  if (doc.isTiled) doc.drawingConfiguration = drawingConfiguration;
   const control = $('#drawing-mode');
   if (control) control.value = mode;
   const presentation = getDrawingModePresentation(mode);
@@ -1096,6 +1118,7 @@ function updateSceneWorkspaceUI() {
   }
 }
 function restoreActiveSceneWorkspace() {
+  if (doc.isTiled) { activeSceneWorkspace = 'main'; updateSceneWorkspaceUI(); return; }
   const state = readSceneWorkspaceState(doc.drawingModel);
   activeSceneWorkspace = state.activeSection;
   if (activeSceneWorkspace !== 'main') {
