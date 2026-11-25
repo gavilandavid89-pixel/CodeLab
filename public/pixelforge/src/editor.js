@@ -81,7 +81,7 @@ const previewCanvas = document.createElement('canvas'), previewCtx = previewCanv
 const tiledViewportCanvas = document.createElement('canvas'), tiledViewportCtx = tiledViewportCanvas.getContext('2d', { alpha: true });
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
-let tiledPointerController = null, tiledPointerDocument = null;
+let tiledPointerController = null, tiledPointerDocument = null, tiledGestureTail = Promise.resolve();
 const TILED_DOCUMENT_THRESHOLD_PIXELS = 1_048_576;
 let drawingConfiguration = normalizeDrawingConfiguration(null, { legacyDefault: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
 let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
@@ -1340,18 +1340,24 @@ function startStrokeAt(point, id) {
     if (doc.activeLayer?.locked) { status('This layer is locked', 'warning'); return; }
     pointerId = id;
     const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
-    void controller.pointerDown({
-      pointerId: id,
-      layerId: doc.activeLayerId,
-      points,
-      settings: {
-        color, size: brushSize, mode: tool,
-        opacity: Number($('#brush-opacity').value) / 100,
-        shape: $('#brush-shape').value,
-        hardness: Number($('#brush-hardness').value) / 100,
-      },
-    }).then(() => render()).catch(error => {
-      pointerId = null;
+    const targetDocument = doc;
+    const operation = tiledGestureTail.then(() => {
+      if (doc !== targetDocument) return { ignored: true };
+      return controller.pointerDown({
+        pointerId: id,
+        layerId: targetDocument.activeLayerId,
+        points,
+        settings: {
+          color, size: brushSize, mode: tool,
+          opacity: Number($('#brush-opacity').value) / 100,
+          shape: $('#brush-shape').value,
+          hardness: Number($('#brush-hardness').value) / 100,
+        },
+      });
+    });
+    tiledGestureTail = operation.catch(() => {});
+    void operation.then(() => render()).catch(error => {
+      if (pointerId === id) pointerId = null;
       status(error.message, 'error');
     });
     return;
@@ -1442,9 +1448,13 @@ function moveStroke(event) {
     const point = docPoint(event);
     if (point.inside) {
       const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
-      void tiledPointerController.pointerMove({ pointerId: event.pointerId, points })
-        .then(() => render())
-        .catch(error => { pointerId = null; status(error.message, 'error'); });
+      const operation = tiledGestureTail.then(() =>
+        tiledPointerController.pointerMove({ pointerId: event.pointerId, points }));
+      tiledGestureTail = operation.catch(() => {});
+      void operation.then(() => render()).catch(error => {
+        if (pointerId === event.pointerId) pointerId = null;
+        status(error.message, 'error');
+      });
     }
     return;
   }
@@ -1484,15 +1494,16 @@ function moveStroke(event) {
 function finishActiveStroke(commit = true) {
   if (doc.isTiled && tiledPointerController?.active) {
     const id = pointerId;
-    const operation = commit
+    const operation = tiledGestureTail.then(() => commit
       ? tiledPointerController.pointerUp({ pointerId: id })
-      : tiledPointerController.pointerCancel({ pointerId: id });
+      : tiledPointerController.pointerCancel(id));
+    tiledGestureTail = operation.catch(() => {});
     return operation.then(() => {
-      pointerId = null;
+      if (pointerId === id) pointerId = null;
       changed();
       return true;
     }).catch(error => {
-      pointerId = null;
+      if (pointerId === id) pointerId = null;
       status(error.message, 'error');
       return false;
     });
