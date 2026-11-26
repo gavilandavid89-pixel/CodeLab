@@ -70,6 +70,8 @@ jobs:
         shell: bash
         env:
           BRIDGE_TOKEN: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          CODELAB_AGENT_BRIDGE_CONTROL_SECRET: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
         run: |
           set -euo pipefail
           test -n "$BRIDGE_TOKEN" || { echo "::error::Missing CODELAB_AGENT_BRIDGE_CONTROL_SECRET"; exit 1; }
