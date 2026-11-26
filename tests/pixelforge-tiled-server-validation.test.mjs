@@ -27,6 +27,7 @@ const manifest = (width = 4096, height = 4096, tiles = [tile(0, 0)]) => ({
   layers: [{
     id: 'layer-1', name: 'Layer 1', visible: true, opacity: 1, locked: false,
     cel: { format: 'pixelforge-tiled-cel', version: 2, width, height, tileSize: 64, tiles },
+    }],
   }],
 });
 
@@ -107,4 +108,32 @@ test('server rejects invalid layer metadata and active-layer references', () => 
   const invalidActive = manifest();
   invalidActive.activeLayerId = 'missing';
   assert.equal(validation.validatePixelForgeTiledProjectPayload(invalidActive).error, 'invalid_pixelforge_project');
+});
+
+
+test('server accepts and validates sparse ownership tiles independently of RGBA', () => {
+  const project = manifest();
+  const owners = Buffer.alloc(64 * 64);
+  owners[0] = 1;
+  project.layers[0].cel.ownershipTiles = [{
+    x: 0, y: 0, width: 64, height: 64,
+    sha256: crypto.createHash('sha256').update(owners).digest('hex'),
+    owners: owners.toString('base64'),
+  }];
+  const result = validation.validatePixelForgeTiledProjectPayload(project);
+  assert.equal(result.error, undefined);
+
+  const forged = structuredClone(project);
+  forged.layers[0].cel.ownershipTiles[0].owners = Buffer.alloc(64 * 64).toString('base64');
+  assert.equal(validation.validatePixelForgeTiledProjectPayload(forged).error, 'invalid_pixelforge_project');
+
+  const invalidOwner = structuredClone(project);
+  const invalidBytes = Buffer.from(owners);
+  invalidBytes[1] = 3;
+  invalidOwner.layers[0].cel.ownershipTiles[0] = {
+    x: 0, y: 0, width: 64, height: 64,
+    sha256: crypto.createHash('sha256').update(invalidBytes).digest('hex'),
+    owners: invalidBytes.toString('base64'),
+  };
+  assert.equal(validation.validatePixelForgeTiledProjectPayload(invalidOwner).error, 'invalid_pixelforge_project');
 });
