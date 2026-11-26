@@ -103,6 +103,29 @@ test('HD capture presets preserve aspect ratio and fit the full artwork without 
   assert.equal(context.imageSmoothingEnabled, false);
 });
 
+test('native mixed-style composition applies independent sampling to every raster and vector layer', async () => {
+  const { drawLayeredFrameToCanvas } = await import('../public/pixelforge/src/video-capture-layout.mjs');
+  const draws = [];
+  const context = {
+    imageSmoothingEnabled: true,
+    save() {}, restore() {}, clearRect() {}, fillRect() {},
+    translate() {}, rotate() {}, scale() {},
+    drawImage(bitmap) { draws.push({ bitmap, smoothing: this.imageSmoothingEnabled, quality: this.imageSmoothingQuality }); },
+  };
+  const layers = [
+    { bitmap: { id: 'illustration' }, authoringMode: 'illustration', opacity: 1 },
+    { bitmap: { id: 'pixel-art' }, authoringMode: 'pixel-art', opacity: 1 },
+    { bitmap: { id: 'vector-overlay' }, authoringMode: 'illustration', opacity: 1 },
+  ];
+  const fit = drawLayeredFrameToCanvas(context, layers, 32, 32, 1920, 1080, { fitMode: 'contain' });
+  assert.deepEqual(draws.map(item => [item.bitmap.id, item.smoothing]), [
+    ['illustration', true], ['pixel-art', false], ['vector-overlay', true],
+  ]);
+  assert.deepEqual(fit, {
+    scale: 33.75, cropX: 0, cropY: 0, offsetX: 420, offsetY: 0, fitMode: 'contain',
+  });
+});
+
 test('content capture includes a frame strip and keeps pixel-art rendering unsmoothed', () => {
   const html = fs.readFileSync(new URL('../public/pixelforge/video-composer.html', import.meta.url), 'utf8');
   const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
