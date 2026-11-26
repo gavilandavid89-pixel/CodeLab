@@ -146,10 +146,10 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
   });
   await page.waitForFunction(() => {
     const name = document.querySelector('#vc-project-name')?.textContent || '';
-    const status = document.querySelector('#vc-status')?.textContent || '';
+    const status = document.querySelector('#vc-export-note')?.textContent || '';
     return name === 'mixed-style' || status.includes('No se pudo importar el ZIP:');
   });
-  const nativeImportStatus = await page.locator('#vc-status').textContent();
+  const nativeImportStatus = await page.locator('#vc-export-note').textContent();
   assert.equal(await page.locator('#vc-project-name').textContent(), 'mixed-style',
     'native CodeLab package import failed: ' + nativeImportStatus);
   await page.waitForFunction(() => Number(document.querySelector('#vc-stat-frames')?.textContent || 0) === 2);
