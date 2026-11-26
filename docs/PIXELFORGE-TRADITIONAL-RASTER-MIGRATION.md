@@ -1,6 +1,6 @@
 # PixelForge: traditional raster illustration and end-to-end tiled migration
 
-**Status:** product/architecture contract for the next implementation phase. This document does not claim that the existing editor, package format, persistence, or Headless already use sparse tiles. It defines what must be integrated before larger illustration canvases become a supported default.
+**Status:** migration contract and implementation history. This document began as a forward-looking plan before the tiled editor integration. Some early paragraphs below describe that historical baseline and are superseded by the current code and [the PixelForge post-merge audit (2026-11-26)](PIXELFORGE-POST-MERGE-AUDIT-2026-11-26.md). For current enabled/blocked editor paths, persistence behavior and verified CI evidence, the post-merge audit is the operational reference. Do not read historical statements such as “opt-in adapter” or “editor still uses dense buffers” as the current state.
 
 ## Product direction
 

@@ -39,6 +39,7 @@ Leer en este orden:
 | Entender órdenes, Neon, LISTEN/NOTIFY y worker | [Arquitectura extremo a extremo](CodeLab_Neon_comunicacion_extremo_a_extremo.md) | Cola durable, activación, ejecución, resultados, revisiones y recuperación. |
 | Consultar resumen de arquitectura | [Arquitectura CodeLab–Neon](CODELAB-NEON-ARCHITECTURE.md) | Vista compacta de componentes y límites. |
 | Entender los componentes internos de CodeLab | [Arquitectura interna y mapa de componentes](CODELAB-INTERNAL-ARCHITECTURE.md) | Responsabilidades, fronteras, flujos, contratos y estado real de integración. |
+| Verificar el estado actual de Illustration, Pixel Art y tiled después del merge | [Auditoría post-merge PixelForge (26-11-2026)](PIXELFORGE-POST-MERGE-AUDIT-2026-11-26.md) | Evidencia CI, herramientas integradas, límites reales y próximos gates de aceptación. |
 | Consultar la API nativa del agente | [Protocolo Headless nativo](native-headless-protocol.md) | Cliente, mailbox, acciones nativas y modo navegador explícito. |
 | Procesar/capturar vídeo | [Procesamiento A/B](VIDEO-PROCESSING-AB.md) | Única finalidad de A/B: una sesión A y una B procesadora por trabajo. |
 | Adaptar vídeo a plataformas sociales | [Composición multiplataforma de Video Composer](PIXELFORGE-VIDEO-COMPOSER-COMPOSITION.md) | Perfiles 16:9, 9:16, 4:5 y 1:1, contain/cover, zonas seguras y reglas de no deformación. |
