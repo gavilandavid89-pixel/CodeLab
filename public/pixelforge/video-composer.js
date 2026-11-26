@@ -61,6 +61,14 @@ function currentCompositionGuide() {
   const { width, height } = outputDimensions();
   return getCompositionGuide(packageData.manifest.width, packageData.manifest.height, width, height);
 }
+function currentFocalPoint() {
+  const mode = $('#vc-reframe').value;
+  return mode === 'top' ? { x: 0.5, y: 0.2 }
+    : mode === 'bottom' ? { x: 0.5, y: 0.8 }
+    : mode === 'left' ? { x: 0.2, y: 0.5 }
+    : mode === 'right' ? { x: 0.8, y: 0.5 }
+    : { x: 0.5, y: 0.5 };
+}
 function refreshCompositionGuide() {
   if (!packageData) {
     $('#vc-copy-agent-guide').disabled = true;
@@ -114,6 +122,8 @@ function buildAgentCompositionGuide() {
       fitMode: $('#vc-fit-mode').value,
       safeArea: guide.safeArea,
       normalizedSafeArea: guide.normalizedSafeArea,
+      focalPoint: currentFocalPoint(),
+      reframeMode: $('#vc-reframe').value,
     },
     instructions: [
       'Compose essential subjects, faces, text and action inside output.safeArea in sourceCanvas coordinates.',
@@ -214,6 +224,7 @@ async function captureContentPng() {
       background: $('#vc-solid-bg').checked ? '#101116' : '#20232d',
       scalingMode: $('#vc-scaling-mode').value,
       fitMode: $('#vc-fit-mode').value,
+      focalPoint: currentFocalPoint(),
       layers: layerBitmaps,
     });
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -755,6 +766,7 @@ async function exportVideo() {
       backgroundColor: solidBackground ? '#101116' : null,
       scalingMode: $('#vc-scaling-mode').value,
       fitMode: $('#vc-fit-mode').value,
+      focalPoint: currentFocalPoint(),
       isCancelled: () => cancelRequested,
       onProgress: (value, label) => setProgress(value, label)
     });
@@ -818,6 +830,10 @@ $('#vc-aspect').addEventListener('change', () => {
   renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
 });
 $('#vc-fit-mode').addEventListener('change', () => {
+  refreshCompositionGuide();
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
+$('#vc-reframe').addEventListener('change', () => {
   refreshCompositionGuide();
   renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
 });
