@@ -146,12 +146,12 @@ const poses = [
   {duration:75,dx:-9,dy:-24,skewY:-.24,scaleX:1.03,scaleY:.95},
   {duration:80,dx:1,dy:-15,skewY:-.35,scaleX:1.04,scaleY:.94},
   {duration:80,dx:8,dy:2,skewY:-.45,scaleX:1.05,scaleY:.92},
-  {duration:90,dx:14,dy:23,rotate:90,skewY:0,scaleX:1,scaleY:1},
-  {duration:100,dx:5,dy:25,rotate:0,skewY:0,scaleX:1,scaleY:.96},
-  {duration:120,dx:0,dy:8,skewY:0,scaleX:1,scaleY:1},
-  {duration:450,dx:0,dy:0,skewY:0,scaleX:1,scaleY:1}
+  {duration:90,dx:-5,dy:70,rotate:90,skewY:0,scaleX:.6,scaleY:.6},
+  {duration:100,dx:0,dy:30,rotate:90,skewY:0,scaleX:1,scaleY:1},
+  {duration:120,dx:0,dy:5,rotate:90,skewY:0,scaleX:1,scaleY:1},
+  {duration:450,dx:0,dy:0,rotate:90,skewY:0,scaleX:1,scaleY:1}
 ];
-let bounds = {x:4,y:92,width:160,height:300};
+let bounds = {x:0,y:90,width:170,height:320};
 select(opponent.id);
 for(let index=1;index<poses.length;index++){
   run({name:"animation.frame.duplicate",index:index-1});
@@ -176,19 +176,16 @@ for(let index=1;index<poses.length;index++){
 }
 run({name:"animation.frame.set_duration",index:0,durationMs:poses[0].duration});
 const summary=run({name:"animation.get_summary"});
-const projectBefore=rt.toJSON();
-if(projectBefore.animation.frames.length!==poses.length) throw new Error("Unexpected final frame count.");
-if(!projectBefore.layers.every(item=>item.authoringMode===MODE)) throw new Error("A layer lost Illustration metadata.");
-if(!projectBefore.animation.frames.every(frame=>frame.authoringMode===MODE&&frame.cels.every(cel=>(cel.metadata?.authoringMode??cel.authoringMode)===MODE))) {
-  throw new Error("A frame/cel lost Illustration metadata.");
-}
 rt.createProposal("Pulido incremental de la animación de impacto: redibujo anatómico de ambos personajes en sus capas existentes, diez poses con anticipación, impacto, retroceso, vuelo, giro y caída, manteniendo el proyecto ADMIN y modo Illustration.");
 const diff=rt.getDiff();
-if(!diff || rt.hasPendingProposal!==false) {
-  // createProposal intentionally creates the pending review state.
-}
+if(!diff) throw new Error("Headless did not produce a reviewable diff.");
 const accepted=rt.acceptProposal();
 const project=rt.toJSON();
+if(project.animation.frames.length!==poses.length) throw new Error("Unexpected final frame count.");
+if(!project.layers.every(item=>item.authoringMode===MODE)) throw new Error("A layer lost Illustration metadata.");
+if(!project.animation.frames.every(frame=>frame.authoringMode===MODE&&frame.cels.every(cel=>(cel.metadata?.authoringMode??cel.authoringMode)===MODE))) {
+  throw new Error("A frame/cel lost Illustration metadata.");
+}
 const artifact=createPixelForgeCodeLabPackageZip(project);
 const output=process.argv[2];
 if(!output) throw new Error("Pass the output .codelab package path as argv[2].");
