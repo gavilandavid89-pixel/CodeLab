@@ -51,6 +51,12 @@ test('Headless switches drawing mode before raster writes and enforces mixed-sty
     name: 'canvas.draw_stroke', points: [{ x: 4, y: 3 }], color: '#000000', size: 1, mode: 'erase',
   }).ok, true, 'Illustration erase must not remove Pixel Art-owned pixels');
 
+  assert.equal(runtime.execute({
+    name: 'animation.frame.add_from_layer',
+    layerId: runtime.sandbox.activeLayerId,
+    frameName: 'Mixed Illustration and Pixel Art',
+  }).ok, true);
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' }).ok, true);
   const mode = runtime.execute({ name: 'drawing.mode.get' });
   assert.equal(mode.ok, true);
   assert.equal(mode.result.activeMode, 'illustration');
@@ -70,6 +76,11 @@ test('Headless switches drawing mode before raster writes and enforces mixed-sty
   assert.equal(owner(3, 2), 1);
   assert.deepEqual(pixel(3, 3), [34, 17, 238, 255], 'Illustration erase must not remove Pixel Art pixels');
   assert.equal(owner(3, 3), 2);
+  const celOwnership = saved.animation.frames[0].cels[0].metadata.ownershipTiles;
+  assert.ok(celOwnership.length > 0, 'animation cel must retain its own pixel ownership map');
+  const celOwners = Buffer.from(celOwnership[0].owners, 'base64');
+  assert.equal(celOwners[2 * 16 + 3], 1);
+  assert.equal(celOwners[3 * 16 + 3], 2);
 });
 
 test('Headless rejects unsupported drawing modes without mutating the active mode', () => {
