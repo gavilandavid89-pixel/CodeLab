@@ -815,3 +815,7 @@ Una prueba que solamente compare un PNG final no es suficiente para validar el m
 **Las capas son contenido gráfico completo, dibujable y editable, superpuesto dentro de un frame concreto.** Conservan la información normal del modelo de frame y añaden propiedades de composición. Cada capa tiene una pertenencia explícita a su frame, una posición lógica dentro de ese frame y una identidad estable para permitir inserciones y reordenamientos.
 
 Esta regla permite construir fondos, personajes, elementos, detalles y efectos de forma independiente, saltar entre capas sin perder el contexto de dibujo y mantener la separación estructural que ya existe entre Frames, secciones del proyecto y Reference Center.
+
+### Tiled layer sprite-sheet export
+
+The editor exports tiled layers to the existing sprite-sheet ZIP format without converting each layer to a dense full-canvas buffer. It reads each layer in bounded 16-row RGBA strips and places those strips directly into the output PNG. The manifest records `storageMode: "tiled"` and the layer authoring mode; the PNG and manifest remain paired in the ZIP. The export is subject to a 16-megapixel / 16384-pixel output-surface limit.
