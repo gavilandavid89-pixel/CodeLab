@@ -4,6 +4,12 @@
 **Ámbito:** tareas de dibujo y animación en CodeLab/PixelForge, incluida la animación «PixelForge — Soldier Walk 60F».  
 **Objetivo:** que el agente IA sea responsable del proceso completo durante la sesión de trabajo y que el usuario reciba únicamente el resultado final.
 
+## Referencia obligatoria del runtime Headless
+
+Antes de invocar funciones de dibujo o animación, el agente debe leer [API Headless para agentes](HEADLESS-AGENT-API-REFERENCE.md) y ejecutar el artefacto Headless distribuido, no improvisar nombres de acciones ni importar una ruta del editor web. El documento define métodos, acciones, argumentos, límites, ciclo de propuesta y reglas de modos mixtos.
+
+El Headless edita un sandbox y serializa el proyecto aceptado con `runtime.toJSON()`. El ZIP nativo se construye con `createPixelForgeCodeLabPackageZip(project)`, incluido en el artefacto del agente; no existe un método `runtime.exportCodelab()`. La transferencia HTTPS se realiza después, fuera del runtime, siguiendo [inline-artifact-bridge.md](inline-artifact-bridge.md).
+
 ## 1. No es un servicio 24/7
 
 El agente IA **no debe mantenerse activo 24/7**, ni crear un proceso permanente para aparentar que sigue trabajando cuando no hay una sesión de trabajo activa.

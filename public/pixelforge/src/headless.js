@@ -1,4 +1,5 @@
 import { RasterDocument } from './core.js';
+import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingMode } from './drawing-mode-config.mjs';
 import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { applyAnimationAction, summarizeAnimationTimeline, synchronizeAnimationLayers, validateAnimationTimeline } from './animation.js';
@@ -33,7 +34,7 @@ export const HEADLESS_CAPABILITIES = Object.freeze({
   authenticatedPersistence: true,
   rasterActions: Object.freeze([
     'document.get_summary', 'document.rename', 'canvas.get_reference', 'layer.get_context', 'drawing.model.get', 'drawing.sheet.get', 'drawing.sheet.configure', 'drawing.palette.get', 'drawing.object.select_at', 'drawing.object.inspect', 'drawing.layer.inspect', 'drawing.reference.extract_line_guide', 'drawing.motion.analyze', 'drawing.reference.create', 'drawing.layer.role.set', 'drawing.current_state.set', 'drawing.current_state.get', 'drawing.environment_history.record', 'drawing.environment_history.get', 'drawing.environment_history.list', 'drawing.reference.package_current', 'drawing.reference.list', 'drawing.reference.get', 'drawing.reference.apply', 'drawing.reference.copy_part', 'drawing.reference.copy_frame', 'drawing.reference.remove', 'drawing.layer.context.set', 'canvas.get_pixel',
-    'canvas.draw_line', 'canvas.draw_stroke', 'layer.add', 'layer.select', 'layer.move',
+    'drawing.mode.get', 'drawing.mode.set', 'canvas.draw_line', 'canvas.draw_stroke', 'layer.add', 'layer.select', 'layer.move',
     'layer.rename', 'layer.set_opacity', 'layer.set_visibility', 'layer.set_locked',
     'layer.duplicate', 'layer.delete', 'canvas.fill', 'canvas.clear_region',
     'canvas.copy_region', 'canvas.paste_region', 'canvas.crop', 'canvas.draw_shape',
@@ -132,19 +133,28 @@ function diffAnimationTimelines(before, after) {
       const nextCel = next?.cels.find(cel => cel.layerId === layerId);
       const previousPixels = previousCel?.pixels ?? null;
       const nextPixels = nextCel?.pixels ?? null;
-      if (previousPixels === nextPixels && Boolean(previousCel) === Boolean(nextCel)) continue;
+      const previousMetadata = previousCel?.metadata ?? previous?.layerMetadata?.find(item => item.id === layerId) ?? {};
+      const nextMetadata = nextCel?.metadata ?? next?.layerMetadata?.find(item => item.id === layerId) ?? {};
+      const ownershipChanged = JSON.stringify(previousMetadata.ownershipTiles || []) !== JSON.stringify(nextMetadata.ownershipTiles || []);
+      const authoringModeChanged = previousMetadata.authoringMode !== nextMetadata.authoringMode;
+      if (previousPixels === nextPixels && Boolean(previousCel) === Boolean(nextCel) && !ownershipChanged && !authoringModeChanged) continue;
       const pixelDiff = compareCelPixels(previousPixels, nextPixels, after.width, after.height);
       cels.push({
         layerId,
         change: !previousCel ? 'added' : !nextCel ? 'removed' : 'updated',
         changedPixels: pixelDiff.changedPixels,
         bounds: pixelDiff.bounds,
+        ownershipChanged,
+        authoringModeChanged,
+        authoringMode: nextMetadata.authoringMode ?? null,
       });
       changedPixels += pixelDiff.changedPixels;
     }
     const reordered = Boolean(previousEntry && nextEntry && beforeSharedOrder.indexOf(id) !== afterSharedOrder.indexOf(id));
     const durationChanged = Boolean(previous && next && previous.durationMs !== next.durationMs);
-    const frameMetadataChanged = Boolean(previous && next && durationChanged);
+    const frameModeChanged = Boolean(previous && next &&
+      (previous.authoringMode || 'pixel-art') !== (next.authoringMode || 'pixel-art'));
+    const frameMetadataChanged = Boolean(previous && next && (durationChanged || frameModeChanged));
     if (cels.length || reordered || frameMetadataChanged || !previousEntry || !nextEntry) {
       changedCelCount += cels.length;
       frames.push({
@@ -155,6 +165,9 @@ function diffAnimationTimelines(before, after) {
         change: !previousEntry ? 'added' : !nextEntry ? 'removed' : reordered && !cels.length && !frameMetadataChanged ? 'reordered' : frameMetadataChanged && !cels.length ? 'timing-updated' : 'updated',
         reordered,
         durationChanged,
+        frameModeChanged,
+        previousAuthoringMode: previous?.authoringMode ?? null,
+        authoringMode: next?.authoringMode ?? null,
         previousDurationMs: previous?.durationMs ?? null,
         durationMs: next?.durationMs ?? null,
         cels,
@@ -375,11 +388,15 @@ export class HeadlessEditorRuntime {
   #animationFuture = [];
   #animationHistoryBytes = 0;
   #hasAnimation = false;
+  #drawingConfiguration;
 
   constructor({ width = 128, height = 128, name = 'Untitled artwork', project = null } = {}) {
     this.#document = project === null
       ? new RasterDocument(width, height, name)
       : RasterDocument.fromJSON(project);
+    this.#drawingConfiguration = normalizeDrawingConfiguration(project?.drawingConfiguration, {
+      legacyDefault: project ? PIXELFORGE_DRAWING_MODES.PIXEL_ART : PIXELFORGE_DRAWING_MODES.ILLUSTRATION,
+    });
     this.#hasAnimation = Boolean(project?.animation);
     this.#animation = validateAnimationTimeline(project?.animation, this.#document.width, this.#document.height, this.#document.layers);
     this.#resetWorkspace();
@@ -389,6 +406,29 @@ export class HeadlessEditorRuntime {
     this.#animationHistory = [];
     this.#animationFuture = [];
     this.#animationHistoryBytes = 0;
+  }
+
+  #stampActiveDrawingMode(mode = this.#drawingConfiguration.activeMode) {
+    if (!['illustration', 'pixel-art'].includes(mode)) return false;
+    const layer = this.#workspace.sandbox.activeLayer;
+    if (!layer) return false;
+    layer.authoringMode = mode;
+    const frame = this.#sandboxAnimation.frames[this.#sandboxAnimation.activeFrameIndex];
+    if (frame) {
+      frame.authoringMode = mode;
+      const ownershipTiles = [...(layer.ownershipTiles || new Map())].map(([key, owners]) => {
+        const [tileX, tileY] = key.split(':').map(Number);
+        return { tileX, tileY, owners: encodeBase64(owners) };
+      });
+      const cel = frame.cels?.find(item => item.layerId === layer.id);
+      if (cel) cel.metadata = { ...(cel.metadata || {}), authoringMode: mode, ownershipTiles: structuredClone(ownershipTiles) };
+      const metadata = frame.layerMetadata?.find(item => item.layerId === layer.id);
+      if (metadata) {
+        metadata.authoringMode = mode;
+        metadata.ownershipTiles = structuredClone(ownershipTiles);
+      }
+    }
+    return true;
   }
 
   #pushAnimationHistory(stack, snapshot) {
@@ -457,6 +497,35 @@ export class HeadlessEditorRuntime {
       try { return { ok: true, action: action.name, result: this.#layerContext(action.layerId) }; }
       catch (error) { return { ok: false, action: action.name, error: { code: 'operation_failed', message: error instanceof Error ? error.message : 'Layer context failed.' } }; }
     }
+    if (action?.name === 'drawing.mode.get') {
+      const layer = this.#workspace.sandbox.activeLayer;
+      const frame = this.#sandboxAnimation.frames[this.#sandboxAnimation.activeFrameIndex] ?? null;
+      const cel = frame?.cels?.find(item => item.layerId === layer?.id) ?? null;
+      return { ok: true, action: action.name, result: {
+        configuration: structuredClone(this.#drawingConfiguration),
+        activeMode: this.#drawingConfiguration.activeMode,
+        layerMode: layer?.authoringMode ?? null,
+        frameMode: frame?.authoringMode ?? null,
+        celMode: cel?.metadata?.authoringMode ?? cel?.authoringMode ?? null,
+      } };
+    }
+    if (action?.name === 'drawing.mode.set') {
+      try {
+        this.#drawingConfiguration = switchDrawingMode(this.#drawingConfiguration, action.mode);
+        this.#stampActiveDrawingMode(action.mode);
+        this.#animationDirty = this.#animationDiffersFromCommitted();
+        return { ok: true, action: action.name, result: {
+          activeMode: this.#drawingConfiguration.activeMode,
+          layerId: this.#workspace.sandbox.activeLayer?.id ?? null,
+          frameIndex: this.#sandboxAnimation.activeFrameIndex,
+        } };
+      } catch (error) {
+        return { ok: false, action: action.name, error: {
+          code: error instanceof RangeError ? 'invalid_drawing_mode' : 'operation_failed',
+          message: error instanceof Error ? error.message : 'Unable to change drawing mode.',
+        } };
+      }
+    }
     if (action?.name === 'drawing.reference.package_current') {
       try {
         const sourceProject = this.#workspace.sandbox.toJSON();
@@ -475,7 +544,7 @@ export class HeadlessEditorRuntime {
 
         const cleanLayer = this.#workspace.sandbox.layers[0];
         const blank = new Uint8Array(this.#workspace.sandbox.width * this.#workspace.sandbox.height * 4);
-        this.#workspace.sandbox.setLayerPixels(cleanLayer.id, blank);
+        this.#workspace.sandbox.setLayerPixels(cleanLayer.id, blank, { restore: true, ownershipTiles: new Map() });
         this.#workspace.sandbox.renameLayer(cleanLayer.id, String(action.cleanLayerName || 'Layer 1').slice(0, 180));
         for (const layer of [...this.#workspace.sandbox.layers].slice(1)) this.#workspace.sandbox.deleteLayer(layer.id);
         this.#workspace.sandbox.setLayerVisibility(cleanLayer.id, true);
@@ -564,7 +633,10 @@ export class HeadlessEditorRuntime {
           return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
         }
         const before = JSON.parse(JSON.stringify(this.#sandboxAnimation));
-        const outcome = applyAnimationAction(this.#sandboxAnimation, this.#workspace.sandbox, action);
+        const animationAction = action.name === 'animation.frame.set_cel' && action.authoringMode === undefined
+          ? { ...action, authoringMode: this.#drawingConfiguration.activeMode }
+          : action;
+        const outcome = applyAnimationAction(this.#sandboxAnimation, this.#workspace.sandbox, animationAction);
         const changed = JSON.stringify(before) !== JSON.stringify(outcome.timeline);
         if (changed) {
           this.#clearAnimationFuture();
@@ -606,7 +678,33 @@ export class HeadlessEditorRuntime {
         },
       };
     }
+    const contentActions = new Set([
+      'layer.add', 'canvas.draw_line', 'canvas.draw_stroke', 'canvas.fill',
+      'canvas.clear_region', 'canvas.copy_region', 'canvas.paste_region',
+      'canvas.draw_shape', 'canvas.fill_gradient', 'canvas.flip_region',
+      'canvas.create_outline', 'canvas.replace_color', 'canvas.transform_region',
+      'drawing.reference.copy_part', 'drawing.reference.copy_frame',
+    ]);
+    const isRasterMutation = contentActions.has(action?.name);
+    let previousLayerMode = null;
+    let operationMode = this.#drawingConfiguration.activeMode;
+    if (isRasterMutation) {
+      if (action.authoringMode !== undefined) {
+        try { this.#drawingConfiguration = switchDrawingMode(this.#drawingConfiguration, action.authoringMode); }
+        catch (error) {
+          return { ok: false, action: action.name, error: { code: 'invalid_drawing_mode', message: error.message } };
+        }
+        operationMode = action.authoringMode;
+      }
+      const activeLayer = this.#workspace.sandbox.activeLayer;
+      previousLayerMode = activeLayer?.authoringMode ?? null;
+      if (activeLayer) activeLayer.authoringMode = operationMode;
+    }
     const commandResult = this.#commands.execute(action);
+    if (!commandResult.ok && isRasterMutation) {
+      const activeLayer = this.#workspace.sandbox.layers.find(layer => layer.id === this.#workspace.sandbox.activeLayerId);
+      if (activeLayer && previousLayerMode !== null) activeLayer.authoringMode = previousLayerMode;
+    }
     if (commandResult.ok) {
       if (['drawing.reference.copy_part', 'drawing.reference.copy_frame'].includes(action?.name) &&
           this.#sandboxAnimation.frames.length) {
@@ -620,6 +718,9 @@ export class HeadlessEditorRuntime {
       const synchronized = synchronizeAnimationLayers(this.#sandboxAnimation, this.#workspace.sandbox);
       if (JSON.stringify(synchronized) !== before) {
         this.#sandboxAnimation = synchronized;
+        this.#animationDirty = this.#animationDiffersFromCommitted();
+      }
+      if (isRasterMutation && this.#stampActiveDrawingMode(operationMode)) {
         this.#animationDirty = this.#animationDiffersFromCommitted();
       }
     }
@@ -749,6 +850,7 @@ export class HeadlessEditorRuntime {
       throw new Error('Unreviewed sandbox changes cannot be serialized. Create and accept a proposal first.');
     }
     const project = this.#document.toJSON();
+    project.drawingConfiguration = structuredClone(this.#drawingConfiguration);
     if (this.#hasAnimation || this.#animation.frames.length > 0) project.animation = JSON.parse(JSON.stringify(this.#animation));
     return project;
   }

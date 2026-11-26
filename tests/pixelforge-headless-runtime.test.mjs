@@ -8,6 +8,90 @@ function projectFixture() {
   return runtime.toJSON();
 }
 
+test('headless runtime preserves project drawing modes through edits and serialization', () => {
+  const fixture = projectFixture();
+  fixture.drawingConfiguration = {
+    version: 1,
+    availableModes: ['illustration', 'pixel-art'],
+    initialMode: 'illustration',
+    activeMode: 'pixel-art',
+  };
+  fixture.layers[0].authoringMode = 'illustration';
+  const runtime = HeadlessEditorRuntime.fromJSON(fixture);
+  const before = runtime.toJSON();
+  assert.deepEqual(before.drawingConfiguration, fixture.drawingConfiguration);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 1, y0: 1, x1: 8, y1: 1, color: '#123456', size: 1,
+  }).ok, true);
+  runtime.createProposal('Preserve project drawing mode');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  assert.deepEqual(saved.drawingConfiguration, fixture.drawingConfiguration);
+  assert.equal(saved.layers[0].authoringMode, 'pixel-art', 'agent raster edits must stamp the active mode onto the edited layer');
+});
+
+test('Headless switches drawing mode before raster writes and enforces mixed-style pixel ownership', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 16, height: 16, name: 'Mixed style agent fixture' });
+
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 2, y0: 2, x1: 6, y1: 2, color: '#EE2211', size: 1,
+  }).ok, true);
+
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'pixel-art' }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 2, y0: 2, x1: 6, y1: 2, color: '#2211EE', size: 1,
+  }).ok, true, 'a foreign-style write is a safe no-op, not a command failure');
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 2, y0: 3, x1: 6, y1: 3, color: '#2211EE', size: 1,
+  }).ok, true);
+
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_stroke', points: [{ x: 4, y: 3 }], color: '#000000', size: 1, mode: 'erase',
+  }).ok, true, 'Illustration erase must not remove Pixel Art-owned pixels');
+
+  assert.equal(runtime.execute({
+    name: 'animation.frame.add_from_layer',
+    layerId: runtime.sandbox.activeLayerId,
+    frameName: 'Mixed Illustration and Pixel Art',
+  }).ok, true);
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' }).ok, true);
+  const mode = runtime.execute({ name: 'drawing.mode.get' });
+  assert.equal(mode.ok, true);
+  assert.equal(mode.result.activeMode, 'illustration');
+  assert.equal(mode.result.layerMode, 'illustration');
+
+  runtime.createProposal('Verify mixed Illustration and Pixel Art ownership in Headless');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  const layer = saved.layers[0];
+  const pixels = Buffer.from(layer.pixels, 'base64');
+  const tile = layer.ownershipTiles.find(item => item.x === 0 && item.y === 0);
+  assert.ok(tile, 'ownership tile must be serialized with the raster layer');
+  const owners = Buffer.from(tile.owners, 'base64');
+  const pixel = (x, y) => [...pixels.subarray((y * 16 + x) * 4, (y * 16 + x) * 4 + 4)];
+  const owner = (x, y) => owners[y * 16 + x];
+  assert.deepEqual(pixel(3, 2), [238, 34, 17, 255], 'Pixel Art draw must not overwrite Illustration pixels');
+  assert.equal(owner(3, 2), 1);
+  assert.deepEqual(pixel(3, 3), [34, 17, 238, 255], 'Illustration erase must not remove Pixel Art pixels');
+  assert.equal(owner(3, 3), 2);
+  const celOwnership = saved.animation.frames[0].cels[0].metadata.ownershipTiles;
+  assert.ok(celOwnership.length > 0, 'animation cel must retain its own pixel ownership map');
+  const celOwners = Buffer.from(celOwnership[0].owners, 'base64');
+  assert.equal(celOwners[2 * 16 + 3], 1);
+  assert.equal(celOwners[3 * 16 + 3], 2);
+});
+
+test('Headless rejects unsupported drawing modes without mutating the active mode', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 8, height: 8 });
+  const before = runtime.execute({ name: 'drawing.mode.get' }).result.activeMode;
+  const invalid = runtime.execute({ name: 'drawing.mode.set', mode: 'vector' });
+  assert.equal(invalid.ok, false);
+  assert.equal(runtime.execute({ name: 'drawing.mode.get' }).result.activeMode, before);
+  assert.equal(runtime.hasPendingChanges, false);
+});
+
 test('headless runtime opens a persisted PixelForge project without changing its identity', () => {
   const fixture = projectFixture();
   fixture.serverRevision = 7;
@@ -23,7 +107,7 @@ test('headless runtime opens a persisted PixelForge project without changing its
 test('headless batch edits an isolated sandbox and commits only after proposal acceptance', () => {
   const fixture = projectFixture();
   const runtime = HeadlessEditorRuntime.fromJSON(fixture);
-  const before = runtime.toJSON();
+  const before = runtime.document.toJSON();
   const batch = runtime.executeBatch([
     { name: 'canvas.draw_line', x0: 1, y0: 2, x1: 10, y1: 2, color: '#FF3300', size: 1 },
     { name: 'canvas.fill', x: 1, y: 2, color: '#00AA44', tolerance: 0, contiguous: true },
@@ -850,4 +934,63 @@ test('Headless animation diff distinguishes frame insertion from reordering', ()
   assert.equal(runtime.acceptProposal().status, 'applied');
   assert.equal(runtime.execute({ name: 'animation.frame.reorder', from: 1, to: 0 }).ok, true);
   assert.equal(runtime.getDiff().animation.reordered, true, 'moving existing frames must be reported as reordering');
+});
+
+
+test('Headless animation.frame.set_cel guards foreign-style pixels and persists cel ownership metadata', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 8, height: 8, name: 'Headless animation cel ownership' });
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 1, y0: 1, x1: 1, y1: 1, color: '#EE2211', size: 1,
+  }).ok, true);
+  assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer', frameName: 'Mixed cel' }).ok, true);
+
+  const layerId = runtime.sandbox.activeLayerId;
+  const initial = runtime.execute({ name: 'animation.frame.get_cel', layerId });
+  assert.equal(initial.ok, true);
+  assert.equal(initial.result.authoringMode, 'illustration');
+  assert.equal(initial.result.ownershipTiles.length, 1);
+
+  const proposed = Buffer.from(initial.result.pixels, 'base64');
+  const foreignOffset = (1 * 8 + 1) * 4;
+  proposed.set([0x22, 0x11, 0xEE, 0xFF], foreignOffset);
+  const pixelArtOffset = (2 * 8 + 2) * 4;
+  proposed.set([0x22, 0x11, 0xEE, 0xFF], pixelArtOffset);
+  const switched = runtime.execute({ name: 'drawing.mode.set', mode: 'pixel-art' });
+  assert.equal(switched.ok, true);
+
+  const edited = runtime.execute({
+    name: 'animation.frame.set_cel', layerId, pixels: proposed.toString('base64'),
+  });
+  assert.equal(edited.ok, true, JSON.stringify(edited));
+  assert.equal(edited.result.authoringMode, 'pixel-art');
+  assert.equal(edited.result.blockedPixels, 1);
+
+  const current = runtime.execute({ name: 'animation.frame.get_cel', layerId });
+  const actual = Buffer.from(current.result.pixels, 'base64');
+  assert.deepEqual([...actual.subarray(foreignOffset, foreignOffset + 4)], [238, 34, 17, 255]);
+  assert.deepEqual([...actual.subarray(pixelArtOffset, pixelArtOffset + 4)], [34, 17, 238, 255]);
+  const owners = Buffer.from(current.result.ownershipTiles[0].owners, 'base64');
+  assert.equal(owners[1 * 8 + 1], 1, 'Illustration ownership must survive the blocked write');
+  assert.equal(owners[2 * 8 + 2], 2, 'new Pixel Art pixels must claim Pixel Art ownership');
+
+  runtime.createProposal('Persist mixed animation cel ownership');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  const savedCel = saved.animation.frames[0].cels[0];
+  assert.equal(savedCel.metadata.authoringMode, 'pixel-art');
+  assert.equal(Buffer.from(savedCel.metadata.ownershipTiles[0].owners, 'base64')[1 * 8 + 1], 1);
+  assert.equal(Buffer.from(savedCel.metadata.ownershipTiles[0].owners, 'base64')[2 * 8 + 2], 2);
+});
+
+test('Headless animation.frame.set_cel rejects an invalid explicit authoring mode without mutation', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 8, height: 8, name: 'Invalid animation cel mode' });
+  assert.equal(runtime.execute({ name: 'animation.frame.add_from_layer' }).ok, true);
+  const layerId = runtime.sandbox.activeLayerId;
+  const before = runtime.execute({ name: 'animation.frame.get_cel', layerId }).result.pixels;
+  const result = runtime.execute({
+    name: 'animation.frame.set_cel', layerId, pixels: before, authoringMode: 'watercolor',
+  });
+  assert.equal(result.ok, false);
+  assert.equal(runtime.execute({ name: 'animation.frame.get_cel', layerId }).result.pixels, before);
 });

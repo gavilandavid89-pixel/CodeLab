@@ -1,5 +1,7 @@
 import { createZipBlob } from './zip-export.js';
 import { readStoredZip } from './video-composer-core.mjs';
+import { TiledRasterProjectDocument } from './raster-tiled-adapter.mjs';
+import { TiledAnimationDocument } from './animation-tiled-adapter.mjs';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -153,6 +155,42 @@ function validateSceneWorkspace(workspace, label) {
         if (typeof cel.pixels !== 'string' || bytesFromBase64(cel.pixels).length !== expectedBytes) {
           throw new TypeError(label + ' workspace frame ' + index + ' contains invalid RGBA8 cel data.');
         }
+        const metadata = cel.metadata || frame.layerMetadata?.find(item => item?.id === cel.layerId) || {};
+        if (metadata.authoringMode !== undefined && !['illustration', 'pixel-art'].includes(metadata.authoringMode)) {
+          throw new TypeError(label + ' workspace frame ' + index + ' contains an invalid cel authoringMode.');
+        }
+        const ownerTiles = metadata.ownershipTiles;
+        if (ownerTiles !== undefined && !Array.isArray(ownerTiles)) {
+          throw new TypeError(label + ' workspace frame ' + index + ' contains invalid ownershipTiles.');
+        }
+        const seenOwnerTiles = new Set();
+        const rgba = bytesFromBase64(cel.pixels, expectedBytes);
+        for (const tile of ownerTiles || []) {
+          if (!tile || !Number.isInteger(tile.tileX) || !Number.isInteger(tile.tileY) ||
+              tile.tileX < 0 || tile.tileY < 0 || tile.tileX * 64 >= width || tile.tileY * 64 >= height) {
+            throw new TypeError(label + ' workspace frame ' + index + ' contains an invalid ownership tile coordinate.');
+          }
+          const key = tile.tileX + ':' + tile.tileY;
+          if (seenOwnerTiles.has(key)) throw new TypeError(label + ' workspace frame ' + index + ' contains duplicate ownership tiles.');
+          seenOwnerTiles.add(key);
+          const tileWidth = Math.min(64, width - tile.tileX * 64);
+          const tileHeight = Math.min(64, height - tile.tileY * 64);
+          const owners = bytesFromBase64(tile.owners, tileWidth * tileHeight);
+          if (base64FromBytes(owners) !== tile.owners) throw new TypeError(label + ' workspace frame ' + index + ' contains non-canonical ownership data.');
+          let nonzero = false;
+          for (let pixel = 0; pixel < owners.length; pixel++) {
+            if (owners[pixel] > 2) throw new TypeError(label + ' workspace frame ' + index + ' contains an unsupported pixel owner.');
+            if (owners[pixel] !== 0) {
+              nonzero = true;
+              const x = tile.tileX * 64 + pixel % tileWidth;
+              const y = tile.tileY * 64 + Math.floor(pixel / tileWidth);
+              if (rgba[(y * width + x) * 4 + 3] === 0) {
+                throw new TypeError(label + ' workspace frame ' + index + ' assigns ownership to a transparent pixel.');
+              }
+            }
+          }
+          if (!nonzero) throw new TypeError(label + ' workspace frame ' + index + ' contains an empty ownership tile.');
+        }
       }
     }
   }
@@ -305,6 +343,10 @@ function addFrames(project, files) {
       layers.push({
         id: String(layer.id), name: String(layer.name || layer.id),
         parentFrameId: String(frame.id || 'frame-' + (index + 1)), index: layerIndex + 1,
+        authoringMode: ['illustration', 'pixel-art'].includes(cel.metadata?.authoringMode ?? cel.authoringMode ?? layer.authoringMode)
+          ? (cel.metadata?.authoringMode ?? cel.authoringMode ?? layer.authoringMode) : 'pixel-art',
+        modeOverrides: structuredClone(cel.metadata?.modeOverrides ?? layer.modeOverrides ?? {}),
+        ownershipTiles: structuredClone(cel.metadata?.ownershipTiles ?? cel.ownershipTiles ?? []),
         pixelsPath, position: { x: Number(layer.x ?? 0), y: Number(layer.y ?? 0) },
         x: Number(layer.x ?? 0), y: Number(layer.y ?? 0), scaleX: Number(layer.scaleX ?? 1), scaleY: Number(layer.scaleY ?? 1),
         rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1),
@@ -323,6 +365,7 @@ function addFrames(project, files) {
       width: project.width,
       height: project.height,
       durationMs: Math.round(Math.max(1, Math.min(10000, Number(frame.durationMs || 1000)))),
+      authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
       layerCount: layers.length,
       layers,
     }));
@@ -377,6 +420,31 @@ function inferResourceDestination(path) {
   return 'project-files';
 }
 
+async function validateTiledAnimation(project, animation) {
+  if (animation == null) return 0;
+  if (animation.format !== 'pixelforge-tiled-animation') {
+    throw new TypeError('Tiled projects must store animation as pixelforge-tiled-animation.');
+  }
+  if (Number(animation.width) !== Number(project.width) ||
+      Number(animation.height) !== Number(project.height)) {
+    throw new RangeError('Tiled animation dimensions must match the project canvas.');
+  }
+  const layerIds = project.layers.map(layer => String(layer.id));
+  if (!Array.isArray(animation.layerIds) || animation.layerIds.length !== layerIds.length ||
+      animation.layerIds.some((id, index) => id !== layerIds[index])) {
+    throw new TypeError('Tiled animation layer IDs and order must match the project layer stack.');
+  }
+  const validationDocument = await TiledAnimationDocument.fromManifest(animation);
+  try {
+    if (validationDocument.frameCount !== animation.frames.length) {
+      throw new TypeError('Tiled animation frame count is inconsistent.');
+    }
+  } finally {
+    validationDocument.dispose();
+  }
+  return animation.frames.length;
+}
+
 function addResources(project, files, resources) {
   const provided = [...(project.packageResourceFiles || []), ...(resources || [])];
   const declared = new Map();
@@ -408,41 +476,48 @@ function addResources(project, files, resources) {
 }
 
 export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resources = [] } = {}) {
-  if (!projectSnapshot || projectSnapshot.format !== 'pixelforge-project' ||
+  const isTiled = projectSnapshot?.format === 'pixelforge-tiled-project';
+  if (!projectSnapshot || !['pixelforge-project', 'pixelforge-tiled-project'].includes(projectSnapshot.format) ||
       !projectSnapshot.id || !projectSnapshot.name ||
       !Number.isInteger(projectSnapshot.width) || !Number.isInteger(projectSnapshot.height) ||
       projectSnapshot.width < 1 || projectSnapshot.height < 1 ||
       projectSnapshot.width > MAX_CANVAS || projectSnapshot.height > MAX_CANVAS) {
     throw new TypeError('A valid native PixelForge project snapshot is required.');
   }
+  if (isTiled) {
+    const validationDocument = await TiledRasterProjectDocument.fromManifest(projectSnapshot);
+    validationDocument.dispose();
+  }
   const project = structuredClone(projectSnapshot);
   const files = new Map();
-  const frames = addFrames(project, files);
-  const scenes = buildSceneSections(project, files);
-  const referenceCenter = addReferenceCenter(project, files);
+  const frames = isTiled ? null : addFrames(project, files);
+  const scenes = isTiled ? null : buildSceneSections(project, files);
+  const referenceCenter = isTiled ? null : addReferenceCenter(project, files);
   const resourceDeclarations = addResources(project, files, resources);
 
-  for (const section of SCENE_SECTIONS) {
-    if (project.drawingModel?.sceneSections?.[section.key]) {
-      delete project.drawingModel.sceneSections[section.key].workspace;
+  if (!isTiled) {
+    for (const section of SCENE_SECTIONS) {
+      if (project.drawingModel?.sceneSections?.[section.key]) {
+        delete project.drawingModel.sceneSections[section.key].workspace;
+      }
+    }
+    if (project.drawingModel?.sceneWorkspaceState) {
+      const state = project.drawingModel.sceneWorkspaceState;
+      project.drawingModel.sceneWorkspaceState = {
+        version: 1,
+        activeSection: state.activeSection === 'main' ? 'main' : state.activeSection,
+        parentWorkspace: state.activeSection === 'main' ? null : (state.parentWorkspace || null),
+      };
+    }
+    delete project.animation;
+    if (project.drawingModel?.referenceCenter) {
+      project.drawingModel.referenceCenter.entries = project.drawingModel.referenceCenter.entries
+        .filter(entry => !Array.isArray(entry?.parts) || entry.parts.length === 0);
     }
   }
-  if (project.drawingModel?.sceneWorkspaceState) {
-    const state = project.drawingModel.sceneWorkspaceState;
-    project.drawingModel.sceneWorkspaceState = {
-      version: 1,
-      activeSection: state.activeSection === 'main' ? 'main' : state.activeSection,
-      parentWorkspace: state.activeSection === 'main' ? null : (state.parentWorkspace || null),
-    };
-  }
-  delete project.animation;
   delete project.packageResourceFiles;
-  if (project.drawingModel?.referenceCenter) {
-    project.drawingModel.referenceCenter.entries = project.drawingModel.referenceCenter.entries
-      .filter(entry => !Array.isArray(entry?.parts) || entry.parts.length === 0);
-  }
   files.set('project.json', jsonBytes(project));
-  files.set('reference.center/reference.center', jsonBytes(referenceCenter));
+  if (!isTiled) files.set('reference.center/reference.center', jsonBytes(referenceCenter));
 
   const manifest = {
     format: 'codelab',
@@ -453,16 +528,21 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
     projectType: 'pixelforge',
     entry: 'project.json',
     integrityPath: 'integrity.json',
-    frames: { manifestPath: 'Frames/frames.tscn' },
-    scenes,
-    referenceCenter: { manifestPath: 'reference.center/reference.center' },
+    ...(isTiled
+      ? { storage: { format: 'pixelforge-tiled-project', version: 1 } }
+      : {
+          frames: { manifestPath: 'Frames/frames.tscn' },
+          scenes,
+          referenceCenter: { manifestPath: 'reference.center/reference.center' },
+        }),
     resources: resourceDeclarations,
   };
   files.set('manifest.json', jsonBytes(manifest));
   files.set('project.codelab-pixelforge', new Uint8Array());
   const integrity = { format: 'codelab-integrity', version: 1, files: {} };
   for (const [path, bytes] of files) {
-    if (['manifest.json', 'project.json', 'project.codelab-pixelforge'].includes(path)) continue;
+    if (['manifest.json', 'project.codelab-pixelforge'].includes(path) ||
+        (!isTiled && path === 'project.json')) continue;
     integrity.files[path] = { sha256: await sha256(bytes), byteSize: bytes.byteLength };
   }
   files.set('integrity.json', jsonBytes(integrity));
@@ -477,9 +557,9 @@ export async function exportPixelForgeCodeLabPackage(projectSnapshot, { resource
       format: 'codelab', version: 2, editor: 'pixelforge',
       projectId: project.id, projectName: project.name,
       width: project.width, height: project.height,
-      layerCount: project.layers.length, frameCount: frames.frames.length,
-      referenceCount: referenceCenter.categories.reduce((sum, item) => sum + item.references.length, 0),
-      resourceCount: resourceDeclarations.length, sceneSectionCount: Object.keys(scenes.sections).length,
+      layerCount: project.layers.length, frameCount: isTiled ? (project.animation?.frames?.length ?? 0) : (frames?.frames.length ?? 0),
+      referenceCount: referenceCenter?.categories.reduce((sum, item) => sum + item.references.length, 0) ?? 0,
+      resourceCount: resourceDeclarations.length, sceneSectionCount: scenes ? Object.keys(scenes.sections).length : 0,
       entryCount: entries.length,
     },
   };
@@ -514,7 +594,12 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
     throw new TypeError('ZIP is not a structured CodeLab v2 PixelForge project.');
   }
   const project = await readJson(entries, manifest.entry || 'project.json', 'project.json');
-  if (project.format !== 'pixelforge-project' || !Array.isArray(project.layers) ||
+  const isTiled = project.format === 'pixelforge-tiled-project';
+  if (isTiled) {
+    if (manifest.storage?.format !== 'pixelforge-tiled-project' || Number(manifest.storage.version) !== 1) {
+      throw new TypeError('Tiled PixelForge package storage declaration is missing or unsupported.');
+    }
+  } else if (project.format !== 'pixelforge-project' || !Array.isArray(project.layers) ||
       project.layers.length < 1 || project.layers.length > MAX_LAYERS ||
       !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
       project.width < 1 || project.height < 1 || project.width > MAX_CANVAS || project.height > MAX_CANVAS) {
@@ -532,6 +617,47 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
     if (declaration.sha256 !== await sha256(bytes) || Number(declaration.byteSize) !== bytes.byteLength) {
       throw new Error('Integrity verification failed for ' + path + '.');
     }
+  }
+
+  if (isTiled) {
+    const validationDocument = await TiledRasterProjectDocument.fromManifest(project);
+    validationDocument.dispose();
+    const tiledFrameCount = await validateTiledAnimation(project, project.animation);
+    const resources = [];
+    const resourcePaths = new Set();
+    let resourceBytes = 0;
+    for (const declaration of manifest.resources || []) {
+      if (!declaration || !safePath(declaration.path) || resourcePaths.has(declaration.path)) {
+        throw new TypeError('manifest.resources contains an unsafe or duplicate path.');
+      }
+      resourcePaths.add(declaration.path);
+      const bytes = await readBytes(entries, declaration.path, 'declared resource');
+      resourceBytes += bytes.length;
+      if (resourceBytes > MAX_RESOURCE_BYTES) throw new RangeError('Package resources exceed the 32 MiB aggregate limit.');
+      resources.push({
+        path: declaration.path,
+        destination: String(declaration.destination || 'project-files'),
+        contentType: String(declaration.contentType || 'application/octet-stream'),
+        base64: base64FromBytes(bytes),
+      });
+    }
+    project.packageResourceFiles = resources;
+    project.packageResources = resources.map(item => ({
+      path: item.path, destination: item.destination, destinationPath: item.path,
+      contentType: item.contentType, byteSize: bytesFromBase64(item.base64).length,
+    }));
+    project.drawingModel ||= {};
+    project.drawingModel.packageResources = structuredClone(project.packageResources);
+    project.codelabSchema = {
+      version: 2, layout: 'structured', editor: 'pixelforge',
+      storageFormat: 'pixelforge-tiled-project', integrityPath,
+    };
+    return {
+      project, manifest, metadata: {
+        frameCount: tiledFrameCount, referenceCount: 0, resourceCount: resources.length,
+        sceneSectionCount: 0, scenes: {},
+      },
+    };
   }
 
   const framesPath = manifest.frames?.manifestPath;
@@ -572,14 +698,20 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
         rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1), visible: layer.visible !== false,
         locked: layer.locked === true, blendMode: String(layer.blendMode || 'normal'), blur: layer.blur ?? 0, brightness: layer.brightness ?? 0,
         contrast: layer.contrast ?? 0, saturation: layer.saturation ?? 0, mask: structuredClone(layer.mask ?? 'inexistente'), clipping: structuredClone(layer.clipping ?? 'inexistente'),
-        references: structuredClone(layer.references || []), assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}), zIndex: Number(layer.zIndex ?? 0),
+        references: structuredClone(layer.references || []), assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}),
+        authoringMode: ['illustration', 'pixel-art'].includes(layer.authoringMode) ? layer.authoringMode : 'pixel-art',
+        modeOverrides: structuredClone(layer.modeOverrides || {}),
+        ownershipTiles: structuredClone(layer.ownershipTiles || []),
+        zIndex: Number(layer.zIndex ?? 0),
         pixelsSha256: await sha256(bytes),
       });
     }
     if (seen.size !== layerIds.length) throw new TypeError('Frame is missing one or more project layers.');
     animationFrames.push({
       id: String(frame.id), name: String(frame.name || frame.id), index,
-      durationMs: Number(frame.durationMs), cels, layerMetadata: cels.map(cel => structuredClone(cel.metadata)), layerCount: cels.length, sourcePath: frameRef.path,
+      durationMs: Number(frame.durationMs),
+      authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
+      cels, layerMetadata: cels.map(cel => structuredClone(cel.metadata)), layerCount: cels.length, sourcePath: frameRef.path,
     });
     frameMetadata.push({ id: String(frame.id), index, layers: metadata });
   }

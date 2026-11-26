@@ -1,5 +1,11 @@
 import { RasterDocument, screenToDocument, validateDimensions, rasterLinePoints, createSelectionMask, createColorSelectionMask, modifySelectionMask, combineSelectionMasks, translateSelectionMask } from './core.js';
-import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById, deleteProject } from './persistence.js';
+import { TiledRasterProjectDocument, PIXELFORGE_TILED_PROJECT_FORMAT } from './raster-tiled-adapter.mjs';
+import { TiledRasterPointerStrokeController } from './raster-tiled-pointer-controller.mjs';
+import { fillTiledLayer } from './raster-tiled-fill.mjs';
+import { drawTiledShape } from './raster-tiled-shapes.mjs';
+import { fillTiledGradient } from './raster-tiled-gradient.mjs';
+import { loadMostRecentProject, saveProject, applyCelPatch, listSavedProjects, loadProjectById, deleteProject } from './persistence.js';
+import { createCelPatch } from './cel-patch-diff.mjs';
 
 import { preflightImageFile } from './image-import.js';
 import { createSpriteSheetLayout } from './asset-export.js';
@@ -7,6 +13,7 @@ import { AIWorkspace } from './workspaces.js';
 import { AICommandSession } from './ai-tools.js';
 import { AIEditCoordinator, OpenAICompatibleProvider } from './ai-provider.js';
 import { PixelForgeAnimation } from './animation.mjs';
+import { TiledAnimationDocument, PIXELFORGE_TILED_ANIMATION_FORMAT } from './animation-tiled-adapter.mjs';
 import { createVisionSnapshot } from './headless-vision.js';
 import { createZipBlob } from './zip-export.js';
 import { createOrbitalShowcase } from './showcase-animation.mjs';
@@ -15,14 +22,117 @@ import { exportPixelForgeCodeLabPackage, importPixelForgeCodeLabPackage } from '
 import { sceneWorkspaceSections, readSceneWorkspaceState, stripSceneWorkspaceState, attachSceneWorkspaceState, createSceneWorkspaceSnapshot } from './scene-workspaces.js';
 import { createReferenceCenterUI } from './reference-center-ui.js';
 import { VectorStudio, vectorModelToSVG } from './vector-studio.js';
+import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingMode, getDrawingModePresentation, getVideoScalingMode, normalizeDrawingModeProfile, updateDrawingModeOverrides } from './drawing-mode-config.mjs';
 
 const $ = selector => document.querySelector(selector);
+
+function installDocument(nextDocument) {
+  if (lastConfirmedProjectSnapshot?.id !== nextDocument.id) {
+    lastConfirmedProjectSnapshot = null;
+    pendingCelPatch = null;
+  }
+  const previousDocument = doc;
+  if (animation instanceof TiledAnimationDocument) {
+    for (const frames of tiledAnimationOrphanCels.values()) for (const item of frames) if (item.celId) animation.releaseCelReference(item.celId);
+    animation.dispose();
+  }
+  tiledAnimationOrphanCels.clear();
+  for (const history of tiledAnimationHistory.values()) history.dispose();
+  tiledAnimationHistory.clear();
+  animation = null;
+  const previousController = tiledPointerController;
+  tiledPointerController = null;
+  tiledPointerDocument = null;
+  activeTiledGestureToken = ++tiledGestureSequence;
+  pointerId = null;
+  if (activeStroke && previousDocument && !previousDocument.isTiled) {
+    previousDocument.endStroke(activeStroke, { commit: false });
+    activeStroke = null;
+    pointerId = null;
+  }
+  if (previousDocument?.isTiled) {
+    void (async () => {
+      await previousController?.dispose();
+      previousDocument.dispose();
+    })().catch(error => console.warn('Could not dispose previous tiled document:', error));
+  } else if (previousController) {
+    void previousController.dispose().catch(error => console.warn('Could not settle previous tiled pointer controller:', error));
+  }
+  doc = nextDocument;
+  clearSelectionState();
+  refreshReferenceCenterUI();
+  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso', 'shape-line', 'shape-rect', 'shape-ellipse'].includes(tool)) setTool('draw');
+  return doc;
+}
+
+function createEditorDocument(width, height, name, config = drawingConfiguration) {
+  if (width * height >= TILED_DOCUMENT_THRESHOLD_PIXELS) {
+    return TiledRasterProjectDocument.createBlank({
+      width, height, name,
+      drawingConfiguration: config,
+      projectMetadata: { drawingModel: {}, vectorModel: null },
+    });
+  }
+  const document = new RasterDocument(width, height, name);
+  for (const layer of document.layers) layer.authoringMode = config.activeMode;
+  return document;
+}
+
+async function restoreProjectAnimation(snapshot) {
+  if (!snapshot) return null;
+  if (doc.isTiled) {
+    if (snapshot.format !== PIXELFORGE_TILED_ANIMATION_FORMAT) {
+      throw new TypeError('Sparse tiled projects require a tile-backed animation manifest.');
+    }
+    const restored = await TiledAnimationDocument.fromManifest(snapshot, { store: doc.tileStore });
+    if (restored.width !== doc.width || restored.height !== doc.height ||
+        restored.layerIds.length !== doc.layerIds.length || restored.layerIds.some((id, index) => id !== doc.layerIds[index])) {
+      restored.dispose();
+      throw new TypeError('Tiled animation manifest does not match the project canvas and layer stack.');
+    }
+    tiledAnimationHistory.clear();
+    animation = restored;
+    applyTiledAnimationFrame(restored.activeFrameIndex, { resetHistory: true });
+    return restored;
+  }
+  return PixelForgeAnimation.fromJSON(snapshot);
+}
+
+async function restoreProjectDocument(snapshot, { newIdentity = false } = {}) {
+  if (snapshot?.format === PIXELFORGE_TILED_PROJECT_FORMAT) {
+    const restored = await TiledRasterProjectDocument.fromManifest(snapshot, { newIdentity });
+    lastConfirmedProjectSnapshot = newIdentity ? null : structuredClone(snapshot);
+    pendingCelPatch = null;
+    return restored;
+  }
+  lastConfirmedProjectSnapshot = null;
+  pendingCelPatch = null;
+  return RasterDocument.fromJSON(snapshot, { newIdentity });
+}
+
+function getTiledPointerController() {
+  if (!doc?.isTiled) return null;
+  if (!tiledPointerController || tiledPointerDocument !== doc) {
+    if (tiledPointerController) void tiledPointerController.dispose();
+    tiledPointerController = new TiledRasterPointerStrokeController(doc);
+    tiledPointerDocument = doc;
+  }
+  return tiledPointerController;
+}
 const canvas = $('#canvas'), ctx = canvas.getContext('2d', { alpha: true });
 const workArea = $('#work-area');
 const previewCanvas = document.createElement('canvas'), previewCtx = previewCanvas.getContext('2d', { alpha: true });
+// Tiled documents use a bounded viewport surface instead of allocating a full
+// width × height preview canvas. Dense RasterDocument rendering remains on the
+// legacy preview path until the rest of the editor has native tile parity.
+const tiledViewportCanvas = document.createElement('canvas'), tiledViewportCtx = tiledViewportCanvas.getContext('2d', { alpha: true });
 const transformPreviewCanvas = document.createElement('canvas'), transformPreviewCtx = transformPreviewCanvas.getContext('2d', { alpha: true });
 let doc = new RasterDocument(128, 128), aiWorkspace = new AIWorkspace(doc), tool = 'draw', spaceDown = false;
-let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
+let tiledPointerController = null, tiledPointerDocument = null, tiledGestureTail = Promise.resolve(), tiledGestureSequence = 0, activeTiledGestureToken = 0;
+const TILED_DOCUMENT_THRESHOLD_PIXELS = 1_048_576;
+let drawingConfiguration = normalizeDrawingConfiguration(null, { legacyDefault: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
+for (const layer of doc.layers) layer.authoringMode = drawingConfiguration.activeMode;
+let animation = null, animationFrameHistory = new Map(), animationOrphanCels = new Map(), tiledAnimationHistory = new Map(), tiledAnimationOrphanCels = new Map(), animationLoop = true, animationPlaybackSpeed = 1;
 let animationPlayback = { playing: false, raf: 0, startedAt: 0, lastIndex: -1, saveOnStop: true };
 let aiCommandSession = new AICommandSession(aiWorkspace), aiProvider = null, aiCoordinator = null, activeAIRequestController = null;
 let aiPanelVisible = false;
@@ -36,6 +146,9 @@ let shapeGesture = null, gradientGesture = null, symmetryMode = 0;
 let cursorMode = false, cursorGesturePointerId = null, cursorGestureLast = null, cursorGestureOrigin = null, cursorGestureStartedOnControl = false, cursorGestureControlTarget = null, cursorGestureSuppressClick = false, cursorDrawPointerId = null;
 let virtualCursorPointerId = null, virtualCursorScreen = null, virtualCursorPoint = null, virtualCursorVisible = false, virtualCursorCanDraw = false;
 let panning = false, panStart = null, autosaveTimer = null, autosaveInFlight = Promise.resolve(), flushInProgress = false, flushPromise = null, renderQueued = false, previewReady = false;
+// Incremental persistence is anchored to the last server-confirmed snapshot.
+// Keep an uncertain patch intact so retries reuse its operationId (idempotency).
+let lastConfirmedProjectSnapshot = null, pendingCelPatch = null;
 
 let referenceCenterUI = null;
 let vectorStudio = null;
@@ -62,6 +175,14 @@ function initVectorStudio() {
     if (enabled) fitCanvas();
   });
   return vectorStudio;
+}
+function refreshReferenceCenterUI() {
+  if (!referenceCenterUI) return;
+  if (typeof referenceCenterUI.setEnabled === 'function') {
+    referenceCenterUI.setEnabled(!doc.isTiled);
+  } else if (!doc.isTiled) {
+    referenceCenterUI.refresh();
+  }
 }
 function initReferenceCenterUI() {
   if (referenceCenterUI) return referenceCenterUI;
@@ -279,6 +400,13 @@ $('#record-video')?.addEventListener('click', async event => {
 function updateAIWorkspaceUI() {
   const state = $('#ai-workspace-state');
   const dot = document.querySelector('.ai-state-dot');
+  if (!aiWorkspace) {
+    if (state) state.textContent = 'AI proposals are unavailable for sparse tiled projects.';
+    if (dot) dot.dataset.kind = 'warning';
+    $('#ai-accept-proposal').disabled = true;
+    $('#ai-discard-proposal').disabled = true;
+    return;
+  }
   const summary = aiWorkspace.proposalSummary;
   const sourceStale = Boolean(summary?.stale);
   if (summary) {
@@ -310,6 +438,7 @@ function updateAIWorkspaceUI() {
   $('#ai-preview-size').textContent = aiWorkspace.sandbox.width + ' × ' + aiWorkspace.sandbox.height + ' px';
 }
 function renderAIWorkspacePreview() {
+  if (!aiWorkspace) return;
   const preview = $('#ai-preview-canvas');
   if (!preview) return;
   const sandbox = aiWorkspace.sandbox;
@@ -339,6 +468,17 @@ function renderAIWorkspacePreview() {
 }
 function resetAIWorkspaceForDocument() {
   activeAIRequestController?.abort();
+  if (doc.isTiled) {
+    aiWorkspace = null;
+    aiCommandSession = null;
+    aiCoordinator = null;
+    aiPanelVisible = false;
+    $('#ai-tab').disabled = true;
+    if ($('#ai-tab').classList.contains('active')) setInspectorPanel('properties');
+    updateAIWorkspaceUI();
+    return;
+  }
+  $('#ai-tab').disabled = false;
   aiWorkspace = new AIWorkspace(doc);
   aiCommandSession = new AICommandSession(aiWorkspace);
   aiCoordinator = aiProvider ? new AIEditCoordinator({ workspace: aiWorkspace, session: aiCommandSession, provider: aiProvider }) : null;
@@ -346,6 +486,7 @@ function resetAIWorkspaceForDocument() {
   if (aiPanelVisible) renderAIWorkspacePreview();
 }
 function syncAIWorkspaceFromUser() {
+  if (!aiWorkspace) return;
   const result = aiWorkspace.syncFromUser();
   if (result.status === 'synced') {
     $('#ai-workspace-state').textContent = 'Mirroring your canvas';
@@ -357,6 +498,7 @@ function syncAIWorkspaceFromUser() {
 }
 function updateTitle() {
   updateSceneWorkspaceUI();
+  canvas.dataset.storageMode = doc.isTiled ? 'tiled' : 'dense';
   $('#document-name').textContent = doc.name;
   $('#document-size').textContent = `${doc.width} × ${doc.height}`;
   $('#layer-count').textContent = `${doc.layers.length} layer${doc.layers.length === 1 ? '' : 's'}`;
@@ -381,11 +523,14 @@ function fitCanvas() {
   render();
 }
 function fitArtworkForCapture() {
-  const pixels = doc.composite();
+  const densePixels = doc.isTiled ? null : doc.composite();
   let minX = doc.width, minY = doc.height, maxX = -1, maxY = -1;
   for (let y = 0; y < doc.height; y++) {
+    const pixels = doc.isTiled
+      ? doc.readCompositeRegion({ x: 0, y, width: doc.width, height: 1 }).pixels
+      : densePixels.subarray(y * doc.width * 4, (y + 1) * doc.width * 4);
     for (let x = 0; x < doc.width; x++) {
-      if (pixels[(y * doc.width + x) * 4 + 3] <= 8) continue;
+      if (pixels[x * 4 + 3] <= 8) continue;
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
@@ -444,34 +589,66 @@ function render() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#171922'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    if (previewCanvas.width !== doc.width || previewCanvas.height !== doc.height) {
-      previewCanvas.width = doc.width; previewCanvas.height = doc.height; previewReady = false;
-    }
-    const dirtyTiles = doc.getCompositeDirtyTiles();
-    const composite = doc.composite();
-    if (!previewReady) {
-      previewCtx.putImageData(new ImageData(new Uint8ClampedArray(composite), doc.width, doc.height), 0, 0);
-      previewReady = true;
-      doc.clearCompositeDirtyTiles();
-    } else if (dirtyTiles.length) {
-      for (const tile of dirtyTiles) {
-        const tilePixels = new Uint8ClampedArray(tile.width * tile.height * 4);
-        for (let row = 0; row < tile.height; row++) {
-          const sourceStart = ((tile.tileY * 64 + row) * doc.width + tile.tileX * 64) * 4;
-          tilePixels.set(composite.subarray(sourceStart, sourceStart + tile.width * 4), row * tile.width * 4);
+    const isTiledViewportDocument = typeof doc.readCompositeRegion === 'function';
+    let viewportRegion = null;
+    if (isTiledViewportDocument) {
+      // Derive the source rectangle from the actual CSS viewport. This keeps
+      // panning/zooming bounded and avoids width × height RGBA allocation for
+      // sparse/tiled projects. Clamp before calling the adapter because its
+      // region API intentionally rejects out-of-bounds rectangles.
+      const viewportWidth = Math.max(1, canvas.clientWidth);
+      const viewportHeight = Math.max(1, canvas.clientHeight);
+      const left = Math.max(0, Math.floor((-panX) / zoom));
+      const top = Math.max(0, Math.floor((-panY) / zoom));
+      const right = Math.min(doc.width, Math.ceil((viewportWidth - panX) / zoom));
+      const bottom = Math.min(doc.height, Math.ceil((viewportHeight - panY) / zoom));
+      if (right > left && bottom > top) {
+        viewportRegion = { x: left, y: top, width: right - left, height: bottom - top };
+        const bounded = doc.readCompositeRegion(viewportRegion);
+        if (tiledViewportCanvas.width !== bounded.width || tiledViewportCanvas.height !== bounded.height) {
+          tiledViewportCanvas.width = bounded.width;
+          tiledViewportCanvas.height = bounded.height;
         }
-        previewCtx.putImageData(new ImageData(tilePixels, tile.width, tile.height), tile.tileX * 64, tile.tileY * 64);
+        tiledViewportCtx.putImageData(new ImageData(new Uint8ClampedArray(bounded.pixels), bounded.width, bounded.height), 0, 0);
       }
-      doc.clearCompositeDirtyTiles();
+    } else {
+      if (previewCanvas.width !== doc.width || previewCanvas.height !== doc.height) {
+        previewCanvas.width = doc.width; previewCanvas.height = doc.height; previewReady = false;
+      }
+      const dirtyTiles = doc.getCompositeDirtyTiles();
+      const composite = doc.composite();
+      if (!previewReady) {
+        previewCtx.putImageData(new ImageData(new Uint8ClampedArray(composite), doc.width, doc.height), 0, 0);
+        previewReady = true;
+        doc.clearCompositeDirtyTiles();
+      } else if (dirtyTiles.length) {
+        for (const tile of dirtyTiles) {
+          const tilePixels = new Uint8ClampedArray(tile.width * tile.height * 4);
+          for (let row = 0; row < tile.height; row++) {
+            const sourceStart = ((tile.tileY * 64 + row) * doc.width + tile.tileX * 64) * 4;
+            tilePixels.set(composite.subarray(sourceStart, sourceStart + tile.width * 4), row * tile.width * 4);
+          }
+          previewCtx.putImageData(new ImageData(tilePixels, tile.width, tile.height), tile.tileX * 64, tile.tileY * 64);
+        }
+        doc.clearCompositeDirtyTiles();
+      }
     }
     // Animation playback is a presentation view: keep editable raster data intact,
     // but use browser interpolation while playing so the walking person reads as a
     // clean, defined figure instead of a blocky nearest-neighbour enlargement.
-    ctx.imageSmoothingEnabled = Boolean(animation && animationPlayback.playing);
+    const drawingPresentation = getDrawingModePresentation(drawingConfiguration.activeMode);
+    ctx.imageSmoothingEnabled = drawingPresentation.imageSmoothingEnabled;
+    if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = drawingPresentation.imageSmoothingQuality;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#20232d';
     ctx.fillRect(panX - 1, panY - 1, doc.width * zoom + 2, doc.height * zoom + 2);
-    ctx.drawImage(previewCanvas, panX, panY, doc.width * zoom, doc.height * zoom);
+    if (viewportRegion) {
+      ctx.drawImage(tiledViewportCanvas, 0, 0, tiledViewportCanvas.width, tiledViewportCanvas.height,
+        panX + viewportRegion.x * zoom, panY + viewportRegion.y * zoom,
+        viewportRegion.width * zoom, viewportRegion.height * zoom);
+    } else if (!isTiledViewportDocument) {
+      ctx.drawImage(previewCanvas, panX, panY, doc.width * zoom, doc.height * zoom);
+    }
     drawOnionSkinOverlay();
     if (transformPreview && transformPreview.docWidth === doc.width && transformPreview.docHeight === doc.height) {
       ctx.save(); ctx.globalAlpha = .78; ctx.imageSmoothingEnabled = false;
@@ -588,7 +765,10 @@ function render() {
     if (virtualCursorVisible && virtualCursorScreen && (cursorMode || virtualCursorPointerId !== null)) {
       const radius = Math.max(2, Math.min(48, brushSize * zoom / 2));
       ctx.save(); ctx.strokeStyle = cursorMode ? '#69dfbb' : drawHeld ? '#69dfbb' : '#e8eaf2'; ctx.lineWidth = 1.25;
-      if (['draw', 'erase'].includes(tool)) { ctx.beginPath(); ctx.arc(virtualCursorScreen.x, virtualCursorScreen.y, radius, 0, Math.PI * 2); ctx.stroke(); }
+      if (['draw', 'erase'].includes(tool)) {
+        if ($('#brush-shape').value === 'square') ctx.strokeRect(virtualCursorScreen.x - radius, virtualCursorScreen.y - radius, radius * 2, radius * 2);
+        else { ctx.beginPath(); ctx.arc(virtualCursorScreen.x, virtualCursorScreen.y, radius, 0, Math.PI * 2); ctx.stroke(); }
+      }
       // Small arrow/pencil marker for the independent on-screen cursor.
       ctx.beginPath(); ctx.moveTo(virtualCursorScreen.x + 1, virtualCursorScreen.y + 1);
       ctx.lineTo(virtualCursorScreen.x + 1, virtualCursorScreen.y + 17); ctx.lineTo(virtualCursorScreen.x + 5, virtualCursorScreen.y + 13);
@@ -694,12 +874,27 @@ function shapePoints(gesture) {
   }
   return path.filter((point, index, points) => index === 0 || point.x !== points[index - 1].x || point.y !== points[index - 1].y);
 }
-function commitShapeGesture(gesture) {
+async function commitShapeGesture(gesture) {
   if (!gesture) return;
   try {
     const points = shapePoints(gesture);
     if (!points.length) return;
-    const stroke = doc.beginStroke({ color, size: brushSize, mode: 'draw', opacity: Number($('#brush-opacity').value) / 100, shape: $('#brush-shape').value, hardness: Number($('#brush-hardness').value) / 100 });
+    const settings = { color, size: brushSize, mode: 'draw', opacity: Number($('#brush-opacity').value) / 100, shape: $('#brush-shape').value, hardness: Number($('#brush-hardness').value) / 100 };
+    if (doc.isTiled) {
+      const targetDocument = doc;
+      const operation = tiledGestureTail.then(() => {
+        if (doc !== targetDocument) return { changed: false, ignored: true };
+        return drawTiledShape(targetDocument, targetDocument.activeLayerId, points, settings, {
+          mapPoint: point => symmetryPoints(point, symmetryMode),
+        });
+      });
+      tiledGestureTail = operation.catch(() => {});
+      const result = await operation;
+      if (result.changed && doc === targetDocument) changed();
+      status(result.changed ? (gesture.tool === 'shape-line' ? 'Line' : gesture.tool === 'shape-rect' ? 'Rectangle' : 'Ellipse') + ' drawn' : 'Shape made no changes', result.changed ? 'success' : 'neutral');
+      return;
+    }
+    const stroke = doc.beginStroke(settings);
     stroke.symmetryMode = symmetryMode;
     for (const point of points) strokeToWithSymmetry(stroke, point.x, point.y);
     doc.endStroke(stroke, { commit: true });
@@ -715,6 +910,44 @@ function moveVirtualCursorBy(dx, dy) {
   virtualCursorPoint = { x: Math.max(0, Math.min(doc.width - 1, point.x)), y: Math.max(0, Math.min(doc.height - 1, point.y)), inside: true };
   virtualCursorVisible = true; render();
 }
+async function persistEditorSnapshot(snapshot, targetDoc) {
+  const canPatch = targetDoc === doc && targetDoc.isTiled &&
+    snapshot?.format === PIXELFORGE_TILED_PROJECT_FORMAT &&
+    snapshot.animation?.format === PIXELFORGE_TILED_ANIMATION_FORMAT &&
+    lastConfirmedProjectSnapshot?.id === snapshot.id &&
+    Number.isInteger(snapshot.serverRevision);
+
+  if (pendingCelPatch && pendingCelPatch.snapshot.id === snapshot.id) {
+    // A previous request may have committed while its response was lost.
+    // Replaying the exact operationId lets the server return its durable receipt.
+    await applyCelPatch(pendingCelPatch.snapshot, pendingCelPatch.patch);
+    targetDoc.serverRevision = pendingCelPatch.snapshot.serverRevision;
+    snapshot.serverRevision = targetDoc.serverRevision;
+    lastConfirmedProjectSnapshot = structuredClone(pendingCelPatch.snapshot);
+    pendingCelPatch = null;
+  }
+
+  if (canPatch && lastConfirmedProjectSnapshot?.id === snapshot.id) {
+    const patch = createCelPatch(lastConfirmedProjectSnapshot, snapshot);
+    if (patch) {
+      pendingCelPatch = { patch, snapshot: structuredClone(snapshot) };
+      await applyCelPatch(pendingCelPatch.snapshot, patch);
+      targetDoc.serverRevision = pendingCelPatch.snapshot.serverRevision;
+      lastConfirmedProjectSnapshot = structuredClone(pendingCelPatch.snapshot);
+      pendingCelPatch = null;
+      return { serverRevision: targetDoc.serverRevision, incremental: true };
+    }
+  }
+
+  const saved = await saveProject(snapshot);
+  if (Number.isInteger(saved?.serverRevision)) targetDoc.serverRevision = saved.serverRevision;
+  if (targetDoc.isTiled && snapshot?.format === PIXELFORGE_TILED_PROJECT_FORMAT) {
+    lastConfirmedProjectSnapshot = structuredClone(snapshot);
+    pendingCelPatch = null;
+  }
+  return saved;
+}
+
 function scheduleAutosave() {
   clearTimeout(autosaveTimer); autosaveTimer = null;
   status('Unsaved changes', 'warning');
@@ -727,8 +960,8 @@ function scheduleAutosave() {
     // successful save when two edits happen close together.
     const operation = autosaveInFlight.catch(() => {}).then(async () => {
       if (doc !== savingDoc) return;
-      const version = savingDoc.saveVersion, snapshot = buildProjectSnapshot(savingDoc);
-      const saved = await saveProject(snapshot);
+      const version = savingDoc.saveVersion, snapshot = await buildProjectSnapshot(savingDoc);
+      const saved = await persistEditorSnapshot(snapshot, savingDoc);
       if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
       savingDoc.dirty = savingDoc.saveVersion !== version;
       if (doc === savingDoc) {
@@ -741,14 +974,14 @@ function scheduleAutosave() {
     });
   }, 800);
 }
-function settleActiveInput() {
-  if (activeStroke) finishActiveStroke(true);
+async function settleActiveInput() {
+  if (activeStroke || (doc.isTiled && tiledPointerController && pointerId !== null)) await finishActiveStroke(true);
   drawHeld = false; drawHoldPointerId = null; updateDrawHoldUI();
 }
 async function flushAutosave({ force = false } = {}) {
   if (flushPromise) return flushPromise;
   flushPromise = (async () => {
-    settleActiveInput();
+    await settleActiveInput();
     const pending = autosaveTimer !== null;
     if (pending) { clearTimeout(autosaveTimer); autosaveTimer = null; }
     const savingDoc = doc;
@@ -757,8 +990,8 @@ async function flushAutosave({ force = false } = {}) {
       await autosaveInFlight;
       if (!savingDoc.dirty && !pending && !force) return;
       while (doc === savingDoc) {
-        const version = savingDoc.saveVersion, snapshot = buildProjectSnapshot(savingDoc);
-        const saved = await saveProject(snapshot);
+        const version = savingDoc.saveVersion, snapshot = await buildProjectSnapshot(savingDoc);
+        const saved = await persistEditorSnapshot(snapshot, savingDoc);
         if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
         if (savingDoc.saveVersion === version) { savingDoc.dirty = false; break; }
         savingDoc.dirty = true;
@@ -809,32 +1042,119 @@ function syncAnimationLayerStack(copyFromByNewId = new Map()) {
 }
 function markAnimationChanged() { doc.revision++; doc.saveVersion++; doc.dirty = true; }
 function canGrowAnimationLayer() {
-  return !animation || animation.memoryBytes + doc.width * doc.height * 4 * animation.frameCount <= 64 * 1024 * 1024;
+  return doc.isTiled || !animation || animation.memoryBytes + doc.width * doc.height * 4 * animation.frameCount <= 64 * 1024 * 1024;
+}
+function syncTiledAnimationFrame() {
+  if (!(animation instanceof TiledAnimationDocument) || !doc.isTiled) return false;
+  const index = animation.activeFrameIndex;
+  for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
+    const layer = doc.layers[layerIndex];
+    const celId = doc.cloneLayerCelReference(layer.id);
+    try { animation.replaceFrameCelReference(index, layer.id, celId, { takeOwnership: true }); }
+    catch (error) { animation.releaseCelReference(celId); throw error; }
+    const metadata = { ...layer, index: layerIndex + 1, parentFrameId: animationFrameId(index) };
+    delete metadata.celId;
+    animation.setLayerMetadata(index, layer.id, metadata);
+  }
+  animation.setFrameAuthoringMode(index, drawingConfiguration.activeMode);
+  return true;
+}
+function pruneTiledAnimationOrphanCels() {
+  if (!(animation instanceof TiledAnimationDocument)) return;
+  const referenced = new Set();
+  const histories = [doc?.strokeHistory, ...tiledAnimationHistory.values()].filter(Boolean);
+  for (const history of histories) {
+    for (const command of [...history.undoStack, ...history.redoStack]) {
+      if (!command?.type?.startsWith('layer-state:')) continue;
+      for (const state of [command.before, command.after]) for (const layer of state?.layers || []) referenced.add(layer.id);
+    }
+  }
+  const liveFrameIds = new Set(Array.from({ length: animation.frameCount }, (_, index) => animation.getFrame(index).id));
+  for (const [layerId, frames] of tiledAnimationOrphanCels) {
+    const retained = [];
+    for (const item of frames) {
+      if (!liveFrameIds.has(item.frameId)) {
+        if (item.celId) animation.releaseCelReference(item.celId);
+      } else retained.push(item);
+    }
+    if (!referenced.has(layerId)) {
+      for (const item of retained) if (item.celId) animation.releaseCelReference(item.celId);
+      tiledAnimationOrphanCels.delete(layerId);
+    } else tiledAnimationOrphanCels.set(layerId, retained);
+  }
+}
+function syncTiledAnimationLayerStack(copyFromByNewId = new Map()) {
+  if (!(animation instanceof TiledAnimationDocument) || !doc.isTiled) return;
+  const currentIds = doc.layerIds;
+  for (const oldId of animation.layerIds) {
+    if (currentIds.includes(oldId)) continue;
+    const orphan = animation.removeLayer(oldId);
+    tiledAnimationOrphanCels.set(oldId, orphan.frames);
+  }
+  for (const layer of doc.layers) {
+    if (animation.layerIds.includes(layer.id)) continue;
+    const sourceId = copyFromByNewId.get(layer.id) || null;
+    const activeCelId = doc.cloneLayerCelReference(layer.id);
+    const orphanFrames = tiledAnimationOrphanCels.get(layer.id);
+    const layerMetadata = { ...layer }; delete layerMetadata.celId;
+    animation.addLayer(layer.id, { activeCelId, copyFromLayerId: sourceId, metadata: layerMetadata,
+      orphanFrames: orphanFrames ? new Map(orphanFrames.map(item => [item.frameId, item])) : null });
+    if (orphanFrames) tiledAnimationOrphanCels.delete(layer.id);
+  }
+  animation.reorderLayers(currentIds);
+  pruneTiledAnimationOrphanCels();
+}
+function applyTiledAnimationFrame(index, { resetHistory = false } = {}) {
+  if (!(animation instanceof TiledAnimationDocument) || !doc.isTiled) return false;
+  const frame = animation.getFrame(index);
+  const references = new Map();
+  try {
+    for (const layerId of animation.layerIds) references.set(layerId, animation.getFrameCelReference(index, layerId));
+    doc.replaceLayerCelReferences(references, { takeOwnership: true });
+  } catch (error) {
+    for (const celId of references.values()) animation.releaseCelReference(celId);
+    throw error;
+  }
+  for (const layerId of animation.layerIds) {
+    const metadata = animation.getLayerMetadata(index, layerId);
+    doc.updateLayer(layerId, metadata);
+  }
+  if (resetHistory) {
+    for (const history of tiledAnimationHistory.values()) history.dispose();
+    tiledAnimationHistory.clear();
+    doc.strokeHistory.clear();
+  }
+  if (drawingConfiguration.activeMode !== frame.authoringMode) setDrawingMode(frame.authoringMode, { persist: false });
+  clearSelectionState();
+  renderLayers(); renderAnimationTimeline(); render(); updateTitle();
+  return true;
 }
 function captureAnimationFrame() {
   if (!animation) return;
+  if (animation instanceof TiledAnimationDocument) { syncTiledAnimationLayerStack(); syncTiledAnimationFrame(); return; }
   syncAnimationLayerStack();
   const index = animation.activeFrameIndex;
   for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
     const layer = doc.layers[layerIndex];
     animation.setLayerPixels(index, layer.id, layer.pixels);
     animation.setLayerMetadata(index, layer.id, {
-      ...layer,
-      parentFrameId: animationFrameId(index), index: layerIndex + 1,
-      id: layer.id, name: layer.name,
+      ...layer, parentFrameId: animationFrameId(index), index: layerIndex + 1, id: layer.id, name: layer.name,
     });
   }
 }
 function applyAnimationFramePixels(index) {
   if (!animation) return;
+  if (animation instanceof TiledAnimationDocument) { applyTiledAnimationFrame(index); return; }
   const frameId = animationFrameId(index);
+  const frameAuthoringMode = animation.getFrame(index).authoringMode || PIXELFORGE_DRAWING_MODES.PIXEL_ART;
   const previousRevision = doc.revision, previousSaveVersion = doc.saveVersion;
   const replacements = doc.layers.map(layer => ({ layerId: layer.id, pixels: animation.getLayerPixels(index, layer.id) }));
+  const ownershipByLayer = new Map(doc.layers.map(layer => [layer.id, animation.getLayerOwnershipTiles(index, layer.id)]));
   const frameLayerMetadata = doc.layers.map((layer, layerIndex) => animation.getLayerMetadata(index, layer.id) || { id: layer.id, index: layerIndex + 1 });
   const locks = doc.layers.map(layer => [layer, layer.locked]);
   try {
     for (const [layer] of locks) layer.locked = false;
-    doc.replaceLayerPixelsBatch(replacements);
+    doc.replaceLayerPixelsBatch(replacements, { restore: true, ownershipByLayer });
     for (let layerIndex = 0; layerIndex < doc.layers.length; layerIndex++) {
       const layer = doc.layers[layerIndex], metadata = frameLayerMetadata[layerIndex];
       if (!metadata) continue;
@@ -846,59 +1166,180 @@ function applyAnimationFramePixels(index) {
       layer.rotation = Number.isFinite(Number(metadata.rotation)) ? Number(metadata.rotation) : 0;
       layer.angle = metadata.angle ?? 0;
       layer.opacity = Number.isFinite(Number(metadata.opacity)) ? Math.max(0, Math.min(1, Number(metadata.opacity))) : 1;
-      layer.visible = metadata.visible !== false;
-      layer.locked = metadata.locked === true;
-      layer.blendMode = String(metadata.blendMode || 'normal');
-      layer.blur = metadata.blur ?? 0;
-      layer.brightness = metadata.brightness ?? 0;
-      layer.contrast = metadata.contrast ?? 0;
-      layer.saturation = metadata.saturation ?? 0;
-      layer.mask = structuredClone(metadata.mask ?? 'inexistente');
-      layer.clipping = structuredClone(metadata.clipping ?? 'inexistente');
-      layer.references = structuredClone(metadata.references || []);
-      layer.assets = structuredClone(metadata.assets || []);
+      layer.visible = metadata.visible !== false; layer.locked = metadata.locked === true;
+      layer.blendMode = String(metadata.blendMode || 'normal'); layer.blur = metadata.blur ?? 0;
+      layer.brightness = metadata.brightness ?? 0; layer.contrast = metadata.contrast ?? 0; layer.saturation = metadata.saturation ?? 0;
+      layer.mask = structuredClone(metadata.mask ?? 'inexistente'); layer.clipping = structuredClone(metadata.clipping ?? 'inexistente');
+      layer.references = structuredClone(metadata.references || []); layer.assets = structuredClone(metadata.assets || []);
       layer.metadata = structuredClone(metadata.metadata || {});
+      layer.authoringMode = ['illustration', 'pixel-art'].includes(metadata.authoringMode) ? metadata.authoringMode : frameAuthoringMode;
+      layer.modeOverrides = metadata.modeOverrides && typeof metadata.modeOverrides === 'object' && !Array.isArray(metadata.modeOverrides) ? structuredClone(metadata.modeOverrides) : {};
     }
-  } finally {
-    for (const [layer, locked] of locks) layer.locked = locked;
-  }
+    applyActiveLayerModeProfile(drawingConfiguration.activeMode);
+  } finally { for (const [layer, locked] of locks) layer.locked = locked; }
   const history = animationFrameHistory.get(frameId);
-  doc.history = history ? [...history.history] : [];
-  doc.future = history ? [...history.future] : [];
+  doc.history = history ? [...history.history] : []; doc.future = history ? [...history.future] : [];
   doc.historyBytes = history?.historyBytes ?? 0;
   if (doc.revision === previousRevision) doc.revision++;
   if (doc.saveVersion === previousSaveVersion) doc.saveVersion++;
-  doc.dirty = true;
-  clearSelectionState();
-  renderLayers();
-  renderAnimationTimeline();
-  render();
-  updateTitle();
-  syncAIWorkspaceFromUser();
+  doc.dirty = true; clearSelectionState(); renderLayers(); renderAnimationTimeline(); render(); updateTitle(); syncAIWorkspaceFromUser();
 }
+function parkTiledFrameHistory(frameId) {
+  syncTiledAnimationLayerStack(); syncTiledAnimationFrame();
+  const detached = doc.swapStrokeHistory(doc.createStrokeHistory());
+  const previous = tiledAnimationHistory.get(frameId);
+  previous?.dispose(); tiledAnimationHistory.set(frameId, detached);
+}
+function restoreTiledFrameHistory(frameId) {
+  const next = tiledAnimationHistory.get(frameId) || doc.createStrokeHistory();
+  tiledAnimationHistory.delete(frameId);
+  doc.swapStrokeHistory(next).dispose();
+}
+
 function switchAnimationFrame(index, { autosave = true } = {}) {
   if (!animation || index === animation.activeFrameIndex) return false;
-  settleActiveInput();
+  if (doc.isTiled && animation instanceof TiledAnimationDocument) {
+    if (doc.strokeHistory.isStrokeActive) throw new Error('Finish the current stroke before switching animation frames.');
+    const previousId = animationFrameId(animation.activeFrameIndex);
+    parkTiledFrameHistory(previousId);
+    animation.setActiveFrame(index);
+    restoreTiledFrameHistory(animationFrameId(index));
+    applyTiledAnimationFrame(index);
+    if (autosave) scheduleAutosave();
+    return true;
+  }
+  void settleActiveInput();
   const previousId = animationFrameId(animation.activeFrameIndex);
-  captureAnimationFrame();
-  saveAnimationFrameHistory(previousId);
-  animation.setActiveFrame(index);
-  applyAnimationFramePixels(index);
+  captureAnimationFrame(); saveAnimationFrameHistory(previousId);
+  animation.setActiveFrame(index); applyAnimationFramePixels(index);
   if (autosave) scheduleAutosave();
   return true;
 }
 function ensureAnimation() {
   if (!animation) {
     if (cropPreview || transformPreview) throw new Error('Finish or cancel the active preview before starting an animation timeline.');
+    if (doc.isTiled) {
+      animation = TiledAnimationDocument.fromTiledProjectDocument(doc, { fps: Number($('#animation-fps').value) || 12 });
+      tiledAnimationHistory.clear();
+      markAnimationChanged(); scheduleAutosave();
+      renderAnimationTimeline();
+      return animation;
+    }
     animation = PixelForgeAnimation.fromDocument(doc, { fps: Number($('#animation-fps').value) || 12 });
+    animation.setFrameAuthoringMode(0, drawingConfiguration.activeMode);
+    for (const layer of doc.layers) animation.setLayerMetadata(0, layer.id, { ...animation.getLayerMetadata(0, layer.id), authoringMode: layer.authoringMode || drawingConfiguration.activeMode });
     animationFrameHistory.set(animationFrameId(0), { history: [...doc.history], future: [...doc.future], historyBytes: doc.historyBytes });
     renderAnimationTimeline();
   }
   return animation;
 }
-function buildProjectSnapshot(targetDoc = doc) {
+function readActiveLayerModeProfile(mode) {
+  const value = doc?.activeLayer?.modeOverrides?.[mode];
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+function captureActiveLayerModeProfile(mode = drawingConfiguration.activeMode) {
+  const layer = doc?.activeLayer;
+  if (!layer) return false;
+  const defaults = getDrawingModePresentation(mode);
+  const profile = {
+    brushSize,
+    brushShape: $('#brush-shape')?.value || defaults.brushShape,
+    brushHardness: Number($('#brush-hardness')?.value ?? defaults.brushHardness),
+    brushOpacity: Number($('#brush-opacity')?.value ?? defaults.brushOpacity),
+    fillTolerance,
+    magicTolerance: Number($('#magic-tolerance')?.value ?? defaults.magicTolerance),
+    fillContiguous,
+    magicContiguous: $('#magic-mode')?.value === 'contiguous',
+    interpolation: $('#transform-interpolation')?.value || defaults.interpolation,
+  };
+  const nextOverrides = updateDrawingModeOverrides(layer.modeOverrides, mode, profile);
+  if (JSON.stringify(layer.modeOverrides || {}) === JSON.stringify(nextOverrides)) return false;
+  layer.modeOverrides = nextOverrides;
+  doc.dirty = true;
+  doc.saveVersion++;
+  return true;
+}
+function applyActiveLayerModeProfile(mode) {
+  const defaults = getDrawingModePresentation(mode);
+  const saved = normalizeDrawingModeProfile(mode, readActiveLayerModeProfile(mode));
+  brushSize = saved.brushSize;
+  $('#brush-size').value = String(brushSize);
+  $('#brush-size-value').textContent = brushSize + ' px';
+  $('#brush-shape').value = saved.brushShape;
+  $('#brush-hardness').value = String(saved.brushHardness);
+  $('#brush-hardness-value').textContent = saved.brushHardness + '%';
+  $('#brush-opacity').value = String(saved.brushOpacity);
+  $('#brush-opacity-value').textContent = saved.brushOpacity + '%';
+  fillTolerance = saved.fillTolerance;
+  $('#fill-tolerance').value = String(fillTolerance);
+  $('#fill-tolerance-value').textContent = String(fillTolerance);
+  $('#fill-mode').value = saved.fillContiguous ? 'contiguous' : 'global';
+  $('#magic-tolerance').value = String(saved.magicTolerance);
+  $('#magic-tolerance-value').textContent = String(saved.magicTolerance);
+  $('#magic-mode').value = saved.magicContiguous ? 'contiguous' : 'global';
+  const interpolation = $('#transform-interpolation').querySelector(`option[value="${saved.interpolation}"]`)
+    ? saved.interpolation : defaults.interpolation;
+  $('#transform-interpolation').value = interpolation;
+}
+function applyDrawingConfiguration(snapshot, { legacyDefault = PIXELFORGE_DRAWING_MODES.PIXEL_ART } = {}) {
+  drawingConfiguration = normalizeDrawingConfiguration(snapshot?.drawingConfiguration, { legacyDefault });
+  if (doc.isTiled && JSON.stringify(doc.drawingConfiguration) !== JSON.stringify(drawingConfiguration)) doc.drawingConfiguration = drawingConfiguration;
+  const control = $('#drawing-mode');
+  if (control) {
+    control.value = drawingConfiguration.activeMode;
+    for (const option of control.options) option.disabled = !drawingConfiguration.availableModes.includes(option.value);
+  }
+  const presentation = getDrawingModePresentation(drawingConfiguration.activeMode);
+  document.documentElement.dataset.drawingMode = drawingConfiguration.activeMode;
+  document.body.dataset.drawingMode = drawingConfiguration.activeMode;
+  ctx.imageSmoothingEnabled = presentation.imageSmoothingEnabled;
+  if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = presentation.imageSmoothingQuality;
+  const hardness = $('#brush-hardness');
+  if (hardness) {
+    hardness.value = String(presentation.brushHardness);
+    $('#brush-hardness-value').textContent = hardness.value + '%';
+  }
+  brushSize = presentation.brushSize;
+  $('#brush-size').value = String(brushSize);
+  $('#brush-size-value').textContent = brushSize + ' px';
+  $('#brush-shape').value = presentation.brushShape;
+  $('#transform-interpolation').value = presentation.interpolation;
+  applyActiveLayerModeProfile(drawingConfiguration.activeMode);
+  return drawingConfiguration;
+}
+function setDrawingMode(mode, { persist = true } = {}) {
+  captureActiveLayerModeProfile(drawingConfiguration.activeMode);
+  drawingConfiguration = switchDrawingMode(drawingConfiguration, mode);
+  if (doc.isTiled) doc.drawingConfiguration = drawingConfiguration;
+  const control = $('#drawing-mode');
+  if (control) control.value = mode;
+  const presentation = getDrawingModePresentation(mode);
+  document.documentElement.dataset.drawingMode = mode;
+  document.body.dataset.drawingMode = mode;
+  ctx.imageSmoothingEnabled = presentation.imageSmoothingEnabled;
+  if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = presentation.imageSmoothingQuality;
+  const hardness = $('#brush-hardness');
+  if (hardness) {
+    hardness.value = String(presentation.brushHardness);
+    $('#brush-hardness-value').textContent = hardness.value + '%';
+  }
+  brushSize = presentation.brushSize;
+  $('#brush-size').value = String(brushSize);
+  $('#brush-size-value').textContent = brushSize + ' px';
+  $('#brush-shape').value = presentation.brushShape;
+  $('#transform-interpolation').value = presentation.interpolation;
+  applyActiveLayerModeProfile(mode);
+  render();
+  if (persist) scheduleAutosave();
+  status(mode === PIXELFORGE_DRAWING_MODES.ILLUSTRATION
+    ? 'Illustration mode · smooth brush and high-quality preview'
+    : 'Pixel-art mode · hard edges and pixel-perfect preview', 'success');
+}
+async function buildProjectSnapshot(targetDoc = doc) {
+  if (targetDoc === doc) captureActiveLayerModeProfile();
   if (targetDoc === doc && animation) captureAnimationFrame();
-  const snapshot = targetDoc.toJSON();
+  const snapshot = targetDoc.isTiled ? await targetDoc.toManifest() : targetDoc.toJSON();
+  if (targetDoc === doc) snapshot.drawingConfiguration = structuredClone(drawingConfiguration);
   if (targetDoc === doc) {
     const state = readSceneWorkspaceState(targetDoc.drawingModel);
     const workspaceSnapshot = stripSceneWorkspaceState(snapshot);
@@ -910,7 +1351,9 @@ function buildProjectSnapshot(targetDoc = doc) {
     targetDoc.drawingModel = withState.drawingModel;
   }
   if (targetDoc === doc && animation) {
-    snapshot.animation = { ...animation.toJSON(), loop: animationLoop, playbackSpeed: animationPlaybackSpeed };
+    snapshot.animation = animation instanceof TiledAnimationDocument
+      ? { ...await animation.toManifest(), loop: animationLoop, playbackSpeed: animationPlaybackSpeed }
+      : { ...animation.toJSON(), loop: animationLoop, playbackSpeed: animationPlaybackSpeed };
   }
   return snapshot;
 }
@@ -924,6 +1367,7 @@ function updateSceneWorkspaceUI() {
   }
 }
 function restoreActiveSceneWorkspace() {
+  if (doc.isTiled) { activeSceneWorkspace = 'main'; updateSceneWorkspaceUI(); return; }
   const state = readSceneWorkspaceState(doc.drawingModel);
   activeSceneWorkspace = state.activeSection;
   if (activeSceneWorkspace !== 'main') {
@@ -941,6 +1385,7 @@ function restoreActiveSceneWorkspace() {
       drawingModel: { ...(savedWorkspace.drawingModel || {}), sceneWorkspaceState: state },
     };
     doc = RasterDocument.fromJSON(restoredSnapshot);
+    applyDrawingConfiguration(restoredSnapshot);
     animation = restoredSnapshot.animation ? PixelForgeAnimation.fromJSON(restoredSnapshot.animation) : null;
     animationLoop = restoredSnapshot.animation?.loop !== false;
     animationPlaybackSpeed = restoredSnapshot.animation?.playbackSpeed ?? 1;
@@ -948,12 +1393,13 @@ function restoreActiveSceneWorkspace() {
   updateSceneWorkspaceUI();
 }
 async function switchSceneWorkspace(nextSection) {
+  if (doc.isTiled) { status('Scene workspaces are not yet available for sparse tiled projects.', 'warning'); return; }
   const valid = nextSection === 'main' || sceneWorkspaceSections().some(section => section.key === nextSection);
   if (!valid || nextSection === activeSceneWorkspace) return;
   try {
     stopAnimationPlayback();
     await flushAutosave({ force: true });
-    const currentSnapshot = buildProjectSnapshot();
+    const currentSnapshot = await buildProjectSnapshot();
     const state = readSceneWorkspaceState(currentSnapshot.drawingModel);
     const currentWorkspace = stripSceneWorkspaceState(currentSnapshot);
     if (activeSceneWorkspace === 'main') state.parentWorkspace = currentWorkspace;
@@ -977,7 +1423,7 @@ async function switchSceneWorkspace(nextSection) {
       drawingModel: { ...(targetSnapshot.drawingModel || {}), sceneWorkspaceState: state },
     };
     doc = RasterDocument.fromJSON(restoredSnapshot);
-    animation = restoredSnapshot.animation ? PixelForgeAnimation.fromJSON(restoredSnapshot.animation) : null;
+    animation = restoredSnapshot.animation ? await restoreProjectAnimation(restoredSnapshot.animation) : null;
     animationLoop = restoredSnapshot.animation?.loop !== false;
     animationPlaybackSpeed = restoredSnapshot.animation?.playbackSpeed ?? 1;
     activeSceneWorkspace = nextSection;
@@ -992,7 +1438,7 @@ async function switchSceneWorkspace(nextSection) {
     updateTitle();
     renderLayers();
     renderAnimationTimeline();
-    referenceCenterUI?.refresh();
+    refreshReferenceCenterUI();
     updateSceneWorkspaceUI();
     status(nextSection === 'main' ? 'Returned to the main project workspace' : 'Opened independent ' + sceneWorkspaceSections().find(item => item.key === nextSection).label + ' workspace', 'success');
   } catch (error) {
@@ -1000,7 +1446,7 @@ async function switchSceneWorkspace(nextSection) {
       updateTitle();
       renderLayers();
       renderAnimationTimeline();
-      referenceCenterUI?.refresh();
+      refreshReferenceCenterUI();
     }
     status('Could not switch scene workspace: ' + error.message, 'error');
   }
@@ -1009,10 +1455,35 @@ function drawOnionSkinOverlay() {
   if (!animation || !$('#animation-onion')?.checked) return;
   const neighbors = animation.getOnionSkinFrames({ previous: 1, next: 1 });
   if (!neighbors.length) return;
-  const layerSettings = doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+  const layerSettings = animation instanceof TiledAnimationDocument
+    ? animation.layerIds.map(id => { const metadata = animation.getLayerMetadata(animation.activeFrameIndex, id); return { id, visible: metadata.visible !== false, opacity: metadata.opacity ?? 1 }; })
+    : doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+  if (doc.isTiled && animation instanceof TiledAnimationDocument) {
+    const viewportWidth = Math.max(1, canvas.clientWidth), viewportHeight = Math.max(1, canvas.clientHeight);
+    const left = Math.max(0, Math.floor((-panX) / zoom)), top = Math.max(0, Math.floor((-panY) / zoom));
+    const right = Math.min(doc.width, Math.ceil((viewportWidth - panX) / zoom));
+    const bottom = Math.min(doc.height, Math.ceil((viewportHeight - panY) / zoom));
+    if (right <= left || bottom <= top) return;
+    const region = { x: left, y: top, width: right - left, height: bottom - top };
+    const surface = document.createElement('canvas'); surface.width = region.width; surface.height = region.height;
+    const surfaceContext = surface.getContext('2d'); if (!surfaceContext) return;
+    for (const neighbor of neighbors) {
+      const neighborSettings = animation.layerIds.map(id => { const metadata = animation.getLayerMetadata(neighbor.index, id); return { id, visible: metadata.visible !== false, opacity: metadata.opacity ?? 1 }; });
+      const pixels = animation.compositeRegion(neighbor.index, region, neighborSettings).pixels;
+      surfaceContext.clearRect(0, 0, region.width, region.height);
+      surfaceContext.putImageData(new ImageData(pixels, region.width, region.height), 0, 0);
+      surfaceContext.globalCompositeOperation = 'source-atop';
+      surfaceContext.fillStyle = neighbor.direction === 'previous' ? 'rgba(90,150,255,.58)' : 'rgba(255,100,150,.58)';
+      surfaceContext.fillRect(0, 0, region.width, region.height);
+      surfaceContext.globalCompositeOperation = 'source-over';
+      ctx.save(); ctx.globalAlpha = neighbor.opacity * .55;
+      ctx.drawImage(surface, panX + region.x * zoom, panY + region.y * zoom, region.width * zoom, region.height * zoom);
+      ctx.restore();
+    }
+    return;
+  }
   const surface = document.createElement('canvas'); surface.width = doc.width; surface.height = doc.height;
-  const surfaceContext = surface.getContext('2d');
-  if (!surfaceContext) return;
+  const surfaceContext = surface.getContext('2d'); if (!surfaceContext) return;
   for (const neighbor of neighbors) {
     const pixels = animation.compositeFrame(neighbor.index, layerSettings);
     surfaceContext.clearRect(0, 0, doc.width, doc.height);
@@ -1021,9 +1492,7 @@ function drawOnionSkinOverlay() {
     surfaceContext.fillStyle = neighbor.direction === 'previous' ? 'rgba(90,150,255,.58)' : 'rgba(255,100,150,.58)';
     surfaceContext.fillRect(0, 0, doc.width, doc.height);
     surfaceContext.globalCompositeOperation = 'source-over';
-    ctx.save(); ctx.globalAlpha = neighbor.opacity * .55;
-    ctx.drawImage(surface, panX, panY, doc.width * zoom, doc.height * zoom);
-    ctx.restore();
+    ctx.save(); ctx.globalAlpha = neighbor.opacity * .55; ctx.drawImage(surface, panX, panY, doc.width * zoom, doc.height * zoom); ctx.restore();
   }
 }
 function renderAnimationTimeline() {
@@ -1065,7 +1534,10 @@ function renderAnimationTimeline() {
     button.title = `Select frame ${index + 1}`;
     const thumb = document.createElement('canvas'); thumb.width = 48; thumb.height = 48;
     const tctx = thumb.getContext('2d');
-    const preview = animation.compositeThumbnail(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })), 48);
+    const layerSettings = animation instanceof TiledAnimationDocument
+      ? animation.layerIds.map(id => { const metadata = animation.getLayerMetadata(index, id); return { id, visible: metadata.visible !== false, opacity: metadata.opacity ?? 1 }; })
+      : doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+    const preview = animation.compositeThumbnail(index, layerSettings, 48);
     const thumbPixels = document.createElement('canvas'); thumbPixels.width = preview.width; thumbPixels.height = preview.height;
     thumbPixels.getContext('2d').putImageData(new ImageData(preview.pixels, preview.width, preview.height), 0, 0);
     const thumbScale = Math.min(48 / preview.width, 48 / preview.height);
@@ -1094,7 +1566,7 @@ function stopAnimationPlayback({ save = true } = {}) {
 function startAnimationPlayback() {
   if (!ensureAnimation() || animationPlayback.playing) return;
   if (animation.frameCount < 2) { status('Add at least two frames to play an animation', 'neutral'); return; }
-  settleActiveInput(); captureAnimationFrame();
+  void settleActiveInput(); captureAnimationFrame();
   animationPlayback.playing = true; animationPlayback.startedAt = performance.now(); animationPlayback.lastIndex = animation.activeFrameIndex;
   $('#animation-play').disabled = true; $('#animation-stop').disabled = false;
   const tick = now => {
@@ -1116,12 +1588,71 @@ function startAnimationPlayback() {
   status('Playing animation', 'success');
 }
 function changed(copyFromByNewId = new Map()) {
+  stampActiveDrawingMode();
   clearTransformPreview(); clearCropPreview();
+  if (doc.isTiled) {
+    if (animation instanceof TiledAnimationDocument) { syncTiledAnimationLayerStack(copyFromByNewId); syncTiledAnimationFrame(); renderAnimationTimeline(); }
+    render(); updateTitle(); scheduleAutosave(); return;
+  }
   if (animation) { syncAnimationLayerStack(copyFromByNewId); captureAnimationFrame(); renderAnimationTimeline(); }
   syncAIWorkspaceFromUser(); render(); updateTitle(); scheduleAutosave();
 }
+function stampActiveDrawingMode() {
+  const mode = drawingConfiguration.activeMode;
+  const layerId = doc?.activeLayerId;
+  if (!layerId || !['illustration', 'pixel-art'].includes(mode)) return false;
+  if (doc.isTiled) {
+    doc.updateLayer(layerId, { authoringMode: mode });
+  } else if (doc.activeLayer) {
+    doc.activeLayer.authoringMode = mode;
+  }
+  if (animation && animation.layerIds.includes(layerId)) {
+    const frameIndex = animation.activeFrameIndex;
+    if (typeof animation.setFrameAuthoringMode === 'function') animation.setFrameAuthoringMode(frameIndex, mode);
+    if (typeof animation.setLayerMetadata === 'function') {
+      const metadata = animation.getLayerMetadata(frameIndex, layerId);
+      animation.setLayerMetadata(frameIndex, layerId, { ...metadata, authoringMode: mode });
+    }
+  }
+  return true;
+}
+
 function startStrokeAt(point, id) {
-  if (!point?.inside || activeStroke) return;
+  if (!point?.inside) return;
+  stampActiveDrawingMode();
+  if (doc.isTiled) {
+    const controller = getTiledPointerController();
+    if (doc.activeLayer?.locked) { status('This layer is locked', 'warning'); return; }
+    pointerId = id;
+    const gestureToken = ++tiledGestureSequence;
+    activeTiledGestureToken = gestureToken;
+    const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
+    const targetDocument = doc;
+    const operation = tiledGestureTail.then(() => {
+      if (doc !== targetDocument) return { ignored: true };
+      return controller.pointerDown({
+        pointerId: id,
+        layerId: targetDocument.activeLayerId,
+        points,
+        settings: {
+          color, size: brushSize, mode: tool,
+          opacity: Number($('#brush-opacity').value) / 100,
+          shape: $('#brush-shape').value,
+          hardness: Number($('#brush-hardness').value) / 100,
+        },
+      });
+    });
+    tiledGestureTail = operation.catch(() => {});
+    void operation.then(() => render()).catch(error => {
+      if (activeTiledGestureToken === gestureToken) {
+        pointerId = null;
+        activeTiledGestureToken = 0;
+      }
+      status(error.message, 'error');
+    });
+    return;
+  }
+  if (activeStroke) return;
   try {
     activeStroke = doc.beginStroke({ color, size: brushSize, mode: tool, opacity: Number($('#brush-opacity').value) / 100, shape: $('#brush-shape').value, hardness: Number($('#brush-hardness').value) / 100 });
     activeStroke.symmetryMode = symmetryMode;
@@ -1176,6 +1707,7 @@ function applySelectionCombination(nextMask, baseMask = doc.selectionMask, sourc
   render();
 }
 function performColorSelection(point) {
+  if (doc.isTiled) { status('Color-based selection is not yet available for sparse tiled projects.', 'warning'); return; }
   if (!point?.inside || flushInProgress) return;
   try {
     const mask = createColorSelectionMask(doc.width, doc.height, doc.activeLayer.pixels, point.x, point.y, {
@@ -1187,8 +1719,21 @@ function performColorSelection(point) {
 }
 function performFill(point) {
   if (!point?.inside || flushInProgress) return;
+  const settings = { color, tolerance: fillTolerance, contiguous: fillContiguous, pattern: $('#fill-pattern').value, secondaryColor: backgroundColor, scale: Number($('#fill-scale').value) };
+  if (doc.isTiled) {
+    const targetDocument = doc, layerId = doc.activeLayerId;
+    void fillTiledLayer(targetDocument, layerId, point.x, point.y, settings).then(count => {
+      if (doc !== targetDocument) return;
+      if (count) { changed(); status(`Filled ${count.toLocaleString()} pixels`, 'success'); }
+      else status('Fill made no changes', 'neutral');
+      render();
+    }).catch(error => {
+      if (doc === targetDocument) status(error.message, 'error');
+    });
+    return;
+  }
   try {
-    const count = doc.fillAt(point.x, point.y, { color, tolerance: fillTolerance, contiguous: fillContiguous, pattern: $('#fill-pattern').value, secondaryColor: backgroundColor, scale: Number($('#fill-scale').value) });
+    const count = doc.fillAt(point.x, point.y, settings);
     if (count) { changed(); status(`Filled ${count.toLocaleString()} pixels`, 'success'); }
     else status('Fill made no changes', 'neutral');
   } catch (error) { status(error.message, 'error'); }
@@ -1201,6 +1746,26 @@ function beginStroke(event) {
   startStrokeAt(point, event.pointerId);
 }
 function moveStroke(event) {
+  if (doc.isTiled && tiledPointerController && event.pointerId === pointerId) {
+    const point = docPoint(event);
+    if (point.inside) {
+      const points = symmetryPoints({ x: point.x, y: point.y }, symmetryMode);
+      const controller = tiledPointerController, targetDocument = doc, gestureToken = activeTiledGestureToken;
+      const operation = tiledGestureTail.then(() => {
+        if (doc !== targetDocument || tiledPointerController !== controller) return { changed: false, ignored: true };
+        return controller.pointerMove({ pointerId: event.pointerId, points });
+      });
+      tiledGestureTail = operation.catch(() => {});
+      void operation.then(() => render()).catch(error => {
+        if (activeTiledGestureToken === gestureToken) {
+          pointerId = null;
+          activeTiledGestureToken = 0;
+        }
+        status(error.message, 'error');
+      });
+    }
+    return;
+  }
   if (selectionStart && event.pointerId === selectionPointerId) {
     const point = docPoint(event);
     const x = Math.max(0, Math.min(doc.width - 1, point.x)), y = Math.max(0, Math.min(doc.height - 1, point.y));
@@ -1235,11 +1800,43 @@ function moveStroke(event) {
   render();
 }
 function finishActiveStroke(commit = true) {
-  if (!activeStroke) return;
+  if (doc.isTiled && tiledPointerController && pointerId !== null) {
+    const id = pointerId, gestureToken = activeTiledGestureToken;
+    const controller = tiledPointerController, targetDocument = doc;
+    const operation = tiledGestureTail.then(() => {
+      if (doc !== targetDocument || tiledPointerController !== controller) return false;
+      return commit
+        ? controller.pointerUp({ pointerId: id })
+        : controller.pointerCancel(id);
+    });
+    tiledGestureTail = operation.catch(() => {});
+    return operation.then(finished => {
+      if (activeTiledGestureToken === gestureToken) {
+        pointerId = null;
+        activeTiledGestureToken = 0;
+      }
+      if (finished && doc === targetDocument) changed();
+      return Boolean(finished);
+    }).catch(error => {
+      if (activeTiledGestureToken === gestureToken) {
+        pointerId = null;
+        activeTiledGestureToken = 0;
+      }
+      status(error.message, 'error');
+      return false;
+    });
+  }
+  if (!activeStroke) return false;
   doc.endStroke(activeStroke, { commit }); activeStroke = null; pointerId = null;
   if (commit) changed(); else render();
+  return true;
 }
 function endStroke(event, commit = true) {
+  if (doc.isTiled && tiledPointerController && pointerId !== null) {
+    if (event?.pointerId !== undefined && event.pointerId !== pointerId) return;
+    void finishActiveStroke(commit);
+    return;
+  }
   if (!activeStroke || (event?.pointerId !== undefined && event.pointerId !== pointerId)) return;
   finishActiveStroke(commit);
 }
@@ -1250,6 +1847,7 @@ canvas.addEventListener('pointerdown', event => {
     if (event.button !== undefined && event.button !== 0) return;
     if (doc.activeLayer?.locked) { status('The active layer is locked.', 'error'); event.preventDefault(); return; }
     const point = docPoint(event); if (!point.inside) return;
+    stampActiveDrawingMode();
     gradientGesture = { x1: point.x, y1: point.y, x2: point.x, y2: point.y, pointerId: event.pointerId };
     try { canvas.setPointerCapture?.(event.pointerId); } catch {}
     render(); event.preventDefault(); return;
@@ -1259,6 +1857,7 @@ canvas.addEventListener('pointerdown', event => {
     if (doc.activeLayer?.locked) { status('The active layer is locked.', 'error'); event.preventDefault(); return; }
     const point = docPoint(event);
     if (!point.inside) return;
+    stampActiveDrawingMode();
     shapeGesture = { tool, x1: point.x, y1: point.y, x2: point.x, y2: point.y, pointerId: event.pointerId };
     try { canvas.setPointerCapture?.(event.pointerId); } catch {}
     render(); event.preventDefault(); return;
@@ -1353,14 +1952,31 @@ window.addEventListener('pointercancel', finishCursorGesture, true);
 canvas.addEventListener('pointerup', event => {
   if (gradientGesture && event.pointerId === gradientGesture.pointerId) {
     const gesture = gradientGesture; gradientGesture = null;
-    try {
-      const count = doc.fillGradient(gesture.x1, gesture.y1, gesture.x2, gesture.y2, {
-        startColor: color, endColor: backgroundColor, opacity: Number($('#brush-opacity').value) / 100
+    const settings = { startColor: color, endColor: backgroundColor, opacity: Number($('#brush-opacity').value) / 100 };
+    if (doc.isTiled) {
+      const targetDocument = doc;
+      const operation = tiledGestureTail.then(() => {
+        if (doc !== targetDocument) return 0;
+        return fillTiledGradient(targetDocument, targetDocument.activeLayerId,
+          gesture.x1, gesture.y1, gesture.x2, gesture.y2, settings);
       });
-      if (count) { changed(); status(`Gradient applied to ${count.toLocaleString()} pixels`, 'success'); }
-      else status('Gradient made no changes', 'neutral');
-    } catch (error) { status(error.message, 'error'); }
-    render(); return;
+      tiledGestureTail = operation.catch(() => {});
+      void operation.then(count => {
+        if (doc === targetDocument && count) { changed(); status(`Gradient applied to ${count.toLocaleString()} pixels`, 'success'); }
+        else if (doc === targetDocument) status('Gradient made no changes', 'neutral');
+        if (doc === targetDocument) render();
+      }).catch(error => {
+        if (doc === targetDocument) { status(error.message, 'error'); render(); }
+      });
+    } else {
+      try {
+        const count = doc.fillGradient(gesture.x1, gesture.y1, gesture.x2, gesture.y2, settings);
+        if (count) { changed(); status(`Gradient applied to ${count.toLocaleString()} pixels`, 'success'); }
+        else status('Gradient made no changes', 'neutral');
+      } catch (error) { status(error.message, 'error'); }
+      render();
+    }
+    return;
   }
   if (shapeGesture && event.pointerId === shapeGesture.pointerId) {
     const gesture = shapeGesture; shapeGesture = null;
@@ -1647,6 +2263,10 @@ $('#line-tool').addEventListener('click', () => setTool('shape-line'));
 $('#rectangle-tool').addEventListener('click', () => setTool('shape-rect'));
 $('#ellipse-tool').addEventListener('click', () => setTool('shape-ellipse'));
 $('#gradient-tool').addEventListener('click', () => setTool('gradient'));
+$('#drawing-mode')?.addEventListener('change', event => {
+  try { setDrawingMode(event.target.value); }
+  catch (error) { event.target.value = drawingConfiguration.activeMode; status(error.message, 'error'); }
+});
 $('#symmetry-mode').addEventListener('change', event => {
   symmetryMode = Number(event.target.value) || 0;
   $('#symmetry-mode').setAttribute('aria-label', symmetryMode ? `Symmetry: ${symmetryMode} parts` : 'Symmetry: off');
@@ -1654,8 +2274,10 @@ $('#symmetry-mode').addEventListener('change', event => {
   render();
 });
 $('#sample-source').addEventListener('change', event => { sampleMerged = event.target.value === 'merged'; });
-$('#fill-tolerance').addEventListener('input', event => { fillTolerance = Number(event.target.value); $('#fill-tolerance-value').textContent = `${fillTolerance}`; });
-$('#fill-mode').addEventListener('change', event => { fillContiguous = event.target.value === 'contiguous'; });
+$('#fill-tolerance').addEventListener('input', event => { fillTolerance = Number(event.target.value); $('#fill-tolerance-value').textContent = `${fillTolerance}`; if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#fill-mode').addEventListener('change', event => { fillContiguous = event.target.value === 'contiguous'; if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#magic-tolerance').addEventListener('input', event => { $('#magic-tolerance-value').textContent = event.target.value; if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#magic-mode').addEventListener('change', () => { if (captureActiveLayerModeProfile()) scheduleAutosave(); });
 const mobileInspector = window.matchMedia('(max-width: 760px)');
 function setInspectorPanel(panel) {
   const inspector = document.querySelector('.inspector');
@@ -1747,6 +2369,7 @@ function pixelsToVisionDataUrl(pixels, width, height, maxDimension = 512) {
 
 function createEditorVisionSnapshot() {
   const layerSettings = doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+  if (doc.isTiled) throw new Error('AI vision snapshots are not enabled for sparse tiled projects yet.');
   const artworkImage = pixelsToVisionDataUrl(doc.composite(), doc.width, doc.height);
   let animationContext = null;
   if (animation) {
@@ -1848,8 +2471,12 @@ $('#ai-accept-proposal').addEventListener('click', () => {
 mobileInspector.addEventListener('change', () => setInspectorPanel('properties'));
 setInspectorPanel('properties');
 function setTool(next) {
+  if (doc.isTiled && !['draw', 'erase', 'fill', 'pan', 'eyedropper', 'select', 'select-ellipse', 'select-lasso', 'shape-line', 'shape-rect', 'shape-ellipse', 'gradient'].includes(next)) {
+    status('This tool is not yet available for sparse tiled projects. Brush, eraser, fill, line/rectangle/ellipse outlines, linear gradients, geometric selections, eyedropper and pan are supported.', 'warning');
+    return;
+  }
   if (cursorMode && !['draw', 'erase'].includes(next)) setCursorMode(false);
-  if (activeStroke) finishActiveStroke(false);
+  if (activeStroke || (doc.isTiled && tiledPointerController && pointerId !== null)) void finishActiveStroke(false);
   shapeGesture = null; gradientGesture = null;
   if (next === 'eyedropper' && tool !== 'eyedropper') returnTool = ['draw', 'erase'].includes(tool) ? tool : 'draw';
   drawHeld = false; drawHoldPointerId = null;
@@ -1891,6 +2518,7 @@ document.addEventListener('keydown', event => {
   }
 });
 $('#create-outline').addEventListener('click', () => {
+  if (doc.isTiled) { status('Outline generation is not yet available for sparse tiled projects.', 'warning'); return; }
   try {
     const count = doc.createOutline(color);
     if (count) { changed(); status(`Added ${count.toLocaleString()} outline pixels`, 'success'); }
@@ -1898,6 +2526,7 @@ $('#create-outline').addEventListener('click', () => {
   } catch (error) { status(error.message, 'error'); }
 });
 function flipPixels(axis) {
+  if (doc.isTiled) { status('Flip operations are not yet available for sparse tiled projects.', 'warning'); return; }
   try {
     const rect = selection ?? { x: 0, y: 0, width: doc.width, height: doc.height };
     const count = doc.flipRect(rect.x, rect.y, rect.width, rect.height, axis);
@@ -1908,6 +2537,7 @@ function flipPixels(axis) {
 $('#flip-horizontal').addEventListener('click', () => flipPixels('horizontal'));
 $('#flip-vertical').addEventListener('click', () => flipPixels('vertical'));
 $('#replace-color').addEventListener('click', () => {
+  if (doc.isTiled) { status('Color replacement is not yet available for sparse tiled projects.', 'warning'); return; }
   try {
     const count = doc.replaceColor($('#replace-source').value, color, 0);
     if (count) { changed(); status(`Replaced ${count.toLocaleString()} pixels with foreground color`, 'success'); }
@@ -1916,16 +2546,20 @@ $('#replace-color').addEventListener('click', () => {
 });
 $('#fill-scale').addEventListener('input', event => { $('#fill-scale-value').textContent = `${event.target.value} px`; });
 $('#brush-opacity').addEventListener('input', event => { $('#brush-opacity-value').textContent = `${event.target.value}%`; });
-$('#brush-hardness').addEventListener('input', event => { $('#brush-hardness-value').textContent = `${event.target.value}%`; });
+$('#brush-hardness').addEventListener('input', event => { $('#brush-hardness-value').textContent = `${event.target.value}%`; if (captureActiveLayerModeProfile()) scheduleAutosave(); });
 $('#brush-size').addEventListener('input', event => {
-  brushSize = Number(event.target.value); $('#brush-size-value').textContent = `${brushSize} px`;
+  brushSize = Number(event.target.value); $('#brush-size-value').textContent = `${brushSize} px`; if (captureActiveLayerModeProfile()) scheduleAutosave();
 });
+$('#brush-shape').addEventListener('change', () => { if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#brush-opacity').addEventListener('input', () => { if (captureActiveLayerModeProfile()) scheduleAutosave(); });
+$('#transform-interpolation').addEventListener('change', () => { if (captureActiveLayerModeProfile()) scheduleAutosave(); });
 const brushScrub = $('#brush-scrub');
 let scrubStartX = 0, scrubStartSize = brushSize, scrubPointerId = null;
 function syncBrushSize(value) {
   brushSize = Math.max(1, Math.min(32, Math.round(value)));
   $('#brush-size').value = String(brushSize);
   $('#brush-size-value').textContent = `${brushSize} px`;
+  if (captureActiveLayerModeProfile()) scheduleAutosave();
   brushScrub.setAttribute('aria-valuenow', String(brushSize));
   brushScrub.setAttribute('aria-valuetext', `${brushSize} pixel${brushSize === 1 ? '' : 's'}. Drag left for thicker, right for thinner.`);
 }
@@ -1979,23 +2613,23 @@ brushScrub.addEventListener('keydown', event => {
   else if (event.key === 'End') { syncBrushSize(32); event.preventDefault(); }
 });
 
-function undoDocument() {
+async function undoDocument() {
   const beforeWidth = doc.width, beforeHeight = doc.height;
   if (animation && doc.history.at(-1)?.type === 'layer-delete' && !canGrowAnimationLayer()) {
     status('Cannot restore that layer: it would exceed the active animation memory budget.', 'warning'); return false;
   }
-  if (!doc.undo()) return false;
+  if (!await doc.undo()) return false;
   vectorStudio?.syncFromDocument();
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
   return true;
 }
-function redoDocument() {
+async function redoDocument() {
   const beforeWidth = doc.width, beforeHeight = doc.height;
   if (animation && doc.future.at(-1)?.type === 'layer-add' && !canGrowAnimationLayer()) {
     status('Cannot redo that layer: it would exceed the active animation memory budget.', 'warning'); return false;
   }
-  if (!doc.redo()) return false;
+  if (!await doc.redo()) return false;
   vectorStudio?.syncFromDocument();
   changed(); renderLayers();
   if (doc.width !== beforeWidth || doc.height !== beforeHeight) fitCanvas();
@@ -2030,7 +2664,12 @@ const viewportCenter = () => ({ x: canvas.clientWidth / 2, y: canvas.clientHeigh
 $('#zoom-in').addEventListener('click', () => zoomAt(viewportCenter(), zoom * 1.25));
 $('#zoom-out').addEventListener('click', () => zoomAt(viewportCenter(), zoom / 1.25));
 $('#add-layer').addEventListener('click', () => {
-  try { if (!canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); doc.addLayer(); changed(); renderLayers(); status('Layer added', 'success'); }
+  try { if (!doc.isTiled && !canGrowAnimationLayer()) throw new RangeError('Adding this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const layer = runLayerMutation('add', () => {
+    const created = doc.addLayer();
+    if (doc.isTiled) doc.updateLayer(created.id, { authoringMode: drawingConfiguration.activeMode });
+    else created.authoringMode = drawingConfiguration.activeMode;
+    return created;
+  }); changed(); renderLayers(); status('Layer added', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#animation-add-frame').addEventListener('click', () => {
@@ -2042,10 +2681,18 @@ $('#animation-add-frame').addEventListener('click', () => {
       return;
     }
     const currentId = animationFrameId(animation.activeFrameIndex);
-    captureAnimationFrame(); saveAnimationFrameHistory(currentId);
-    animation.addFrame({ duplicate: false });
-    animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
-    applyAnimationFramePixels(animation.activeFrameIndex);
+    if (animation instanceof TiledAnimationDocument) {
+      parkTiledFrameHistory(currentId);
+      animation.createBlankFrame({ durationMs: Math.max(1, Math.round(1000 / animation.fps)), authoringMode: drawingConfiguration.activeMode });
+      restoreTiledFrameHistory(animationFrameId(animation.activeFrameIndex));
+      applyTiledAnimationFrame(animation.activeFrameIndex);
+    } else {
+      captureAnimationFrame(); saveAnimationFrameHistory(currentId);
+      animation.addFrame({ duplicate: false });
+      if (typeof animation.setFrameAuthoringMode === 'function') animation.setFrameAuthoringMode(animation.activeFrameIndex, drawingConfiguration.activeMode);
+      animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
+      applyAnimationFramePixels(animation.activeFrameIndex);
+    }
     scheduleAutosave();
     status('Blank animation frame added', 'success');
   } catch (error) { status(error.message, 'error'); }
@@ -2054,11 +2701,18 @@ $('#animation-duplicate-frame').addEventListener('click', () => {
   try {
     ensureAnimation();
     const currentId = animationFrameId(animation.activeFrameIndex);
-    captureAnimationFrame(); saveAnimationFrameHistory(currentId);
-    animation.duplicateFrame();
-    animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
-    doc.history = []; doc.future = []; doc.historyBytes = 0;
-    doc.revision++; doc.saveVersion++; doc.dirty = true;
+    if (animation instanceof TiledAnimationDocument) {
+      parkTiledFrameHistory(currentId);
+      animation.cloneFrame(animation.activeFrameIndex);
+      restoreTiledFrameHistory(animationFrameId(animation.activeFrameIndex));
+      applyTiledAnimationFrame(animation.activeFrameIndex);
+    } else {
+      captureAnimationFrame(); saveAnimationFrameHistory(currentId);
+      animation.duplicateFrame();
+      animationFrameHistory.set(animationFrameId(animation.activeFrameIndex), { history: [], future: [], historyBytes: 0 });
+      doc.history = []; doc.future = []; doc.historyBytes = 0;
+      doc.revision++; doc.saveVersion++; doc.dirty = true;
+    }
     renderAnimationTimeline(); render(); updateTitle(); scheduleAutosave();
     status('Animation frame duplicated', 'success');
   } catch (error) { status(error.message, 'error'); }
@@ -2067,10 +2721,20 @@ $('#animation-delete-frame').addEventListener('click', () => {
   try {
     if (!animation || animation.frameCount <= 1) return;
     const currentId = animationFrameId(animation.activeFrameIndex);
-    captureAnimationFrame(); saveAnimationFrameHistory(currentId);
-    animation.deleteFrame(animation.activeFrameIndex);
-    animationFrameHistory.delete(currentId);
-    applyAnimationFramePixels(animation.activeFrameIndex);
+    if (animation instanceof TiledAnimationDocument) {
+      syncTiledAnimationLayerStack(); syncTiledAnimationFrame();
+      doc.swapStrokeHistory(doc.createStrokeHistory()).dispose();
+      animation.deleteFrame(animation.activeFrameIndex);
+      pruneTiledAnimationOrphanCels();
+      tiledAnimationHistory.get(currentId)?.dispose(); tiledAnimationHistory.delete(currentId);
+      restoreTiledFrameHistory(animationFrameId(animation.activeFrameIndex));
+      applyTiledAnimationFrame(animation.activeFrameIndex);
+    } else {
+      captureAnimationFrame(); saveAnimationFrameHistory(currentId);
+      animation.deleteFrame(animation.activeFrameIndex);
+      animationFrameHistory.delete(currentId);
+      applyAnimationFramePixels(animation.activeFrameIndex);
+    }
     scheduleAutosave();
     status('Animation frame deleted', 'success');
   } catch (error) { status(error.message, 'error'); }
@@ -2078,7 +2742,8 @@ $('#animation-delete-frame').addEventListener('click', () => {
 $('#animation-frame-left').addEventListener('click', () => {
   try {
     if (!animation || animation.activeFrameIndex <= 0) return;
-    captureAnimationFrame(); saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
+    captureAnimationFrame();
+    if (!(animation instanceof TiledAnimationDocument)) saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
     animation.moveFrame(animation.activeFrameIndex, animation.activeFrameIndex - 1);
     markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
   } catch (error) { status(error.message, 'error'); }
@@ -2086,7 +2751,8 @@ $('#animation-frame-left').addEventListener('click', () => {
 $('#animation-frame-right').addEventListener('click', () => {
   try {
     if (!animation || animation.activeFrameIndex >= animation.frameCount - 1) return;
-    captureAnimationFrame(); saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
+    captureAnimationFrame();
+    if (!(animation instanceof TiledAnimationDocument)) saveAnimationFrameHistory(animationFrameId(animation.activeFrameIndex));
     animation.moveFrame(animation.activeFrameIndex, animation.activeFrameIndex + 1);
     markAnimationChanged(); renderAnimationTimeline(); scheduleAutosave();
   } catch (error) { status(error.message, 'error'); }
@@ -2128,9 +2794,9 @@ $('#animation-export-zip').addEventListener('click', async () => {
   button.textContent = 'Preparing…';
   let vectorOverlay = null;
   try {
-    settleActiveInput();
+    await settleActiveInput();
     stopAnimationPlayback();
-    const snapshot = buildProjectSnapshot();
+    const snapshot = await buildProjectSnapshot();
     vectorOverlay = await createVectorOverlayImage();
     const baseName = safeName(doc.name);
     const entries = [
@@ -2145,13 +2811,14 @@ $('#animation-export-zip').addEventListener('click', async () => {
       fps: animation?.fps ?? 1,
       loop: animationLoop,
       playbackSpeed: animationPlaybackSpeed,
+      sourceDrawingMode: drawingConfiguration.activeMode,
+      scalingMode: getVideoScalingMode(drawingConfiguration.activeMode),
       frameCount: animation?.frameCount ?? 1,
       frames: [],
       audio: [],
       notes: 'PNG frames are transparent composites. Import the .pforge project to retain independent editable layers and cels.',
     };
     if (animation?.frameCount) {
-      const layerSettings = doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
       const frameCanvas = document.createElement('canvas');
       frameCanvas.width = doc.width;
       frameCanvas.height = doc.height;
@@ -2159,8 +2826,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
       if (!frameContext) throw new Error('Could not create the frame export surface.');
       for (let index = 0; index < animation.frameCount; index++) {
         const frame = animation.getFrame(index);
-        const pixels = animation.compositeFrame(index, layerSettings);
-        frameContext.putImageData(new ImageData(pixels, doc.width, doc.height), 0, 0);
+        drawAnimationFrameToContext(index, frameContext);
         drawVectorOverlay(frameContext, vectorOverlay);
         const png = await new Promise((resolve, reject) => frameCanvas.toBlob(
           blob => blob ? resolve(blob) : reject(new Error('PNG encoder returned no data for frame ' + (index + 1) + '.')),
@@ -2184,7 +2850,7 @@ $('#animation-export-zip').addEventListener('click', async () => {
       frameCanvas.height = doc.height;
       const frameContext = frameCanvas.getContext('2d', { alpha: true });
       if (!frameContext) throw new Error('Could not create the preview export surface.');
-      frameContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
+      drawProjectCompositeToContext(frameContext);
       drawVectorOverlay(frameContext, vectorOverlay);
       const preview = await new Promise((resolve, reject) => frameCanvas.toBlob(
         blob => blob ? resolve(blob) : reject(new Error('PNG preview encoder returned no data.')), 'image/png'
@@ -2225,8 +2891,7 @@ $('#animation-export-sheet').addEventListener('click', async () => {
     const context = sheet.getContext('2d', { alpha: true });
     if (!context) throw new Error('Could not create the animation sprite sheet surface.');
     const frames = layout.frames.map((frame, index) => {
-      const pixels = animation.compositeFrame(index, doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })));
-      context.putImageData(new ImageData(pixels, doc.width, doc.height), frame.x, frame.y);
+      drawAnimationFrameToContext(index, context, frame.x, frame.y);
       drawVectorOverlay(context, vectorOverlay, doc.width, doc.height, frame.x, frame.y);
       return { ...frame, frame: index, durationMs: animation.getFrame(index).durationMs };
     });
@@ -2271,7 +2936,7 @@ async function renderProjects() {
         const saved = await loadProjectById(project.id);
         if (!saved) throw new Error('That saved project no longer exists.');
         stopAnimationPlayback({ save: false });
-        doc = RasterDocument.fromJSON(saved); animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
+        installDocument(await restoreProjectDocument(saved)); applyDrawingConfiguration(saved); animation = saved.animation ? await restoreProjectAnimation(saved.animation) : null; animationLoop = saved.animation?.loop !== false;
         animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
         $('#projects-dialog').close(); fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline();
         status('Opened saved project', 'success');
@@ -2325,7 +2990,7 @@ $('#create-new').addEventListener('click', async () => {
     validateDimensions(width, height); await flushAutosave();
     const template = assetTemplates[$('#new-template').value] ?? assetTemplates.custom;
     stopAnimationPlayback({ save: false });
-    doc = new RasterDocument(width, height, $('#new-name').value.trim() || template.name); animation = null; animationLoop = true; activeSceneWorkspace = 'main'; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState();
+    installDocument(createEditorDocument(width, height, $('#new-name').value.trim() || template.name, drawingConfiguration)); drawingConfiguration = normalizeDrawingConfiguration({ availableModes: [PIXELFORGE_DRAWING_MODES.ILLUSTRATION, PIXELFORGE_DRAWING_MODES.PIXEL_ART], initialMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION, activeMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION }); applyDrawingConfiguration({ drawingConfiguration }); animation = null; animationLoop = true; activeSceneWorkspace = 'main'; animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState();
     const firstLayer = doc.activeLayerId;
     if (template.layers[0] && template.layers[0] !== doc.activeLayer.name) doc.renameLayer(firstLayer, template.layers[0]);
     for (const layerName of template.layers.slice(1)) doc.addLayer(layerName);
@@ -2342,10 +3007,11 @@ $('#save').addEventListener('click', async () => {
   catch (error) { status(`Save failed: ${error.message}`, 'error'); }
 });
 $('#export-project').addEventListener('click', async () => {
+  if (doc.isTiled) { status('Sparse tiled projects are saved to your account; ZIP package export is being migrated.', 'warning'); return; }
   try {
-    settleActiveInput();
+    await settleActiveInput();
     stopAnimationPlayback();
-    const snapshot = buildProjectSnapshot();
+    const snapshot = await buildProjectSnapshot();
     const exported = await exportPixelForgeCodeLabPackage(snapshot);
     downloadBlob(exported.blob, exported.filename);
     status('CodeLab PixelForge project exported · ' + exported.metadata.frameCount + ' frames · ' +
@@ -2353,8 +3019,9 @@ $('#export-project').addEventListener('click', async () => {
   } catch (error) { status(`Project export failed: ${error.message}`, 'error'); }
 });
 $('#export-sprite-sheet').addEventListener('click', async () => {
+  if (doc.isTiled) { status('Sprite-sheet export is not yet available for sparse tiled projects.', 'warning'); return; }
   try {
-    settleActiveInput();
+    await settleActiveInput();
     const layout = createSpriteSheetLayout(doc.layers.length, doc.width, doc.height, { columns: Math.ceil(Math.sqrt(doc.layers.length)), padding: 1 });
     const sheet = document.createElement('canvas'); sheet.width = layout.width; sheet.height = layout.height;
     const context = sheet.getContext('2d', { alpha: true });
@@ -2378,14 +3045,14 @@ $('#export-sprite-sheet').addEventListener('click', async () => {
 $('#export-png').addEventListener('click', async () => {
   let vectorOverlay = null;
   try {
-    settleActiveInput();
+    await settleActiveInput();
     vectorOverlay = await createVectorOverlayImage();
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = doc.width; exportCanvas.height = doc.height;
     const exportName = `${safeName(doc.name)}.png`;
     const exportContext = exportCanvas.getContext('2d', { alpha: true });
     if (!exportContext) throw new Error('Could not create the PNG export surface.');
-    exportContext.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), 0, 0);
+    drawProjectCompositeToContext(exportContext);
     drawVectorOverlay(exportContext, vectorOverlay);
     const blob = await new Promise((resolve, reject) => exportCanvas.toBlob(
       value => value ? resolve(value) : reject(new Error('PNG encoder returned no data.')), 'image/png'
@@ -2403,6 +3070,7 @@ $('#import-file').addEventListener('change', async event => {
   try {
     if (file.size > 256 * 1024 * 1024) throw new RangeError('This file is larger than the 256 MiB import safety limit.');
     let importedDoc;
+    let importedDrawingConfiguration = drawingConfiguration;
     let zipProject = null;
     let structuredCodeLabPackage = false;
     if (file.name.toLowerCase().endsWith('.zip') || file.name.toLowerCase().endsWith('.codelab-pixelforge') || file.type === 'application/zip') {
@@ -2419,7 +3087,8 @@ $('#import-file').addEventListener('change', async event => {
     }
     if (zipProject || file.name.toLowerCase().endsWith('.pforge') || file.type === 'application/json') {
       const parsed = zipProject || JSON.parse(await file.text());
-      importedDoc = RasterDocument.fromJSON(parsed, { newIdentity: !structuredCodeLabPackage });
+      importedDoc = await restoreProjectDocument(parsed, { newIdentity: !structuredCodeLabPackage });
+      importedDrawingConfiguration = normalizeDrawingConfiguration(parsed.drawingConfiguration);
       if (structuredCodeLabPackage) importedDoc.id = crypto.randomUUID();
       importedDoc.animationLoop = parsed.animation?.loop !== false;
       if (parsed.animation) {
@@ -2442,22 +3111,37 @@ $('#import-file').addEventListener('change', async event => {
         validateDimensions(bitmap.width, bitmap.height);
         const name = file.name.includes('.') ? file.name.slice(0, file.name.lastIndexOf('.')) : file.name;
         importedDoc = new RasterDocument(bitmap.width, bitmap.height, name || 'Imported artwork');
+        importedDoc.activeLayer.authoringMode = PIXELFORGE_DRAWING_MODES.ILLUSTRATION;
         const temp = document.createElement('canvas'); temp.width = bitmap.width; temp.height = bitmap.height;
         const tctx = temp.getContext('2d', { willReadFrequently: true });
         tctx.drawImage(bitmap, 0, 0);
         importedDoc.activeLayer.pixels.set(tctx.getImageData(0, 0, bitmap.width, bitmap.height).data);
       } finally { bitmap.close?.(); }
     }
+    if (!zipProject && !file.name.toLowerCase().endsWith('.pforge') && file.type !== 'application/json') {
+      importedDrawingConfiguration = normalizeDrawingConfiguration({ availableModes: [PIXELFORGE_DRAWING_MODES.ILLUSTRATION, PIXELFORGE_DRAWING_MODES.PIXEL_ART], initialMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION, activeMode: PIXELFORGE_DRAWING_MODES.ILLUSTRATION });
+    }
     await flushAutosave();
-    const importSnapshot = importedDoc.toJSON(); if (importedDoc.animationData) importSnapshot.animation = importedDoc.animationData;
+    if (importedDoc.width * importedDoc.height >= TILED_DOCUMENT_THRESHOLD_PIXELS && !importedDoc.isTiled) {
+      importedDoc = await TiledRasterProjectDocument.fromDocument(importedDoc, {
+        drawingConfiguration: importedDrawingConfiguration,
+        projectMetadata: { drawingModel: {}, vectorModel: null },
+      });
+    }
+    const importSnapshot = importedDoc.isTiled ? await importedDoc.toManifest() : importedDoc.toJSON();
+    importSnapshot.drawingConfiguration = structuredClone(importedDrawingConfiguration);
+    if (importedDoc.animationData) importSnapshot.animation = importedDoc.animationData;
     const savedImport = await saveProject(importSnapshot);
     if (Number.isInteger(savedImport?.serverRevision)) importedDoc.serverRevision = savedImport.serverRevision;
     stopAnimationPlayback({ save: false });
-    doc = importedDoc; animation = importedDoc.animationData ? PixelForgeAnimation.fromJSON(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
-    fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); referenceCenterUI?.refresh(); status('Import complete and saved to your CodeLab account', 'success');
+    installDocument(importedDoc); applyDrawingConfiguration(importSnapshot); animation = importedDoc.animationData ? await restoreProjectAnimation(importedDoc.animationData) : null; animationLoop = importedDoc.animationLoop !== false; delete importedDoc.animationLoop; delete importedDoc.animationData; restoreActiveSceneWorkspace(); animationFrameHistory.clear(); animationOrphanCels.clear(); clearSelectionState(); resetAIWorkspaceForDocument();
+    fitCanvas(); updateTitle(); renderLayers(); renderAnimationTimeline(); refreshReferenceCenterUI(); status('Import complete and saved to your CodeLab account', 'success');
   } catch (error) { status(`Import failed: ${error.message}`, 'error'); }
   finally { event.target.value = ''; }
 });
+function runLayerMutation(type, operation) {
+  return doc.isTiled ? doc.runLayerOperation(type, operation) : operation();
+}
 function renderLayers() {
   const list = $('#layers'); list.replaceChildren();
   [...doc.layers].reverse().forEach(layer => {
@@ -2466,19 +3150,26 @@ function renderLayers() {
     const layerIndex = doc.layers.findIndex(item => item.id === layer.id);
     const select = document.createElement('button');
     select.className = 'layer-select'; select.textContent = layer.name; select.title = 'Select layer';
-    select.addEventListener('click', () => { doc.setActiveLayer(layer.id); renderLayers(); updateTitle(); scheduleAutosave(); });
+    select.addEventListener('click', () => {
+      captureActiveLayerModeProfile();
+      doc.setActiveLayer(layer.id);
+      applyActiveLayerModeProfile(drawingConfiguration.activeMode);
+      renderLayers(); updateTitle(); scheduleAutosave();
+    });
     const visibility = document.createElement('button');
     visibility.className = 'layer-visibility'; visibility.textContent = layer.visible ? '◉' : '○';
     visibility.setAttribute('aria-label', layer.visible ? 'Hide layer' : 'Show layer');
     visibility.setAttribute('aria-pressed', String(layer.visible));
-    visibility.addEventListener('click', () => { doc.setLayerVisibility(layer.id, !layer.visible); changed(); renderLayers(); });
+    visibility.disabled = false;
+    visibility.addEventListener('click', () => { runLayerMutation('visibility', () => doc.setLayerVisibility(layer.id, !layer.visible)); changed(); renderLayers(); });
     const lock = document.createElement('button');
     lock.className = 'layer-visibility layer-lock'; lock.textContent = layer.locked ? '🔒' : '♧';
     lock.setAttribute('aria-label', layer.locked ? 'Unlock layer' : 'Lock layer');
     lock.setAttribute('aria-pressed', String(layer.locked));
     lock.title = layer.locked ? 'Unlock layer for editing' : 'Lock layer against edits';
+    lock.disabled = false;
     lock.addEventListener('click', () => {
-      doc.setLayerLocked(layer.id, !layer.locked);
+      runLayerMutation('lock', () => doc.setLayerLocked(layer.id, !layer.locked));
       changed(); renderLayers();
       status(layer.locked ? 'Layer locked' : 'Layer unlocked', 'success');
     });
@@ -2487,13 +3178,13 @@ function renderLayers() {
     raise.className = 'layer-order'; raise.textContent = '↑'; raise.title = 'Raise layer';
     raise.setAttribute('aria-label', 'Raise layer'); raise.disabled = layerIndex === doc.layers.length - 1;
     raise.addEventListener('click', () => {
-      if (doc.moveLayer(layer.id, layerIndex + 1)) { changed(); renderLayers(); status('Layer moved up', 'success'); }
+      if (runLayerMutation('reorder', () => doc.moveLayer(layer.id, layerIndex + 1))) { changed(); renderLayers(); status('Layer moved up', 'success'); }
     });
     const lower = document.createElement('button');
     lower.className = 'layer-order'; lower.textContent = '↓'; lower.title = 'Lower layer';
     lower.setAttribute('aria-label', 'Lower layer'); lower.disabled = layerIndex === 0;
     lower.addEventListener('click', () => {
-      if (doc.moveLayer(layer.id, layerIndex - 1)) { changed(); renderLayers(); status('Layer moved down', 'success'); }
+      if (runLayerMutation('reorder', () => doc.moveLayer(layer.id, layerIndex - 1))) { changed(); renderLayers(); status('Layer moved down', 'success'); }
     });
     order.append(raise, lower);
     row.append(visibility, select, lock, order); list.append(row);
@@ -2506,6 +3197,7 @@ function renderLayers() {
     $('#rename-layer').disabled = !doc.activeLayer;
     $('#duplicate-layer').disabled = !doc.activeLayer || doc.layers.length >= 64;
     $('#delete-layer').disabled = !doc.activeLayer || doc.layers.length <= 1;
+    $('#add-layer').disabled = doc.layers.length >= 64;
   }
   updateDrawHoldUI();
   renderAnimationTimeline();
@@ -2515,7 +3207,7 @@ $('#layer-opacity')?.addEventListener('input', event => {
 });
 $('#layer-opacity')?.addEventListener('change', event => {
   try {
-    if (doc.setLayerOpacity(doc.activeLayer.id, Number(event.target.value) / 100)) {
+    if (runLayerMutation('opacity', () => doc.setLayerOpacity(doc.activeLayer.id, Number(event.target.value) / 100))) {
       changed(); renderLayers(); status('Layer opacity updated', 'success');
     }
   } catch (error) { status(error.message, 'error'); renderLayers(); }
@@ -2526,17 +3218,17 @@ $('#rename-layer')?.addEventListener('click', () => {
   const name = window.prompt('Layer name', layer.name);
   if (name === null) return;
   try {
-    if (doc.renameLayer(layer.id, name)) { changed(); renderLayers(); status('Layer renamed', 'success'); }
+    if (runLayerMutation('rename', () => doc.renameLayer(layer.id, name))) { changed(); renderLayers(); status('Layer renamed', 'success'); }
   } catch (error) { status(error.message, 'error'); }
 });
 $('#duplicate-layer')?.addEventListener('click', () => {
-  try { if (!canGrowAnimationLayer()) throw new RangeError('Duplicating this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const sourceId = doc.activeLayer.id; const duplicate = doc.duplicateLayer(sourceId); changed(new Map([[duplicate.id, sourceId]])); renderLayers(); status('Layer duplicated', 'success'); }
+  try { if (!doc.isTiled && !canGrowAnimationLayer()) throw new RangeError('Duplicating this layer would exceed the 64 MiB animation memory budget. Delete frames or use a smaller canvas first.'); const sourceId = doc.activeLayer.id; const duplicate = runLayerMutation('duplicate', () => doc.duplicateLayer(sourceId)); changed(doc.isTiled ? undefined : new Map([[duplicate.id, sourceId]])); renderLayers(); status('Layer duplicated', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 $('#delete-layer')?.addEventListener('click', () => {
   const layer = doc.activeLayer;
   if (!layer || doc.layers.length <= 1 || !window.confirm(`Delete layer "${layer.name}"? This can be undone.`)) return;
-  try { doc.deleteLayer(layer.id); changed(); renderLayers(); status('Layer deleted', 'success'); }
+  try { runLayerMutation('delete', () => doc.deleteLayer(layer.id)); changed(); renderLayers(); status('Layer deleted', 'success'); }
   catch (error) { status(error.message, 'error'); }
 });
 function safeName(value) { return (value || 'pixelforge-artwork').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'pixelforge-artwork'; }
@@ -2556,6 +3248,38 @@ async function createVectorOverlayImage(model = doc.getVectorModel()) {
     throw error;
   }
 }
+function getAnimationLayerSettings(frameIndex) {
+  if (animation instanceof TiledAnimationDocument) return animation.layerIds.map(id => {
+    const metadata = animation.getLayerMetadata(frameIndex, id);
+    return { id, visible: metadata.visible !== false, opacity: metadata.opacity ?? 1 };
+  });
+  return doc.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity }));
+}
+function drawAnimationFrameToContext(frameIndex, context, x = 0, y = 0) {
+  if (animation instanceof TiledAnimationDocument) {
+    const settings = getAnimationLayerSettings(frameIndex);
+    for (let row = 0; row < doc.height; row += 16) {
+      const rows = Math.min(16, doc.height - row);
+      const pixels = animation.compositeRegion(frameIndex, { x: 0, y: row, width: doc.width, height: rows }, settings).pixels;
+      context.putImageData(new ImageData(pixels, doc.width, rows), x, y + row);
+    }
+    return;
+  }
+  const pixels = animation.compositeFrame(frameIndex, getAnimationLayerSettings(frameIndex));
+  context.putImageData(new ImageData(pixels, doc.width, doc.height), x, y);
+}
+function drawProjectCompositeToContext(context, x = 0, y = 0) {
+  if (doc.isTiled) {
+    for (let row = 0; row < doc.height; row += 16) {
+      const rows = Math.min(16, doc.height - row);
+      const pixels = doc.readCompositeRegion({ x: 0, y: row, width: doc.width, height: rows }).pixels;
+      context.putImageData(new ImageData(pixels, doc.width, rows), x, y + row);
+    }
+    return;
+  }
+  context.putImageData(new ImageData(new Uint8ClampedArray(doc.composite()), doc.width, doc.height), x, y);
+}
+
 function drawVectorOverlay(context, overlay, width = doc.width, height = doc.height, x = 0, y = 0) {
   if (overlay) context.drawImage(overlay.image, x, y, width, height);
 }
@@ -2592,6 +3316,7 @@ window.addEventListener('keydown', event => {
   }
   if ((event.ctrlKey || event.metaKey) && ['c', 'x', 'v'].includes(event.key.toLowerCase())) {
     event.preventDefault();
+    if (doc.isTiled) { status('Selection clipboard operations are not yet available for sparse tiled projects.', 'warning'); return; }
     try {
       const command = event.key.toLowerCase();
       if (command === 'c' || command === 'x') {
@@ -2718,14 +3443,19 @@ async function boot() {
       : 'pixelforge.palette.v1:' + encodeURIComponent(auth.user.provider) + ':' + encodeURIComponent(auth.user.id);
     userPalette = loadUserPalette();
     renderUserPalette();
+    // Apply the configured defaults to a fresh blank document as well as
+    // restored projects. Without this, the mode selector starts in illustration
+    // while the HTML controls silently retain pixel-art brush defaults.
+    applyDrawingConfiguration({ drawingConfiguration });
     resizeCanvas();
     if (params.get('createDemo') === 'walk-crouch-24') {
       const existingProjects = guestMode && params.get('capture') === 'video' ? [] : await listSavedProjects();
       const existingDemo = existingProjects.find(project => project.name === 'Soldier reference · Walk to Crouch · 60 frames');
       const existingSnapshot = existingDemo ? await loadProjectById(existingDemo.id) : null;
       if (existingSnapshot?.animation) {
-        doc = RasterDocument.fromJSON(existingSnapshot);
-        animation = PixelForgeAnimation.fromJSON(existingSnapshot.animation);
+        installDocument(await restoreProjectDocument(existingSnapshot));
+        applyDrawingConfiguration(existingSnapshot);
+        animation = await restoreProjectAnimation(existingSnapshot.animation);
         animationLoop = existingSnapshot.animation.loop !== false;
         animationPlaybackSpeed = existingSnapshot.animation.playbackSpeed ?? 1;
         status('Demo caminata → agacharse recuperada · 60 fotogramas a 12 FPS', 'success');
@@ -2760,8 +3490,9 @@ async function boot() {
       if (!/^[a-zA-Z0-9_-]{1,100}$/.test(projectId)) throw new Error('El enlace contiene un ID de proyecto PixelForge no válido.');
       const snapshot = await loadProjectById(projectId);
       if (!snapshot) throw new Error('No se encontró ese proyecto PixelForge.');
-      doc = RasterDocument.fromJSON(snapshot);
-      animation = snapshot.animation ? PixelForgeAnimation.fromJSON(snapshot.animation) : null;
+      installDocument(await restoreProjectDocument(snapshot));
+      applyDrawingConfiguration(snapshot);
+      animation = snapshot.animation ? await restoreProjectAnimation(snapshot.animation) : null;
       animationLoop = snapshot.animation?.loop !== false;
       restoreActiveSceneWorkspace();
       animationPlaybackSpeed = snapshot.animation?.playbackSpeed ?? 1;
@@ -2773,8 +3504,9 @@ async function boot() {
     } else {
       const saved = await loadMostRecentProject();
       if (saved) {
-        doc = RasterDocument.fromJSON(saved);
-        animation = saved.animation ? PixelForgeAnimation.fromJSON(saved.animation) : null;
+        installDocument(await restoreProjectDocument(saved));
+        applyDrawingConfiguration(saved);
+        animation = saved.animation ? await restoreProjectAnimation(saved.animation) : null;
         animationLoop = saved.animation?.loop !== false;
         restoreActiveSceneWorkspace();
         animationPlaybackSpeed = saved.animation?.playbackSpeed ?? 1;
@@ -2792,7 +3524,7 @@ async function boot() {
     fitCanvas();
     const captureLayout = params.get('capture') === '1' || params.get('capture') === 'video'
       ? fitArtworkForCapture() : null;
-    updateTitle(); renderLayers(); renderAnimationTimeline(); referenceCenterUI?.refresh();
+    updateTitle(); renderLayers(); renderAnimationTimeline(); refreshReferenceCenterUI();
     if (params.get('capture') === 'video') {
       if (!animation || animation.frameCount < 2) throw new Error('El proyecto no tiene una animación de al menos dos fotogramas.');
       animationLoop = false;

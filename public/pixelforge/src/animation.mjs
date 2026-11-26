@@ -109,7 +109,7 @@ function makeBlankCels(layerIds, byteLength) {
   return new Map(layerIds.map(id => [id, new Uint8ClampedArray(byteLength)]));
 }
 
-function normalizeLayerMetadata(metadata = {}, layerId, index = 0) {
+function normalizeLayerMetadata(metadata = {}, layerId, index = 0, fallbackMode = 'pixel-art') {
   const value = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
   const finite = (input, fallback) => Number.isFinite(Number(input)) ? Number(input) : fallback;
   const state = input => ['inexistente', 'no_aplicable'].includes(input) ? input : input;
@@ -126,23 +126,30 @@ function normalizeLayerMetadata(metadata = {}, layerId, index = 0) {
     references: Array.isArray(value.references) ? structuredClone(value.references) : [],
     assets: Array.isArray(value.assets) ? structuredClone(value.assets) : [],
     metadata: value.metadata && typeof value.metadata === 'object' ? structuredClone(value.metadata) : {},
+    authoringMode: ['illustration', 'pixel-art'].includes(value.authoringMode) ? value.authoringMode : fallbackMode,
+    modeOverrides: value.modeOverrides && typeof value.modeOverrides === 'object' && !Array.isArray(value.modeOverrides)
+      ? structuredClone(value.modeOverrides) : {},
+    ownershipTiles: value.ownershipTiles instanceof Map
+      ? [...value.ownershipTiles].map(([key, owners]) => { const [tileX, tileY] = key.split(':').map(Number); return { tileX, tileY, owners: encodeBase64(owners) }; })
+      : (Array.isArray(value.ownershipTiles) ? structuredClone(value.ownershipTiles) : []),
   };
 }
 
-function cloneLayerMetadata(metadata, layerId, index) {
-  return normalizeLayerMetadata(metadata, layerId, index);
+function cloneLayerMetadata(metadata, layerId, index, fallbackMode = 'pixel-art') {
+  return normalizeLayerMetadata(metadata, layerId, index, fallbackMode);
 }
 
 function cloneFrame(frame, layerIds, byteLength, { id = crypto.randomUUID(), durationMs = frame.durationMs } = {}) {
   return {
     id,
     durationMs,
+    authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
     cels: new Map(layerIds.map(layerId => {
       const pixels = frame.cels.get(layerId);
       if (!pixels) throw new Error('Animation frame is missing a required layer cel.');
       return [layerId, clonePixels(pixels, byteLength)];
     })),
-    layerMetadata: new Map(layerIds.map((layerId, index) => [layerId, cloneLayerMetadata(frame.layerMetadata?.get(layerId), layerId, index)])),
+    layerMetadata: new Map(layerIds.map((layerId, index) => [layerId, cloneLayerMetadata(frame.layerMetadata?.get(layerId), layerId, index, frame.authoringMode || 'pixel-art')])),
   };
 }
 
@@ -176,6 +183,7 @@ export class PixelForgeAnimation {
       this.#frames = [{
         id: crypto.randomUUID(),
         durationMs: Math.round(1000 / fps),
+        authoringMode: 'pixel-art',
         cels: makeBlankCels(this.#layerIds, byteLength),
       }];
     } else {
@@ -194,8 +202,9 @@ export class PixelForgeAnimation {
         return {
           id: frame.id,
           durationMs: frame.durationMs,
+          authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
           cels: new Map(this.#layerIds.map(id => [id, clonePixels(sourceCels.get(id), byteLength)])),
-          layerMetadata: new Map(this.#layerIds.map((id, index) => [id, cloneLayerMetadata(frame.layerMetadata?.get?.(id) ?? frame.layerMetadata?.find?.(item => item?.id === id), id, index)])),
+          layerMetadata: new Map(this.#layerIds.map((id, index) => [id, cloneLayerMetadata(frame.layerMetadata?.get?.(id) ?? frame.layerMetadata?.find?.(item => item?.id === id), id, index, ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art')])),
         };
       });
       if (new Set(this.#frames.map(frame => frame.id)).size !== this.#frames.length) {
@@ -206,6 +215,11 @@ export class PixelForgeAnimation {
       throw new RangeError('Active animation frame index is outside the timeline.');
     }
     this.#activeFrameIndex = activeFrameIndex;
+    // Validate imported dense ownership metadata eagerly, not only when a
+    // later drawing operation happens to query the owner plane.
+    for (let frameIndex = 0; frameIndex < this.#frames.length; frameIndex++) {
+      for (const layerId of this.#layerIds) this.getLayerOwnershipTiles(frameIndex, layerId);
+    }
     this.#assertMemoryBudget();
   }
 
@@ -237,15 +251,38 @@ export class PixelForgeAnimation {
   get activeFrame() { return this.getFrame(this.#activeFrameIndex); }
   get layerIds() { return [...this.#layerIds]; }
   get totalDurationMs() { return this.#frames.reduce((sum, frame) => sum + frame.durationMs, 0); }
-  get memoryBytes() { return this.#frames.length * this.#layerIds.length * this.#width * this.#height * 4; }
+  get memoryBytes() {
+    const rgbaBytes = this.#frames.length * this.#layerIds.length * this.#width * this.#height * 4;
+    const ownershipBytes = this.#frames.reduce((sum, frame) => sum + this.#layerIds.reduce((layerSum, id) => layerSum + (frame.layerMetadata?.get(id)?.ownershipTiles || []).reduce((n, tile) => {
+      const width = Math.min(64, this.#width - tile.tileX * 64), height = Math.min(64, this.#height - tile.tileY * 64);
+      return n + (width > 0 && height > 0 ? width * height : 0);
+    }, 0), 0), 0);
+    return rgbaBytes + ownershipBytes;
+  }
   get thumbnailCacheBytes() { return this.#thumbnailCacheBytes; }
   get estimatedJSONBytes() {
-    return estimateAnimationJSONBytes({ width: this.#width, height: this.#height, layerCount: this.#layerIds.length, frameCount: this.#frames.length });
+    const base = estimateAnimationJSONBytes({ width: this.#width, height: this.#height, layerCount: this.#layerIds.length, frameCount: this.#frames.length });
+    const ownerJsonBytes = this.#frames.reduce((sum, frame) => sum + this.#layerIds.reduce((n, id) => n + (frame.layerMetadata?.get(id)?.ownershipTiles || []).reduce((m, tile) => m + (tile.owners?.length || 0), 0), 0), 0);
+    return base + ownerJsonBytes;
   }
 
   getFrame(index) {
     const frame = this.#frameAt(index);
-    return Object.freeze({ id: frame.id, durationMs: frame.durationMs, index });
+    return Object.freeze({ id: frame.id, durationMs: frame.durationMs, authoringMode: frame.authoringMode || 'pixel-art', index });
+  }
+
+  setFrameAuthoringMode(frameIndex, mode) {
+    if (!['illustration', 'pixel-art'].includes(mode)) throw new RangeError('Unsupported frame authoring mode.');
+    const frame = this.#frameAt(frameIndex);
+    frame.authoringMode = mode;
+    if (!frame.layerMetadata) frame.layerMetadata = new Map();
+    for (const [index, layerId] of this.#layerIds.entries()) {
+      const metadata = frame.layerMetadata.get(layerId);
+      if (!metadata || !['illustration', 'pixel-art'].includes(metadata.authoringMode)) {
+        frame.layerMetadata.set(layerId, normalizeLayerMetadata({ ...(metadata || {}), authoringMode: mode }, layerId, index, mode));
+      }
+    }
+    return this.getFrame(frameIndex);
   }
 
   getLayerPixels(frameIndex, layerId) {
@@ -258,7 +295,7 @@ export class PixelForgeAnimation {
   getLayerMetadata(frameIndex, layerId) {
     const frame = this.#frameAt(frameIndex);
     if (!this.#layerIds.includes(layerId)) throw new Error('Unknown animation layer ID.');
-    return structuredClone(frame.layerMetadata?.get(layerId) || normalizeLayerMetadata({}, layerId, this.#layerIds.indexOf(layerId)));
+    return structuredClone(frame.layerMetadata?.get(layerId) || normalizeLayerMetadata({}, layerId, this.#layerIds.indexOf(layerId), frame.authoringMode || 'pixel-art'));
   }
 
   setLayerMetadata(frameIndex, layerId, metadata) {
@@ -266,9 +303,37 @@ export class PixelForgeAnimation {
     const index = this.#layerIds.indexOf(layerId);
     if (index < 0) throw new Error('Unknown animation layer ID.');
     if (!frame.layerMetadata) frame.layerMetadata = new Map();
-    frame.layerMetadata.set(layerId, normalizeLayerMetadata(metadata, layerId, index));
+    frame.layerMetadata.set(layerId, normalizeLayerMetadata(metadata, layerId, index, frame.authoringMode || 'pixel-art'));
     return this.getLayerMetadata(frameIndex, layerId);
   }
+  getLayerOwnershipTiles(frameIndex, layerId) {
+    const frame = this.#frameAt(frameIndex);
+    const metadata = this.getLayerMetadata(frameIndex, layerId);
+    const pixels = frame.cels.get(layerId);
+    if (!pixels) throw new Error('Unknown animation layer ID.');
+    const output = new Map();
+    for (const tile of metadata.ownershipTiles || []) {
+      if (!Number.isInteger(tile.tileX) || !Number.isInteger(tile.tileY) || tile.tileX < 0 || tile.tileY < 0) throw new TypeError('Animation ownership tile coordinate is invalid.');
+      const width = Math.min(64, this.#width - tile.tileX * 64), height = Math.min(64, this.#height - tile.tileY * 64);
+      if (width < 1 || height < 1) throw new TypeError('Animation ownership tile is outside the canvas.');
+      const owners = decodeBase64(tile.owners, width * height);
+      if (owners.some(owner => owner > 2) || !owners.some(owner => owner !== 0)) throw new TypeError('Animation ownership tile contains invalid owner data.');
+      for (let index = 0; index < owners.length; index++) {
+        if (owners[index] !== 0) {
+          const x = tile.tileX * 64 + index % width;
+          const y = tile.tileY * 64 + Math.floor(index / width);
+          if (pixels[(y * this.#width + x) * 4 + 3] === 0) {
+            throw new TypeError('Animation transparent pixels cannot retain style ownership.');
+          }
+        }
+      }
+      const key = `${tile.tileX}:${tile.tileY}`;
+      if (output.has(key)) throw new TypeError('Animation contains duplicate ownership tiles.');
+      output.set(key, owners);
+    }
+    return output;
+  }
+
   compositeThumbnail(frameIndex, layerSettings = null, maxDimension = 48) {
     const frame = this.#frameAt(frameIndex);
     if (!Number.isInteger(maxDimension) || maxDimension < 8 || maxDimension > 256) {
@@ -435,7 +500,7 @@ export class PixelForgeAnimation {
       frame.cels.set(layerId, source ? new Uint8ClampedArray(source) : new Uint8ClampedArray(byteLength));
       const sourceMetadata = copyFromLayerId === null ? null : frame.layerMetadata?.get(copyFromLayerId);
       frame.layerMetadata ||= new Map();
-      frame.layerMetadata.set(layerId, normalizeLayerMetadata(sourceMetadata || {}, layerId, this.#layerIds.length - 1));
+      frame.layerMetadata.set(layerId, normalizeLayerMetadata(sourceMetadata || {}, layerId, this.#layerIds.length - 1, frame.authoringMode || 'pixel-art'));
     }
     return this.#layerIds.length;
   }
@@ -574,12 +639,13 @@ export class PixelForgeAnimation {
       frames: this.#frames.map((frame, frameIndex) => ({
         id: frame.id,
         durationMs: frame.durationMs,
+        authoringMode: frame.authoringMode || 'pixel-art',
         cels: this.#layerIds.map((layerId, layerIndex) => ({
           layerId,
           pixels: encodeBase64(frame.cels.get(layerId)),
-          metadata: normalizeLayerMetadata(frame.layerMetadata?.get(layerId), layerId, layerIndex),
+          metadata: normalizeLayerMetadata(frame.layerMetadata?.get(layerId), layerId, layerIndex, frame.authoringMode || 'pixel-art'),
         })),
-        layerMetadata: this.#layerIds.map((layerId, layerIndex) => normalizeLayerMetadata(frame.layerMetadata?.get(layerId), layerId, layerIndex)),
+        layerMetadata: this.#layerIds.map((layerId, layerIndex) => normalizeLayerMetadata(frame.layerMetadata?.get(layerId), layerId, layerIndex, frame.authoringMode || 'pixel-art')),
       })),
     };
   }
@@ -624,11 +690,12 @@ export class PixelForgeAnimation {
     const frames = data.frames.map(frame => ({
       id: frame.id,
       durationMs: frame.durationMs,
+      authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
       cels: frame.cels.map(cel => ({
         layerId: cel.layerId,
         pixels: decodeBase64(cel.pixels, byteLength),
       })),
-      layerMetadata: new Map(frame.layerMetadata?.map((metadata, index) => [metadata.id, normalizeLayerMetadata(metadata, metadata.id, index)]) || frame.cels.map((cel, index) => [cel.layerId, normalizeLayerMetadata(cel.metadata, cel.layerId, index)])),
+      layerMetadata: new Map(frame.layerMetadata?.map((metadata, index) => [metadata.id, normalizeLayerMetadata(metadata, metadata.id, index, ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art')]) || frame.cels.map((cel, index) => [cel.layerId, normalizeLayerMetadata(cel.metadata, cel.layerId, index, ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art')])),
     }));
     return new PixelForgeAnimation({
       width: data.width,

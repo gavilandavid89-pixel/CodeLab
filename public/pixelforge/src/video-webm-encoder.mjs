@@ -134,7 +134,13 @@ export async function encodeWebMFrames(frames, options = {}) {
   const { onProgress, isCancelled } = options;
   if (typeof Worker !== 'undefined' && typeof URL !== 'undefined' && typeof Blob !== 'undefined') {
     const worker = new Worker(new URL('./video-webm-encoder-worker.mjs', import.meta.url), { type: 'module' });
-    const transferableFrames = frames.map(frame => ({ durationMs: frame.durationMs, blob: frame.blob }));
+    const transferableFrames = frames.map(frame => ({
+    durationMs: frame.durationMs, blob: frame.blob,
+    width: frame.width, height: frame.height,
+    layers: Array.isArray(frame.layers) ? frame.layers.map(layer => ({ ...layer })) : undefined,
+    scalingMode: ['smooth', 'pixelated'].includes(frame.scalingMode) ? frame.scalingMode : options.scalingMode,
+    focalPoint: frame.focalPoint || options.focalPoint
+  }));
     return await new Promise((resolve, reject) => {
       let settled = false;
       const finish = fn => { if (settled) return; settled = true; worker.terminate(); fn(); };
@@ -160,7 +166,8 @@ export async function encodeWebMFrames(frames, options = {}) {
       worker.onerror = event => wrappedFinish(() => reject(new Error(event.message || 'Falló el worker de exportación.')));
       worker.postMessage({
         frames: transferableFrames, width:options.width, height:options.height, codec:options.codec,
-        fps:options.fps, durationMs:options.durationMs, backgroundColor:options.backgroundColor
+        fps:options.fps, durationMs:options.durationMs, backgroundColor:options.backgroundColor,
+        scalingMode:options.scalingMode, fitMode:options.fitMode, focalPoint:options.focalPoint
       });
     });
   }

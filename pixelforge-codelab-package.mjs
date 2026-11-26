@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createZip } from './public/pixelforge/src/zip-export.js';
 import { HeadlessEditorRuntime } from './public/pixelforge/src/headless.js';
+import { normalizeDrawingConfiguration } from './public/pixelforge/src/drawing-mode-config.mjs';
 
 const MAX_PACKAGE_BYTES = 100 * 1024 * 1024;
 const MAX_FRAMES = 240;
@@ -81,14 +82,17 @@ function frameLayers(frame, project, frameIndex) {
       sourceCels.some(cel => !project.layers.some(layer => String(layer.id) === String(cel.layerId)))) {
     throw new TypeError('Frame ' + (frameIndex + 1) + ' must contain exactly one cel for every project layer.');
   }
+  const frameLayerMetadata = new Map((Array.isArray(frame?.layerMetadata) ? frame.layerMetadata : [])
+    .map(metadata => [String(metadata.layerId ?? metadata.id), metadata]));
   return project.layers.map(layer => {
     const cel = cels.get(String(layer.id));
+    const metadata = frameLayerMetadata.get(String(layer.id)) || {};
     const encoded = cel?.pixels ?? (frameIndex === -1 ? layer.pixels : null);
     if (typeof encoded !== 'string') {
       throw new TypeError('Frame ' + (frameIndex + 1) + ' is missing pixels for layer ' + layer.id + '.');
     }
     const pixels = decodePixels(encoded, project.width * project.height * 4, 'Frame ' + (frameIndex + 1) + '/' + layer.id);
-    return { layer, pixels };
+    return { layer, cel, metadata, pixels };
   });
 }
 
@@ -267,7 +271,7 @@ function addAnimation(project, files) {
   frames.forEach((frame, index) => {
     const directory = 'Frames/frame-' + String(index + 1).padStart(4, '0');
     const layers = frameLayers(frame, project, source?.frames?.length ? index : -1);
-    const frameLayersMetadata = layers.map(({ layer, pixels }, layerIndex) => {
+    const frameLayersMetadata = layers.map(({ layer, cel, metadata, pixels }, layerIndex) => {
       totalBytes += pixels.length;
       if (totalBytes > 64 * 1024 * 1024) throw new RangeError('PixelForge animation exceeds the 64 MiB RGBA8 pixel-memory budget.');
       const layerToken = 'layer' + index + '-' + (layerIndex + 1);
@@ -276,6 +280,10 @@ function addAnimation(project, files) {
       return {
         id: String(layer.id), name: String(layer.name || layer.id),
         parentFrameId: String(frame.id || 'frame-' + (index + 1)), index: layerIndex + 1,
+        authoringMode: ['illustration', 'pixel-art'].includes(cel?.metadata?.authoringMode ?? cel?.authoringMode ?? metadata.authoringMode ?? layer.authoringMode)
+          ? (cel?.metadata?.authoringMode ?? cel?.authoringMode ?? metadata.authoringMode ?? layer.authoringMode) : 'pixel-art',
+        modeOverrides: structuredClone(cel?.metadata?.modeOverrides ?? metadata.modeOverrides ?? layer.modeOverrides ?? {}),
+        ownershipTiles: structuredClone(cel?.metadata?.ownershipTiles ?? metadata.ownershipTiles ?? layer.ownershipTiles ?? []),
         pixelsPath, position: { x: Number(layer.x ?? 0), y: Number(layer.y ?? 0) },
         x: Number(layer.x ?? 0), y: Number(layer.y ?? 0), scaleX: Number(layer.scaleX ?? 1), scaleY: Number(layer.scaleY ?? 1),
         rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1),
@@ -294,6 +302,7 @@ function addAnimation(project, files) {
       width: project.width,
       height: project.height,
       durationMs: Math.round(Math.max(1, Math.min(10000, Number(frame.durationMs || Math.round(1000 / (source?.fps || 12)))))),
+      authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
       layerCount: frameLayersMetadata.length,
       layers: frameLayersMetadata,
     }, null, 2), 'utf8'));
@@ -319,6 +328,7 @@ export function createPixelForgeCodeLabPackageZip(sourceProject, { resources = [
   }
   const runtime = HeadlessEditorRuntime.fromJSON(sourceProject);
   const project = runtime.toJSON();
+  project.drawingConfiguration = normalizeDrawingConfiguration(sourceProject.drawingConfiguration);
   if (project.format !== 'pixelforge-project' || !project.id || !project.name ||
       !Number.isInteger(project.width) || !Number.isInteger(project.height) ||
       project.width < 1 || project.height < 1 || project.width > 4096 || project.height > 4096) {

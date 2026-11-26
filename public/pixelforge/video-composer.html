@@ -97,17 +97,35 @@
         <small id="vc-format-support">La compatibilidad depende del navegador.</small>
       </div>
       <div class="vc-form-group">
-        <label for="vc-output-fps">Frecuencia de salida</label>
-        <select id="vc-output-fps"><option value="12">12 FPS · Pixel art</option><option value="24">24 FPS · Cine</option><option value="30" selected>30 FPS · Estándar</option><option value="60">60 FPS · Fluido</option></select>
+        <label for="vc-output-fps">Cadencia de salida</label>
+        <select id="vc-output-fps"><option value="12">12 FPS · Animación tradicional</option><option value="24">24 FPS · Cine</option><option value="30" selected>30 FPS · Estándar</option><option value="60">60 FPS · Alta cadencia</option></select>
+        <small id="vc-motion-quality">La fluidez real depende también de los fotogramas y tiempos originales.</small>
       </div>
       <div class="vc-form-group">
-        <label for="vc-resolution">Resolución del vídeo</label>
-        <select id="vc-resolution"><option value="720">720p · móvil y redes</option><option value="1080" selected>1080p · alta calidad</option></select>
+        <label for="vc-resolution">Tamaño del vídeo (contenedor)</label>
+        <select id="vc-resolution"><option value="720">720p · HD</option><option value="1080" selected>1080p · Full HD</option></select>
+        <small>El tamaño de salida no agrega detalle que no exista en el dibujo original. Los perfiles de plataforma solo cambian la composición de salida, no el proyecto maestro.</small>
+      </div>
+      <div class="vc-form-group">
+        <label for="vc-scaling-mode">Tratamiento del escalado</label>
+        <select id="vc-scaling-mode"><option value="smooth" selected>Suave · ilustración y dibujo HD</option><option value="pixelated">Pixel perfecto · pixel art</option></select>
       </div>
       <div class="vc-form-group">
         <label for="vc-aspect">Formato de pantalla</label>
-        <select id="vc-aspect"><option value="16:9" selected>Horizontal · 16:9</option><option value="9:16">Vertical · 9:16</option><option value="1:1">Cuadrado · 1:1</option><option value="auto">Adaptar al lienzo</option></select>
+        <select id="vc-aspect"><option value="16:9" selected>YouTube / Facebook horizontal · 16:9</option><option value="9:16">TikTok / Shorts / Reels vertical · 9:16</option><option value="4:5">Instagram feed · 4:5</option><option value="1:1">Instagram / publicación cuadrada · 1:1</option><option value="auto">Adaptar al lienzo original</option></select>
       </div>
+      <div class="vc-form-group">
+        <label for="vc-fit-mode">Ajuste del contenido · sin deformar</label>
+        <select id="vc-fit-mode"><option value="cover" selected>Llenar el formato · recortar fuera de la guía</option><option value="contain">Conservar todo · añadir bandas si hace falta</option></select>
+        <label for="vc-reframe">Reencuadre inteligente</label>
+        <select id="vc-reframe"><option value="center" selected>Centro · comportamiento actual</option><option value="top">Priorizar parte superior</option><option value="bottom">Priorizar parte inferior</option><option value="left">Priorizar lado izquierdo</option><option value="right">Priorizar lado derecho</option></select>
+        <small>El reencuadre solo mueve el área visible de la salida; nunca modifica el lienzo maestro ni estira el dibujo.</small>
+        <small>Ambas opciones conservan la proporción. Nunca se estira el dibujo. La guía marca exactamente lo que se conservará al recortar.</small>
+      </div>
+      <section class="vc-composition-guide" aria-live="polite">
+        <div><strong>Guía de composición para el agente</strong><small id="vc-guide-summary">Importa una animación para calcular el área segura.</small></div>
+        <button class="vc-export-button vc-secondary-button" id="vc-copy-agent-guide" type="button" disabled>Copiar guía para agente</button>
+      </section>
       <div class="vc-capture-mode">
         <strong>Qué quieres capturar</strong>
         <p><b>Contenido:</b> lienzo grande y tira de fotogramas, sin herramientas.</p>
@@ -121,7 +139,8 @@
         <label><input id="vc-loop-export" type="checkbox"> Duplicar secuencia (2 vueltas)</label>
         <label><input id="vc-solid-bg" type="checkbox" checked> Fondo sólido oscuro</label>
       </div>
-      <div class="vc-export-summary"><div><span>Duración</span><strong id="vc-export-duration">—</strong></div><div><span>Dimensiones</span><strong id="vc-export-dimensions">—</strong></div></div>
+      <div class="vc-export-summary"><div><span>Duración</span><strong id="vc-export-duration">—</strong></div><div><span>Dimensiones de salida</span><strong id="vc-export-dimensions">—</strong></div></div>
+      <p class="vc-quality-note" id="vc-source-quality" aria-live="polite">Importa un proyecto para comparar su resolución original con la salida.</p>
       <button class="vc-export-button" id="vc-export" type="button" disabled><span>⇩</span> Exportar vídeo</button>
       <div class="vc-progress" id="vc-progress" hidden><div><span id="vc-progress-label">Preparando…</span><span class="vc-progress-actions"><strong id="vc-progress-value">0%</strong><button id="vc-cancel-export" type="button" hidden>Cancelar</button></span></div><div class="vc-progress-track"><i id="vc-progress-bar"></i></div></div>
       <p class="vc-export-note" id="vc-export-note">Importa una secuencia para habilitar la exportación. El vídeo se genera localmente y se descarga como un solo archivo.</p>

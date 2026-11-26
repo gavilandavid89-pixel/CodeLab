@@ -79,11 +79,12 @@ El agente no debe obtener el Headless mediante una copia arbitraria del reposito
 Cuando exista un artefacto válido del Headless:
 
 1. descargar el artefacto;
-2. extraerlo dentro del entorno aislado del agente;
+2. extraerlo dentro del entorno aislado del agente (incluye `public/pixelforge/src/` y `pixelforge-codelab-package.mjs` en la raíz);
 3. instalar sus dependencias;
 4. comprobar que el runtime puede arrancar;
 5. ejecutar el runtime desde esa instalación;
-6. conservar esa instancia durante la sesión de trabajo del agente.
+6. al terminar, serializar con `runtime.toJSON()` y construir el ZIP nativo con `createPixelForgeCodeLabPackageZip(project)` desde `pixelforge-codelab-package.mjs`;
+7. conservar esa instancia durante la sesión de trabajo del agente.
 
 Si no existe un artefacto válido, el agente debe generar/publicar primero el artefacto mediante el workflow documentado y después instalarlo en su entorno.
 

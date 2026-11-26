@@ -1,7 +1,9 @@
 import { parsePixelForgeVideoPackage, readStoredZip, buildConstantFrameRateSequence } from './src/video-composer-core.mjs';
 import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
-import { getCaptureDimensions, drawContentComposition } from './src/video-capture-layout.mjs';
+import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, getVideoCompositionProfile, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
+import { getVideoScalingMode, resolveDrawingMode } from './src/drawing-mode-config.mjs';
+import { vectorModelToSVG } from './src/vector-studio.js';
 
 const $ = selector => document.querySelector(selector);
 const ui = {
@@ -14,7 +16,10 @@ let packageData = null;
 let currentIndex = 0;
 let currentBitmap = null;
 let playing = false;
-let playbackTimer = 0;
+let playbackRaf = 0;
+let playbackStartedAt = 0;
+let playbackElapsedMs = 0;
+let playbackRenderPending = false;
 let activeImport = 0;
 let exportBusy = false;
 let cancelRequested = false;
@@ -51,10 +56,131 @@ function outputDimensions() {
   return getCaptureDimensions($('#vc-resolution').value, $('#vc-aspect').value,
     packageData.manifest.width, packageData.manifest.height);
 }
+function currentCompositionGuide() {
+  if (!packageData) return null;
+  const { width, height } = outputDimensions();
+  return getCompositionGuide(packageData.manifest.width, packageData.manifest.height, width, height);
+}
+function currentFocalPoint() {
+  const mode = $('#vc-reframe').value;
+  return mode === 'top' ? { x: 0.5, y: 0.2 }
+    : mode === 'bottom' ? { x: 0.5, y: 0.8 }
+    : mode === 'left' ? { x: 0.2, y: 0.5 }
+    : mode === 'right' ? { x: 0.8, y: 0.5 }
+    : { x: 0.5, y: 0.5 };
+}
+function refreshCompositionGuide() {
+  if (!packageData) {
+    $('#vc-copy-agent-guide').disabled = true;
+    $('#vc-guide-summary').textContent = 'Importa una animación para calcular el área segura.';
+    return;
+  }
+  const guide = currentCompositionGuide();
+  const fitMode = $('#vc-fit-mode').value;
+  const safe = guide.safeArea;
+  $('#vc-guide-summary').textContent = 'Zona segura: x ' + safe.x + ', y ' + safe.y + ' · ' + safe.width + ' × ' + safe.height +
+    ' px. ' + (fitMode === 'cover'
+      ? 'La exportación recortará fuera de esta zona.'
+      : 'Mantén aquí los elementos esenciales; el resto del lienzo también se conservará en la salida.');
+  $('#vc-copy-agent-guide').disabled = false;
+}
+function buildAgentCompositionGuide() {
+  const guide = currentCompositionGuide();
+  if (!guide) throw new Error('Importa una animación antes de copiar la guía.');
+  return {
+    schemaVersion: 1,
+    purpose: 'PixelForge Video Composer composition constraints',
+    sourceCanvas: guide.source,
+    sourceDrawingMode: packageData.manifest.sourceDrawingMode || null,
+    drawingModesPresent: [...new Set([
+      packageData.manifest.sourceDrawingMode,
+      ...packageData.frames.map(frame => frame.authoringMode),
+      ...(packageData.manifest.drawingModesPresent || []),
+      ...packageData.frames.flatMap(frame => (frame.layers || []).map(layer => layer.authoringMode)),
+      ...packageData.frames.flatMap(frame => (frame.layerMetadata || []).map(item => item.authoringMode)),
+      ...packageData.frames.flatMap(frame => (frame.cels || []).map(cel => cel.metadata?.authoringMode)),
+    ].filter(mode => mode === 'illustration' || mode === 'pixel-art'))],
+    layerModesByFrame: packageData.manifest.layerModesByFrame || packageData.frames.map((frame, frameIndex) => ({
+      frameIndex, frameId: String(frame.id || frameIndex),
+      layers: (frame.layers || []).map(layer => ({
+        layerId: layer.layerId, layerName: layer.layerName, authoringMode: layer.authoringMode,
+      })),
+    })),
+    output: {
+      platform: $('#vc-aspect').value === '16:9' ? 'youtube-landscape' :
+        $('#vc-aspect').value === '9:16' ? 'shorts-or-tiktok' :
+        $('#vc-aspect').value === '4:5' ? 'instagram-feed' :
+        $('#vc-aspect').value === '1:1' ? 'square-social' : 'original-aspect',
+      aspect: $('#vc-aspect').value,
+      profile: getVideoCompositionProfile(
+        $('#vc-aspect').value === '16:9' ? 'youtube-landscape' :
+        $('#vc-aspect').value === '9:16' ? 'shorts-or-tiktok' :
+        $('#vc-aspect').value === '4:5' ? 'instagram-feed' :
+        $('#vc-aspect').value === '1:1' ? 'square-social' : null
+      ),
+      dimensions: guide.target,
+      fitMode: $('#vc-fit-mode').value,
+      safeArea: guide.safeArea,
+      normalizedSafeArea: guide.normalizedSafeArea,
+      focalPoint: currentFocalPoint(),
+      reframeMode: $('#vc-reframe').value,
+    },
+    instructions: [
+      'Compose essential subjects, faces, text and action inside output.safeArea in sourceCanvas coordinates.',
+      'Do not stretch or apply different horizontal and vertical scale factors.',
+      'Do not modify source canvas dimensions, source pixels, animation timing, layers or cels.',
+      'Keep each layer authoring mode exactly as listed in layerModesByFrame; modes may be mixed in the same frame.',
+      'Use high-quality smoothing for illustration layers and nearest-neighbor sampling for pixel-art layers.',
+      'The Video Composer applies the output aspect ratio only during preview and export. Platform profiles are output presets; they never mutate the source project.',
+      $('#vc-fit-mode').value === 'cover'
+        ? 'Pixels outside output.safeArea will be cropped from the final video.'
+        : 'The full source artwork is preserved; any aspect-ratio mismatch is padded, never stretched.',
+    ],
+  };
+}
+async function copyAgentCompositionGuide() {
+  try {
+    const payload = JSON.stringify(buildAgentCompositionGuide(), null, 2);
+    if (!navigator.clipboard?.writeText) throw new Error('El navegador no permite copiar automáticamente. Usa un navegador con permiso de portapapeles.');
+    await navigator.clipboard.writeText(payload);
+    setStatus('Guía de composición copiada. Puedes pegarla en el contexto del agente.', 'success');
+  } catch (error) {
+    setStatus(error.message, 'error');
+  }
+}
 function refreshOutputDimensions() {
   if (!packageData) return;
   const { width, height } = outputDimensions();
   $('#vc-export-dimensions').textContent = width + ' × ' + height;
+  const sourceWidth = packageData.manifest.width;
+  const sourceHeight = packageData.manifest.height;
+  const quality = getSourceQualityAssessment(sourceWidth, sourceHeight, width, height, { fitMode: $('#vc-fit-mode').value });
+  const sourceLabel = sourceWidth + ' × ' + sourceHeight;
+  const contentLabel = quality.contentWidth + ' × ' + quality.contentHeight;
+  const qualityNote = $('#vc-source-quality');
+  qualityNote.dataset.kind = quality.upscaled ? 'warning' : quality.downscaled ? 'info' : 'success';
+  qualityNote.textContent = quality.upscaled
+    ? 'Origen ' + sourceLabel + ' → contenido ampliado a ' + contentLabel + '. El archivo tendrá ' + width + ' × ' + height + ', pero conservará el detalle del original; no se inventa resolución.'
+    : quality.downscaled
+      ? 'Origen ' + sourceLabel + ' → contenido reducido a ' + contentLabel + '. La salida conserva la proporción y reduce el detalle al tamaño elegido.'
+      : 'Origen ' + sourceLabel + ' · salida ' + width + ' × ' + height + '. El contenido mantiene su tamaño de píxel original.';
+  refreshMotionCadence();
+  refreshCompositionGuide();
+}
+function refreshMotionCadence() {
+  if (!packageData) return;
+  const sourceFps = Number(packageData.manifest.fps) || 0;
+  const outputFps = Number($('#vc-output-fps').value) || sourceFps;
+  const note = $('#vc-motion-quality');
+  if (!sourceFps || !outputFps) {
+    note.textContent = 'La fluidez real depende de los fotogramas y sus duraciones originales.';
+  } else if (outputFps > sourceFps + 0.01) {
+    note.textContent = 'Origen ' + sourceFps + ' FPS · salida ' + outputFps + ' FPS. Se repetirán poses cuando falten fotogramas: subir los FPS no inventa movimiento intermedio.';
+  } else if (outputFps < sourceFps - 0.01) {
+    note.textContent = 'La salida ' + outputFps + ' FPS reduce la cadencia del origen (' + sourceFps + ' FPS); algunos instantes pueden omitirse.';
+  } else {
+    note.textContent = 'La salida coincide con los ' + sourceFps + ' FPS del origen. Para más fluidez real, la animación necesita más poses o fotogramas intermedios.';
+  }
 }
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -85,20 +211,30 @@ async function captureContentPng() {
   canvas.width = dimensions.width; canvas.height = dimensions.height;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('No se pudo crear la captura.');
-  const bitmap = await createImageBitmap(packageData.frames[currentIndex].blob);
+  const frame = packageData.frames[currentIndex];
+  const bitmap = await createImageBitmap(frame.blob);
+  const layerBitmaps = await Promise.all((frame.layers || []).map(async layer => ({
+    ...layer, bitmap: await createImageBitmap(layer.blob),
+  })));
   const thumbnails = await makeTimelineThumbnails();
   try {
     drawContentComposition(context, bitmap, currentIndex, dimensions, thumbnails, {
       sourceWidth: packageData.manifest.width, sourceHeight: packageData.manifest.height,
       frameCount: packageData.frames.length, title: $('#vc-project-name').textContent,
-      background: $('#vc-solid-bg').checked ? '#101116' : '#20232d'
+      background: $('#vc-solid-bg').checked ? '#101116' : '#20232d',
+      scalingMode: $('#vc-scaling-mode').value,
+      fitMode: $('#vc-fit-mode').value,
+      focalPoint: currentFocalPoint(),
+      layers: layerBitmaps,
     });
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('El navegador no pudo generar el PNG.');
     downloadBlob(blob, safeName($('#vc-project-name').textContent) + '-contenido.png');
     setStatus('Captura de contenido PNG generada en ' + dimensions.width + ' × ' + dimensions.height + '.', 'success');
   } finally {
-    bitmap.close?.(); closeTimelineThumbnails(thumbnails);
+    bitmap.close?.();
+    for (const layer of layerBitmaps) layer.bitmap.close?.();
+    closeTimelineThumbnails(thumbnails);
   }
 }
 async function captureStudioPng() {
@@ -187,6 +323,10 @@ function setEnabled(enabled) {
   $('#vc-output-fps').disabled = !enabled;
   $('#vc-format').disabled = !enabled;
   $('#vc-solid-bg').disabled = !enabled;
+  $('#vc-aspect').disabled = !enabled;
+  $('#vc-resolution').disabled = !enabled;
+  $('#vc-fit-mode').disabled = !enabled;
+  $('#vc-copy-agent-guide').disabled = !enabled;
 }
 function resetComposer() {
   stopPlayback();
@@ -195,6 +335,7 @@ function resetComposer() {
   ui.export.textContent = '⇩ Exportar vídeo';
   packageData = null;
   currentIndex = 0;
+  playbackElapsedMs = 0;
   currentBitmap?.close?.();
   currentBitmap = null;
   ui.canvas.hidden = true;
@@ -217,12 +358,14 @@ function resetComposer() {
   $('#vc-timeline-count').textContent = '0 elementos';
   $('#vc-export-duration').textContent = '—';
   $('#vc-export-dimensions').textContent = '—';
+  refreshCompositionGuide();
   setEnabled(false);
 }
 async function renderFrame(index) {
   if (!packageData) return;
   index = Math.max(0, Math.min(packageData.frames.length - 1, index));
   currentIndex = index;
+  if (!playing) playbackElapsedMs = frameStart(index);
   const frame = packageData.frames[index];
   currentBitmap?.close?.();
   currentBitmap = await createImageBitmap(frame.blob);
@@ -234,9 +377,31 @@ async function renderFrame(index) {
   ui.canvas.width = width;
   ui.canvas.height = height;
   const context = ui.canvas.getContext('2d', { alpha: true });
-  context.imageSmoothingEnabled = false;
+  const scalingMode = $('#vc-scaling-mode').value;
+  ui.canvas.dataset.scalingMode = scalingMode;
+  const frameScalingMode = ['smooth', 'pixelated'].includes(frame.authoringMode === 'pixel-art' ? 'pixelated' : frame.authoringMode === 'illustration' ? 'smooth' : scalingMode)
+    ? (frame.authoringMode === 'pixel-art' ? 'pixelated' : frame.authoringMode === 'illustration' ? 'smooth' : scalingMode) : 'smooth';
+  context.imageSmoothingEnabled = frameScalingMode !== 'pixelated';
+  if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
   context.clearRect(0, 0, width, height);
   context.drawImage(currentBitmap, 0, 0);
+  const guide = currentCompositionGuide();
+  if (guide) {
+    const safe = guide.safeArea;
+    context.save();
+    context.fillStyle = $('#vc-fit-mode').value === 'cover'
+      ? 'rgba(8, 10, 16, 0.42)' : 'rgba(8, 10, 16, 0.14)';
+    context.beginPath();
+    context.rect(0, 0, width, height);
+    context.rect(safe.x, safe.y, safe.width, safe.height);
+    context.fill('evenodd');
+    context.strokeStyle = '#b6aaff';
+    context.lineWidth = Math.max(1, Math.min(width, height) / 700);
+    context.setLineDash([Math.max(4, width / 180), Math.max(3, width / 260)]);
+    context.strokeRect(safe.x, safe.y, safe.width, safe.height);
+    context.restore();
+  }
+  ui.canvas.dataset.compositionGuide = 'true';
   ui.canvas.hidden = false;
   ui.empty.hidden = true;
   ui.scrubber.max = String(packageData.frames.length - 1);
@@ -298,6 +463,7 @@ async function composeNativeFrame(project, frame) {
   if (!context) throw new Error('No se pudo crear el lienzo para componer el fotograma.');
   const metadataByLayer = new Map((frame.layerMetadata || []).map(item => [String(item.layerId || item.id), item]));
   const celsByLayer = new Map((frame.cels || []).map(item => [String(item.layerId), item]));
+  const renderLayers = [];
   for (const layer of project.layers) {
     const cel = celsByLayer.get(String(layer.id));
     if (!cel) throw new Error('El fotograma no contiene el cel de la capa ' + layer.name + '.');
@@ -310,22 +476,69 @@ async function composeNativeFrame(project, frame) {
     const source = document.createElement('canvas');
     source.width = width; source.height = height;
     source.getContext('2d').putImageData(new ImageData(pixels, width, height), 0, 0);
-    const x = Number(meta.x ?? meta.position?.x ?? 0);
-    const y = Number(meta.y ?? meta.position?.y ?? 0);
-    const sx = Number(meta.scaleX ?? 1), sy = Number(meta.scaleY ?? 1);
-    const rotation = Number(meta.rotation ?? 0);
+    const layerBlob = await new Promise((resolve, reject) => source.toBlob(value =>
+      value ? resolve(value) : reject(new Error('No se pudo preparar el cel de la capa ' + layer.name + '.')), 'image/png'));
+    const authoringMode = resolveDrawingMode({ cel, frame, layer, project });
+    const x = Number(meta.x ?? meta.position?.x ?? layer.x ?? 0);
+    const y = Number(meta.y ?? meta.position?.y ?? layer.y ?? 0);
+    const sx = Number(meta.scaleX ?? layer.scaleX ?? 1), sy = Number(meta.scaleY ?? layer.scaleY ?? 1);
+    const rotation = Number(meta.rotation ?? layer.rotation ?? 0);
+    const opacity = Math.max(0, Math.min(1, Number(meta.opacity ?? layer.opacity ?? 1)));
+    const blendMode = String(meta.blendMode || layer.blendMode || 'normal');
+    renderLayers.push({
+      layerId: String(layer.id), layerName: String(layer.name || layer.id),
+      blob: layerBlob, authoringMode, x, y, scaleX: Number.isFinite(sx) ? sx : 1,
+      scaleY: Number.isFinite(sy) ? sy : 1, rotation, opacity, blendMode,
+    });
     context.save();
-    context.globalAlpha = Math.max(0, Math.min(1, Number(meta.opacity ?? layer.opacity ?? 1)));
-    const blend = String(meta.blendMode || layer.blendMode || 'normal');
-    if (['source-over','multiply','screen','overlay','darken','lighten','difference','exclusion','lighter'].includes(blend)) context.globalCompositeOperation = blend;
+    context.imageSmoothingEnabled = authoringMode !== 'pixel-art';
+    if (context.imageSmoothingEnabled) context.imageSmoothingQuality = 'high';
+    context.globalAlpha = opacity;
+    if (['source-over','multiply','screen','overlay','darken','lighten','difference','exclusion','lighter'].includes(blendMode)) context.globalCompositeOperation = blendMode;
     context.translate(width / 2 + x, height / 2 + y);
     context.rotate(rotation * Math.PI / 180);
     context.scale(Number.isFinite(sx) ? sx : 1, Number.isFinite(sy) ? sy : 1);
     context.drawImage(source, -width / 2, -height / 2);
     context.restore();
   }
+  // Vector objects are an Illustration-quality overlay. Keep them as a
+  // separate render layer so the encoder can sample raster layers by mode.
+  if (project.vectorModel?.objects?.length) {
+    const svg = vectorModelToSVG(project.vectorModel);
+    const vectorUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const vectorImage = new Image();
+    vectorImage.decoding = 'async';
+    try {
+      vectorImage.src = vectorUrl;
+      if (typeof vectorImage.decode === 'function') await vectorImage.decode();
+      else await new Promise((resolve, reject) => {
+        vectorImage.onload = resolve;
+        vectorImage.onerror = () => reject(new Error('No se pudo decodificar el overlay vectorial.'));
+      });
+    } finally {
+      URL.revokeObjectURL(vectorUrl);
+    }
+    const vectorCanvas = document.createElement('canvas');
+    vectorCanvas.width = width; vectorCanvas.height = height;
+    const vectorContext = vectorCanvas.getContext('2d', { alpha: true });
+    vectorContext.imageSmoothingEnabled = true;
+    vectorContext.imageSmoothingQuality = 'high';
+    vectorContext.drawImage(vectorImage, 0, 0, width, height);
+    const vectorBlob = await new Promise((resolve, reject) => vectorCanvas.toBlob(value =>
+      value ? resolve(value) : reject(new Error('No se pudo preparar la capa vectorial.')), 'image/png'));
+    renderLayers.push({
+      layerId: 'vector-overlay', layerName: 'Vector overlay',
+      blob: vectorBlob, authoringMode: 'illustration', x: 0, y: 0,
+      scaleX: 1, scaleY: 1, rotation: 0, opacity: 1, blendMode: 'source-over',
+    });
+    context.save();
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(vectorCanvas, 0, 0);
+    context.restore();
+  }
   const blob = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('No se pudo codificar el fotograma compuesto como PNG.')), 'image/png'));
-  return blob;
+  return { blob, layers: renderLayers, width, height };
 }
 async function parseComposerPackage(file) {
   const entries = await readStoredZip(file);
@@ -336,8 +549,23 @@ async function parseComposerPackage(file) {
     if (!animation?.frames?.length) throw new Error('El proyecto nativo no contiene una línea de tiempo exportable.');
     const frames = [];
     for (const frame of animation.frames) {
-      frames.push({ ...frame, blob: await composeNativeFrame(project, frame) });
+      const composed = await composeNativeFrame(project, frame);
+      frames.push({ ...frame, ...composed });
     }
+    const layerModesByFrame = animation.frames.map((frame, frameIndex) => ({
+      frameIndex, frameId: String(frame.id || frameIndex),
+      layers: project.layers.map(layer => {
+        const cel = (frame.cels || []).find(item => String(item.layerId) === String(layer.id));
+        const metadata = (frame.layerMetadata || []).find(item => String(item.layerId || item.id) === String(layer.id)) || cel?.metadata || {};
+        return {
+          layerId: String(layer.id), layerName: String(layer.name || layer.id),
+          authoringMode: resolveDrawingMode({ cel, frame, layer, project }),
+          visible: layer.visible !== false && metadata.visible !== false,
+        };
+      }),
+    }));
+    const drawingModesPresent = [...new Set(layerModesByFrame.flatMap(frame => frame.layers.map(layer => layer.authoringMode)))];
+    const sourceDrawingMode = project.drawingConfiguration?.activeMode === 'illustration' ? 'illustration' : 'pixel-art';
     const totalDurationMs = frames.reduce((sum, frame) => sum + Number(frame.durationMs), 0);
     return {
       manifest: {
@@ -345,6 +573,10 @@ async function parseComposerPackage(file) {
         width: project.width, height: project.height, fps: animation.fps,
         loop: animation.loop !== false, frameCount: frames.length, totalDurationMs,
         projectName: project.name,
+        sourceDrawingMode,
+        drawingModesPresent,
+        layerModesByFrame,
+        scalingMode: getVideoScalingMode(sourceDrawingMode),
       },
       frames, project: new Blob([JSON.stringify(project)], { type: 'application/json' }),
       entryCount: entries.size,
@@ -362,6 +594,7 @@ async function importPackage(file) {
     const parsed = await parseComposerPackage(file);
     if (requestId !== activeImport) return;
     packageData = parsed;
+    if (['smooth', 'pixelated'].includes(parsed.manifest.scalingMode)) $('#vc-scaling-mode').value = parsed.manifest.scalingMode;
     $('#vc-project-name').textContent = file.name.replace(/\.zip$/i, '') || 'Animación PixelForge';
     $('#vc-project-meta').textContent = parsed.manifest.width + ' × ' + parsed.manifest.height + ' · ' + parsed.manifest.frameCount + ' fotogramas';
     $('#vc-source-card').hidden = false;
@@ -381,6 +614,7 @@ async function importPackage(file) {
     $('#vc-loop').checked = parsed.manifest.loop !== false;
     $('#vc-loop-export').checked = false;
     $('#vc-output-fps').value = String(parsed.manifest.fps);
+    refreshMotionCadence();
     setEnabled(true);
     refreshFormatSupport();
     // Server-side Video Composer exports do not need the interactive timeline.
@@ -404,8 +638,10 @@ async function importPackage(file) {
   }
 }
 function stopPlayback() {
+  if (playing) playbackElapsedMs = Math.max(0, performance.now() - playbackStartedAt);
   playing = false;
-  clearTimeout(playbackTimer);
+  if (playbackRaf) cancelAnimationFrame(playbackRaf);
+  playbackRaf = 0;
   ui.play.textContent = '▶';
   ui.play.setAttribute('aria-label', 'Reproducir');
   if (packageData) {
@@ -415,25 +651,50 @@ function stopPlayback() {
     $('#vc-last').disabled = currentIndex === packageData.frames.length - 1;
   }
 }
-function schedulePlayback() {
+function playbackTick(now) {
   if (!playing || !packageData) return;
-  const next = currentIndex + 1;
-  if (next >= packageData.frames.length) {
-    if ($('#vc-loop').checked) {
-      renderFrame(0).then(() => schedulePlayback()).catch(error => { stopPlayback(); setStatus(error.message, 'error'); });
+  const total = totalDuration();
+  const elapsed = Math.max(0, now - playbackStartedAt);
+  const looping = $('#vc-loop').checked;
+  if (!looping && elapsed >= total) {
+    playbackElapsedMs = total;
+    const lastIndex = packageData.frames.length - 1;
+    if (currentIndex !== lastIndex && !playbackRenderPending) {
+      playbackRenderPending = true;
+      renderFrame(lastIndex).catch(error => setStatus(error.message, 'error')).finally(() => {
+        playbackRenderPending = false;
+        stopPlayback();
+      });
+    } else if (playbackRenderPending) {
+      playbackRaf = requestAnimationFrame(playbackTick);
     } else stopPlayback();
     return;
   }
-  playbackTimer = setTimeout(() => {
-    renderFrame(next).then(() => schedulePlayback()).catch(error => { stopPlayback(); setStatus(error.message, 'error'); });
-  }, packageData.frames[currentIndex].durationMs);
+  const timelineTime = looping && total > 0 ? elapsed % total : Math.min(elapsed, total);
+  let low = 0, high = packageData.frames.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (frameStart(middle + 1) <= timelineTime) low = middle + 1;
+    else high = middle;
+  }
+  const targetIndex = Math.min(packageData.frames.length - 1, low);
+  if (targetIndex !== currentIndex && !playbackRenderPending) {
+    playbackRenderPending = true;
+    renderFrame(targetIndex).catch(error => {
+      stopPlayback();
+      setStatus(error.message, 'error');
+    }).finally(() => { playbackRenderPending = false; });
+  }
+  playbackRaf = requestAnimationFrame(playbackTick);
 }
 function startPlayback() {
   if (!packageData || playing) return;
-  if (currentIndex === packageData.frames.length - 1) renderFrame(0).then(() => {
-    playing = true; ui.play.textContent = 'Ⅱ'; ui.play.setAttribute('aria-label', 'Pausar'); schedulePlayback();
-  });
-  else { playing = true; ui.play.textContent = 'Ⅱ'; ui.play.setAttribute('aria-label', 'Pausar'); schedulePlayback(); }
+  if (playbackElapsedMs >= totalDuration()) playbackElapsedMs = 0;
+  playbackStartedAt = performance.now() - playbackElapsedMs;
+  playing = true;
+  ui.play.textContent = 'Ⅱ';
+  ui.play.setAttribute('aria-label', 'Pausar');
+  playbackRaf = requestAnimationFrame(playbackTick);
 }
 function webCodecsSupport() {
   if (!('VideoEncoder' in globalThis) || !('VideoFrame' in globalThis)) return '';
@@ -503,6 +764,9 @@ async function exportVideo() {
       fps: outputFps,
       durationMs: total,
       backgroundColor: solidBackground ? '#101116' : null,
+      scalingMode: $('#vc-scaling-mode').value,
+      fitMode: $('#vc-fit-mode').value,
+      focalPoint: currentFocalPoint(),
       isCancelled: () => cancelRequested,
       onProgress: (value, label) => setProgress(value, label)
     });
@@ -557,8 +821,28 @@ $('#vc-checker').addEventListener('click', event => {
   event.currentTarget.setAttribute('aria-pressed', String(!enabled));
   ui.stage.classList.toggle('solid-bg', enabled);
 });
-$('#vc-resolution').addEventListener('change', refreshOutputDimensions);
-$('#vc-aspect').addEventListener('change', refreshOutputDimensions);
+$('#vc-resolution').addEventListener('change', () => {
+  refreshOutputDimensions();
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
+$('#vc-aspect').addEventListener('change', () => {
+  refreshOutputDimensions();
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
+$('#vc-fit-mode').addEventListener('change', () => {
+  refreshCompositionGuide();
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
+$('#vc-reframe').addEventListener('change', () => {
+  refreshCompositionGuide();
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
+$('#vc-copy-agent-guide').addEventListener('click', copyAgentCompositionGuide);
+$('#vc-output-fps').addEventListener('change', refreshMotionCadence);
+$('#vc-scaling-mode').addEventListener('change', () => {
+  ui.canvas.dataset.scalingMode = $('#vc-scaling-mode').value;
+  renderFrame(currentIndex).catch(error => setStatus(error.message, 'error'));
+});
 $('#vc-capture-content').addEventListener('click', () => captureContentPng().catch(error => setStatus(error.message, 'error')));
 $('#vc-capture-studio').addEventListener('click', captureStudioPng);
 $('#vc-record-studio').addEventListener('click', startStudioRecording);

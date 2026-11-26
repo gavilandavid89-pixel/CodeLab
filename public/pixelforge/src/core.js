@@ -9,11 +9,11 @@ export function estimateRasterProjectJSONBytes(layers) {
       layers.some(layer => !(layer?.pixels instanceof Uint8Array) && !(layer?.pixels instanceof Uint8ClampedArray))) {
     throw new TypeError('Project layers must contain valid raster pixel buffers.');
   }
-  const rawBytes = layers.reduce((sum, layer) => sum + layer.pixels.byteLength, 0);
+  const rawBytes = layers.reduce((sum, layer) => sum + layer.pixels.byteLength + [...(layer.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + tile.byteLength, 0), 0);
   if (rawBytes > MAX_DOCUMENT_BYTES) {
     throw new RangeError('Project exceeds the 64 MiB total pixel-memory budget.');
   }
-  const encodedBytes = layers.reduce((sum, layer) => sum + Math.ceil(layer.pixels.byteLength / 3) * 4, 0);
+  const encodedBytes = layers.reduce((sum, layer) => sum + Math.ceil(layer.pixels.byteLength / 3) * 4 + [...(layer.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + Math.ceil(tile.byteLength / 3) * 4, 0), 0);
   return encodedBytes + PROJECT_JSON_METADATA_RESERVE_BYTES;
 }
 
@@ -217,26 +217,51 @@ export function screenToDocument(point, viewport, dimensions) {
   return { x, y, inside: x >= 0 && y >= 0 && x < dimensions.width && y < dimensions.height };
 }
 
+function cloneOwnershipTiles(tiles = new Map()) { return new Map([...tiles].map(([key, bytes]) => [key, new Uint8Array(bytes)])); }
+function validateOwnershipTilesForPixels(tiles, pixels, width, height) {
+  if (!(tiles instanceof Map)) throw new TypeError('Ownership snapshots must be a Map.');
+  for (const [key, owners] of tiles) {
+    const [tileX, tileY] = String(key).split(':').map(Number);
+    const x = tileX * TILE_SIZE, y = tileY * TILE_SIZE;
+    const tileWidth = Math.min(TILE_SIZE, width - x), tileHeight = Math.min(TILE_SIZE, height - y);
+    if (!Number.isInteger(tileX) || !Number.isInteger(tileY) || tileX < 0 || tileY < 0 ||
+        tileWidth < 1 || tileHeight < 1 ||
+        (!(owners instanceof Uint8Array) && !(owners instanceof Uint8ClampedArray)) ||
+        owners.byteLength !== tileWidth * tileHeight) {
+      throw new TypeError('Ownership snapshot tile geometry is invalid.');
+    }
+    for (let index = 0; index < owners.length; index++) {
+      if (owners[index] > 2) throw new TypeError('Ownership snapshot contains an unsupported owner value.');
+      if (owners[index] !== 0) {
+        const px = x + index % tileWidth, py = y + Math.floor(index / tileWidth);
+        if (pixels[(py * width + px) * 4 + 3] === 0) {
+          throw new TypeError('Transparent pixels cannot retain style ownership.');
+        }
+      }
+    }
+  }
+}
 function makeLayer(id, name, width, height) {
   return {
     id, name, visible: true, opacity: 1, locked: false,
     x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, angle: 0,
     blendMode: 'normal', blur: 0, brightness: 0, contrast: 0, saturation: 0,
-    mask: 'inexistente', clipping: 'inexistente', references: [], assets: [], metadata: {},
+    mask: 'inexistente', clipping: 'inexistente', references: [], assets: [], metadata: {}, authoringMode: 'pixel-art', modeOverrides: {},
     pixels: new Uint8ClampedArray(width * height * 4),
+    ownershipTiles: new Map(),
   };
 }
 function clonePixels(pixels) { return new Uint8ClampedArray(pixels); }
-function cloneLayer(layer) { return { ...layer, pixels: clonePixels(layer.pixels) }; }
+function cloneLayer(layer) { return { ...layer, pixels: clonePixels(layer.pixels), ownershipTiles: cloneOwnershipTiles(layer.ownershipTiles) }; }
 const TILE_SIZE = 64;
 function entryBytes(entry) {
-  if (entry.type === 'pixels') return entry.tiles.reduce((sum, tile) => sum + tile.before.byteLength + tile.after.byteLength, 64);
-  if (entry.type === 'document-crop') return entry.before.layers.reduce((sum, layer) => sum + layer.pixels.byteLength, 256);
-  if (entry.type === 'pixels-batch') return entry.layers.reduce((sum, layer) => sum + layer.tiles.reduce((tileSum, tile) => tileSum + tile.before.byteLength + tile.after.byteLength, 0), 64);
-  if (entry.type === 'layer-add') return (entry.addedLayer?.pixels.byteLength ?? 0) + 128;
-  if (entry.type === 'layer-delete') return (entry.removedLayer?.pixels.byteLength ?? 0) + 128;
+  if (entry.type === 'pixels') return entry.tiles.reduce((sum, tile) => sum + tile.before.byteLength + tile.after.byteLength + (tile.before.owners?.byteLength || 0) + (tile.after.owners?.byteLength || 0), 64);
+  if (entry.type === 'document-crop') return entry.before.layers.reduce((sum, layer) => sum + layer.pixels.byteLength + [...(layer.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + tile.byteLength, 0), 256);
+  if (entry.type === 'pixels-batch') return entry.layers.reduce((sum, layer) => sum + layer.tiles.reduce((tileSum, tile) => tileSum + tile.before.byteLength + tile.after.byteLength + (tile.before.owners?.byteLength || 0) + (tile.after.owners?.byteLength || 0), 0), 64);
+  if (entry.type === 'layer-add') return (entry.addedLayer?.pixels.byteLength ?? 0) + [...(entry.addedLayer?.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + tile.byteLength, 0) + 128;
+  if (entry.type === 'layer-delete') return (entry.removedLayer?.pixels.byteLength ?? 0) + [...(entry.removedLayer?.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + tile.byteLength, 0) + 128;
   if (entry.type === 'document-state') {
-    const bytes = state => (state?.layers ?? []).reduce((sum, layer) => sum + (layer.pixels?.byteLength ?? 0), 0);
+    const bytes = state => (state?.layers ?? []).reduce((sum, layer) => sum + (layer.pixels?.byteLength ?? 0) + [...(layer.ownershipTiles?.values?.() ?? [])].reduce((n, tile) => n + tile.byteLength, 0), 0);
     return bytes(entry.before) + bytes(entry.after) + 512;
   }
   if (entry.type === 'vector-model') return JSON.stringify(entry.before ?? null).length * 2 + JSON.stringify(entry.after ?? null).length * 2 + 128;
@@ -421,7 +446,7 @@ export class RasterDocument {
     if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new RangeError('Stroke opacity must be between 0 and 1.');
     if (!['square', 'circle'].includes(shape)) throw new TypeError('Brush shape must be square or circle.');
     if (!Number.isFinite(hardness) || hardness < 0 || hardness > 1) throw new RangeError('Brush hardness must be between 0 and 1.');
-    return { layerId: layer.id, tilesBefore: new Map(), color: parseHexColor(color), size: Math.round(size), mode, opacity, shape, hardness, last: null, changed: false };
+    return { layerId: layer.id, tilesBefore: new Map(), color: parseHexColor(color), size: Math.round(size), mode, opacity, shape, hardness, authoringMode: layer.authoringMode === 'illustration' ? 'illustration' : 'pixel-art', last: null, changed: false };
   }
   strokeTo(stroke, x, y) {
     if (!Number.isInteger(x) || !Number.isInteger(y)) throw new TypeError('Stroke coordinates must be integer document coordinates.');
@@ -460,6 +485,7 @@ export class RasterDocument {
     if (!Number.isInteger(tolerance) || tolerance < 0 || tolerance > 255) throw new RangeError('Fill tolerance must be an integer from 0 to 255.');
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     const replacement = [...parseHexColor(color), 255], secondary = [...parseHexColor(secondaryColor), 255];
     const seedPixel = y * this.width + x;
     // A fill must start inside the active selection. Treat the selection as a
@@ -468,6 +494,8 @@ export class RasterDocument {
     const seedOffset = seedPixel * 4;
     const seed = Array.from(layer.pixels.subarray(seedOffset, seedOffset + 4));
     const matches = index => {
+      const pixel = index / 4, owner = this.#ownerAt(layer, pixel % this.width, Math.floor(pixel / this.width));
+      if (owner !== 0 && owner !== styleOwner) return false;
       // RGB values under zero alpha are invisible and must not split a transparent fill region.
       if (seed[3] === 0 && layer.pixels[index + 3] === 0) return true;
       for (let channel = 0; channel < 4; channel++) {
@@ -482,11 +510,14 @@ export class RasterDocument {
       if (this.selectionMask && !this.selectionMask[pixel]) return false;
       if (!matches(index)) return false;
       const px = pixel % this.width, py = Math.floor(pixel / this.width);
+      const owner = this.#ownerAt(layer, px, py);
+      if (owner !== 0 && owner !== styleOwner) return false;
       const pixelReplacement = pattern === 'checker' && (Math.floor(px / scale) + Math.floor(py / scale)) % 2 === 1 ? secondary : replacement;
       if (pixelReplacement.every((value, channel) => layer.pixels[index + channel] === value)) return false;
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       for (let channel = 0; channel < 4; channel++) layer.pixels[index + channel] = pixelReplacement[channel];
+      this.#setOwner(layer, px, py, pixelReplacement[3] === 0 ? 0 : (owner || styleOwner));
       this.compositeDirtyTiles.add(key);
       return true;
     };
@@ -533,15 +564,18 @@ export class RasterDocument {
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
     const tilesBefore = new Map();
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     let changedPixels = 0;
     for (let py = top; py < bottom; py++) for (let px = left; px < right; px++) {
       const pixelIndex = py * this.width + px;
       if (this.selectionMask && !this.selectionMask[pixelIndex]) continue;
       const index = pixelIndex * 4;
+      if (this.#ownerAt(layer, px, py) !== styleOwner) continue;
       if (layer.pixels[index + 3] === 0 && layer.pixels[index] === 0 && layer.pixels[index + 1] === 0 && layer.pixels[index + 2] === 0) continue;
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       layer.pixels[index] = 0; layer.pixels[index + 1] = 0; layer.pixels[index + 2] = 0; layer.pixels[index + 3] = 0;
+      this.#setOwner(layer, px, py, 0);
       this.compositeDirtyTiles.add(key); changedPixels++;
     }
     if (changedPixels) {
@@ -558,22 +592,26 @@ export class RasterDocument {
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
     const rgb = parseHexColor(color), source = new Uint8ClampedArray(layer.pixels);
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     const neighbors = diagonals ? [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]] : [[0,-1],[-1,0],[1,0],[0,1]];
     const tilesBefore = new Map();
     let changedPixels = 0;
     for (let y = 0; y < this.height; y++) for (let x = 0; x < this.width; x++) {
       const sourceIndex = (y * this.width + x) * 4;
-      if (source[sourceIndex + 3] === 0) continue;
+      if (source[sourceIndex + 3] === 0 || (this.#ownerAt(layer, x, y) !== 0 && this.#ownerAt(layer, x, y) !== styleOwner)) continue;
       for (const [dx, dy] of neighbors) {
         const px = x + dx, py = y + dy;
         if (px < 0 || py < 0 || px >= this.width || py >= this.height) continue;
         const pixel = py * this.width + px;
         if (this.selectionMask && !this.selectionMask[pixel]) continue;
         const index = pixel * 4;
+        const targetOwner = this.#ownerAt(layer, px, py);
+        if (targetOwner !== 0 && targetOwner !== styleOwner) continue;
         if (source[index + 3] !== 0 || layer.pixels[index + 3] !== 0) continue;
         const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
         if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
         layer.pixels[index] = rgb[0]; layer.pixels[index + 1] = rgb[1]; layer.pixels[index + 2] = rgb[2]; layer.pixels[index + 3] = 255;
+        this.#setOwner(layer, px, py, styleOwner);
         this.compositeDirtyTiles.add(key); changedPixels++;
       }
     }
@@ -605,7 +643,7 @@ export class RasterDocument {
       if (sourceMask && !sourceMask[sourceIndex]) continue;
       selected.push({ x: sx, y: sy, rx: sx - x, ry: sy - y });
     }
-    const empty = { changedPixels: 0, selectedPixels: 0, pixels: new Uint8ClampedArray(this.width * this.height * 4), selectionMask: new Uint8Array(this.width * this.height), bounds: null, rect: { x, y, width, height }, options: { dx, dy, rotate, scaleX, scaleY, skewX, skewY, interpolation } };
+    const empty = { changedPixels: 0, selectedPixels: 0, pixels: new Uint8ClampedArray(this.width * this.height * 4), owners: new Uint8Array(this.width * this.height), selectionMask: new Uint8Array(this.width * this.height), bounds: null, rect: { x, y, width, height }, options: { dx, dy, rotate, scaleX, scaleY, skewX, skewY, interpolation } };
     if (!selected.length) return empty;
     const theta = rotate * Math.PI / 180, cos = Math.round(Math.cos(theta)), sin = Math.round(Math.sin(theta));
     // Compose rotation with scale + skew around the center of the source rectangle.
@@ -626,6 +664,7 @@ export class RasterDocument {
     const maxX = Math.min(this.width - 1, Math.ceil(Math.max(...corners.map(p => p.x)) - .5));
     const maxY = Math.min(this.height - 1, Math.ceil(Math.max(...corners.map(p => p.y)) - .5));
     const pixels = new Uint8ClampedArray(this.width * this.height * 4);
+    const owners = new Uint8Array(this.width * this.height);
     const nextMask = new Uint8Array(this.width * this.height);
     const selectedAt = (sx, sy) => {
       if (sx < x || sy < y || sx >= x + width || sy >= y + height || sx < 0 || sy < 0 || sx >= this.width || sy >= this.height) return false;
@@ -644,6 +683,8 @@ export class RasterDocument {
       const sx = Math.round(u), sy = Math.round(v);
       if (!selectedAt(sx, sy)) continue;
       const targetIndex = py * this.width + px, targetOffset = targetIndex * 4;
+      const sourceOwner = this.#ownerAt(layer, sx, sy);
+      owners[targetIndex] = sourceOwner;
       if (interpolation === 'nearest') {
         pixels.set(sourcePixel(sx, sy), targetOffset);
       } else {
@@ -654,7 +695,7 @@ export class RasterDocument {
         ];
         let alpha = 0, premulR = 0, premulG = 0, premulB = 0;
         for (const [ix,iy,weight] of samples) {
-          if (!selectedAt(ix,iy)) continue;
+          if (!selectedAt(ix,iy) || this.#ownerAt(layer, ix, iy) !== sourceOwner) continue;
           const si = (iy * this.width + ix) * 4, sa = layer.pixels[si+3] / 255 * weight;
           alpha += sa; premulR += layer.pixels[si] * sa; premulG += layer.pixels[si+1] * sa; premulB += layer.pixels[si+2] * sa;
         }
@@ -677,7 +718,7 @@ export class RasterDocument {
           layer.pixels[oldOffset+2] !== pixels[oldOffset+2] || layer.pixels[oldOffset+3] !== pixels[oldOffset+3]) changedPixels++;
     }
     return {
-      changedPixels, selectedPixels: count, pixels, selectionMask: nextMask,
+      changedPixels, selectedPixels: count, pixels, owners, selectionMask: nextMask,
       bounds: outRight < 0 ? null : { x: outLeft, y: outTop, width: outRight - outLeft + 1, height: outBottom - outTop + 1 },
       rect: { x, y, width, height }, options: { dx, dy, rotate, scaleX, scaleY, skewX, skewY, interpolation },
     };
@@ -696,14 +737,21 @@ export class RasterDocument {
     for (let sy = Math.max(0, y); sy < Math.min(this.height, y + height); sy++) for (let sx = Math.max(0, x); sx < Math.min(this.width, x + width); sx++) {
       const index = sy * this.width + sx;
       if (this.selectionMask && !this.selectionMask[index]) continue;
+      const sourceOwner = this.#ownerAt(layer, sx, sy), styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
+      if (sourceOwner !== 0 && sourceOwner !== styleOwner) continue;
       touch(sx, sy);
       layer.pixels.fill(0, index * 4, index * 4 + 4);
+      this.#setOwner(layer, sx, sy, 0);
     }
     for (let index = 0; index < preview.selectionMask.length; index++) {
       if (!preview.selectionMask[index]) continue;
       const x2 = index % this.width, y2 = Math.floor(index / this.width);
+      const sourceOwner = preview.owners?.[index] || 0, styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
+      const targetOwner = this.#ownerAt(layer, x2, y2);
+      if ((sourceOwner !== 0 && sourceOwner !== styleOwner) || (targetOwner !== 0 && targetOwner !== styleOwner)) continue;
       touch(x2, y2);
       layer.pixels.set(preview.pixels.subarray(index * 4, index * 4 + 4), index * 4);
+      this.#setOwner(layer, x2, y2, preview.pixels[index * 4 + 3] === 0 ? 0 : (sourceOwner || styleOwner));
     }
     const changedTiles = [];
     let changedPixels = 0;
@@ -737,12 +785,19 @@ export class RasterDocument {
     validateDimensions(width, height);
     if (width * height * 4 * this.layers.length > MAX_DOCUMENT_BYTES) throw new RangeError('Crop exceeds the document pixel-memory budget.');
     this.layers = this.layers.map(layer => {
-      const pixels = new Uint8ClampedArray(width * height * 4);
+      const pixels = new Uint8ClampedArray(width * height * 4), ownershipTiles = new Map();
       for (let row = 0; row < height; row++) {
         const from = ((y + row) * this.width + x) * 4;
         pixels.set(layer.pixels.subarray(from, from + width * 4), row * width * 4);
       }
-      return { ...layer, pixels };
+      for (let row = 0; row < height; row++) for (let col = 0; col < width; col++) {
+        const owner = this.#ownerAt(layer, x + col, y + row); if (!owner) continue;
+        const tileX = Math.floor(col / TILE_SIZE), tileY = Math.floor(row / TILE_SIZE), key = `${tileX}:${tileY}`;
+        const tileWidth = Math.min(TILE_SIZE, width - tileX * TILE_SIZE), tileHeight = Math.min(TILE_SIZE, height - tileY * TILE_SIZE);
+        let owners = ownershipTiles.get(key); if (!owners) { owners = new Uint8Array(tileWidth * tileHeight); ownershipTiles.set(key, owners); }
+        owners[(row - tileY * TILE_SIZE) * tileWidth + col - tileX * TILE_SIZE] = owner;
+      }
+      return { ...layer, pixels, ownershipTiles };
     });
     this.width = width; this.height = height;
     if (!this.layers.some(layer => layer.id === this.activeLayerId)) this.activeLayerId = this.layers[0].id;
@@ -836,7 +891,7 @@ export class RasterDocument {
     this.#record({ type: 'document-state', before, after });
     return { changedPixels, changedLayers, structuralChanges };
   }
-  replaceLayerPixelsBatch(replacements) {
+  replaceLayerPixelsBatch(replacements, { restore = false, ownershipByLayer = null } = {}) {
     if (!Array.isArray(replacements) || replacements.length < 1 || replacements.length > 64) {
       throw new TypeError('Pixel replacement must contain between 1 and 64 layers.');
     }
@@ -853,9 +908,19 @@ export class RasterDocument {
       return { layer, pixels: item.pixels };
     });
 
+    if (restore) {
+      for (const { layer, pixels } of prepared) {
+        const hasSnapshot = ownershipByLayer instanceof Map && ownershipByLayer.has(layer.id);
+        if (layer.ownershipTiles.size && !hasSnapshot) {
+          throw new TypeError('Restoring a layer with owned pixels requires its exact ownership snapshot.');
+        }
+        if (hasSnapshot) validateOwnershipTilesForPixels(ownershipByLayer.get(layer.id), pixels, this.width, this.height);
+      }
+    }
     const changedLayers = [];
     let changedPixels = 0;
     for (const { layer, pixels } of prepared) {
+      const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
       const tiles = [];
       for (let tileY = 0; tileY < Math.ceil(this.height / TILE_SIZE); tileY++) {
         for (let tileX = 0; tileX < Math.ceil(this.width / TILE_SIZE); tileX++) {
@@ -865,7 +930,9 @@ export class RasterDocument {
           for (let row = 0; row < tileHeight; row++) {
             const start = ((startY + row) * this.width + startX) * 4;
             for (let col = 0; col < tileWidth; col++) {
-              const offset = start + col * 4;
+              const offset = start + col * 4, x = startX + col, y = startY + row;
+              const owner = this.#ownerAt(layer, x, y);
+              if (!restore && owner !== 0 && owner !== styleOwner) continue;
               if (layer.pixels[offset] !== pixels[offset] || layer.pixels[offset + 1] !== pixels[offset + 1] ||
                   layer.pixels[offset + 2] !== pixels[offset + 2] || layer.pixels[offset + 3] !== pixels[offset + 3]) tileChangedPixels++;
             }
@@ -874,13 +941,23 @@ export class RasterDocument {
           const before = this.#captureTile(layer, tileX, tileY);
           for (let row = 0; row < tileHeight; row++) {
             const start = ((startY + row) * this.width + startX) * 4;
-            layer.pixels.set(pixels.subarray(start, start + tileWidth * 4), start);
+            for (let col = 0; col < tileWidth; col++) {
+              const offset = start + col * 4, x = startX + col, y = startY + row;
+              const owner = this.#ownerAt(layer, x, y);
+              if (!restore && owner !== 0 && owner !== styleOwner) continue;
+              layer.pixels.set(pixels.subarray(offset, offset + 4), offset);
+              if (!restore) this.#setOwner(layer, x, y, pixels[offset + 3] === 0 ? 0 : (owner || styleOwner));
+            }
           }
           const after = this.#captureTile(layer, tileX, tileY);
           tiles.push({ tileX, tileY, before, after });
           this.compositeDirtyTiles.add(`${tileX}:${tileY}`);
           changedPixels += tileChangedPixels;
         }
+      }
+      if (restore && ownershipByLayer instanceof Map && ownershipByLayer.has(layer.id)) {
+        layer.ownershipTiles = cloneOwnershipTiles(ownershipByLayer.get(layer.id));
+        for (const tile of tiles) tile.after.owners = this.#captureTile(layer, tile.tileX, tile.tileY).owners;
       }
       if (tiles.length) changedLayers.push({ layerId: layer.id, tiles });
     }
@@ -909,6 +986,7 @@ export class RasterDocument {
     if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new RangeError('Gradient opacity must be between 0 and 1.');
     const layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     if (opacity === 0) return 0;
     const start = parseHexColor(startColor), end = parseHexColor(endColor);
     const dx = x1 - x0, dy = y1 - y0, lengthSquared = dx * dx + dy * dy || 1;
@@ -917,6 +995,8 @@ export class RasterDocument {
     for (let y = 0; y < this.height; y++) for (let x = 0; x < this.width; x++) {
       const pixel = y * this.width + x;
       if (this.selectionMask && !this.selectionMask[pixel]) continue;
+      const owner = this.#ownerAt(layer, x, y);
+      if (owner !== 0 && owner !== styleOwner) continue;
       const t = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / lengthSquared));
       const gradient = start.map((channel, index) => Math.round(channel + (end[index] - channel) * t));
       const i = pixel * 4, destinationAlpha = layer.pixels[i + 3] / 255;
@@ -930,7 +1010,7 @@ export class RasterDocument {
       if (next.every((value, channel) => value === layer.pixels[i + channel])) continue;
       const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
-      layer.pixels.set(next, i); this.compositeDirtyTiles.add(key); changedPixels++;
+      layer.pixels.set(next, i); this.#setOwner(layer, x, y, next[3] === 0 ? 0 : (owner || styleOwner)); this.compositeDirtyTiles.add(key); changedPixels++;
     }
     if (changedPixels) {
       const tiles = [...tilesBefore.entries()].map(([key, before]) => {
@@ -945,12 +1025,15 @@ export class RasterDocument {
     if (!Number.isInteger(tolerance) || tolerance < 0 || tolerance > 255) throw new RangeError('Color replacement tolerance must be an integer from 0 to 255.');
     const source = parseHexColor(sourceColor), target = parseHexColor(targetColor), layer = this.activeLayer;
     if (layer.locked) throw new Error('The active layer is locked.');
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     if (source.every((value, index) => value === target[index]) && tolerance === 0) return 0;
     const tilesBefore = new Map();
     let changedPixels = 0;
     for (let index = 0; index < layer.pixels.length; index += 4) {
       const pixel = index / 4;
       if (this.selectionMask && !this.selectionMask[pixel]) continue;
+      const owner = this.#ownerAt(layer, pixel % this.width, Math.floor(pixel / this.width));
+      if (owner !== 0 && owner !== styleOwner) continue;
       if (layer.pixels[index + 3] === 0) continue;
       if (Math.max(Math.abs(layer.pixels[index] - source[0]), Math.abs(layer.pixels[index + 1] - source[1]), Math.abs(layer.pixels[index + 2] - source[2])) > tolerance) continue;
       if (layer.pixels[index] === target[0] && layer.pixels[index + 1] === target[1] && layer.pixels[index + 2] === target[2]) continue;
@@ -958,6 +1041,7 @@ export class RasterDocument {
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       layer.pixels[index] = target[0]; layer.pixels[index + 1] = target[1]; layer.pixels[index + 2] = target[2];
+      this.#setOwner(layer, px, py, owner || styleOwner);
       this.compositeDirtyTiles.add(key); changedPixels++;
     }
     if (changedPixels) {
@@ -974,7 +1058,7 @@ export class RasterDocument {
     const left = Math.max(0, x), top = Math.max(0, y), right = Math.min(this.width, x + width), bottom = Math.min(this.height, y + height);
     if (left >= right || top >= bottom) throw new RangeError('Copy rectangle is outside document bounds.');
     const layer = this.activeLayer, clipboardWidth = right - left, clipboardHeight = bottom - top;
-    const pixels = new Uint8ClampedArray(clipboardWidth * clipboardHeight * 4), mask = new Uint8Array(clipboardWidth * clipboardHeight);
+    const pixels = new Uint8ClampedArray(clipboardWidth * clipboardHeight * 4), mask = new Uint8Array(clipboardWidth * clipboardHeight), owners = new Uint8Array(clipboardWidth * clipboardHeight);
     for (let row = 0; row < clipboardHeight; row++) {
       for (let col = 0; col < clipboardWidth; col++) {
         const sourcePixel = (top + row) * this.width + left + col, targetPixel = row * clipboardWidth + col;
@@ -982,9 +1066,10 @@ export class RasterDocument {
         mask[targetPixel] = 1;
         const sourceOffset = sourcePixel * 4, targetOffset = targetPixel * 4;
         pixels.set(layer.pixels.subarray(sourceOffset, sourceOffset + 4), targetOffset);
+        owners[targetPixel] = this.#ownerAt(layer, left + col, top + row);
       }
     }
-    return { x: left, y: top, width: clipboardWidth, height: clipboardHeight, pixels, mask };
+    return { x: left, y: top, width: clipboardWidth, height: clipboardHeight, pixels, mask, owners };
   }
   pasteRect(clipboard, { x = clipboard?.x, y = clipboard?.y } = {}) {
     if (!clipboard || !Number.isInteger(clipboard.width) || !Number.isInteger(clipboard.height) || clipboard.width < 1 || clipboard.height < 1 ||
@@ -996,6 +1081,7 @@ export class RasterDocument {
     const left = Math.max(0, x), top = Math.max(0, y), right = Math.min(this.width, x + clipboard.width), bottom = Math.min(this.height, y + clipboard.height);
     if (left >= right || top >= bottom) return 0;
     const tilesBefore = new Map();
+    const activeOwner = layer.authoringMode === 'illustration' ? 1 : 2;
     let changedPixels = 0;
     for (let py = top; py < bottom; py++) for (let px = left; px < right; px++) {
       const docPixel = py * this.width + px;
@@ -1003,12 +1089,16 @@ export class RasterDocument {
       const srcX = px - x, srcY = py - y, sourcePixel = srcY * clipboard.width + srcX;
       if (clipboard.mask && !clipboard.mask[sourcePixel]) continue;
       const srcOffset = sourcePixel * 4, dstOffset = docPixel * 4;
+      const targetOwner = this.#ownerAt(layer, px, py), sourceOwner = clipboard.owners instanceof Uint8Array ? clipboard.owners[sourcePixel] : activeOwner;
+      const effectiveSourceOwner = sourceOwner || activeOwner;
+      if (targetOwner !== 0 && targetOwner !== effectiveSourceOwner) continue;
       let differs = false;
       for (let channel = 0; channel < 4; channel++) if (layer.pixels[dstOffset + channel] !== clipboard.pixels[srcOffset + channel]) { differs = true; break; }
       if (!differs) continue;
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!tilesBefore.has(key)) tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       layer.pixels.set(clipboard.pixels.subarray(srcOffset, srcOffset + 4), dstOffset);
+      this.#setOwner(layer, px, py, clipboard.pixels[srcOffset + 3] === 0 ? 0 : effectiveSourceOwner);
       this.compositeDirtyTiles.add(key); changedPixels++;
     }
     if (changedPixels) {
@@ -1020,25 +1110,45 @@ export class RasterDocument {
     }
     return changedPixels;
   }
-  setLayerPixels(id, pixels) {
+  setLayerPixels(id, pixels, { restore = false, ownershipTiles = null } = {}) {
     const layer = this.layers.find(item => item.id === id);
     if (!layer) throw new Error('Unknown layer ID.');
     if (layer.locked) throw new Error('The target layer is locked.');
     if (!(pixels instanceof Uint8Array) && !(pixels instanceof Uint8ClampedArray)) throw new TypeError('Layer pixels must be a typed RGBA buffer.');
     if (pixels.length !== this.width * this.height * 4) throw new RangeError('Layer pixel data length does not match document dimensions.');
-    const tilesBefore = new Map();
+    if (restore) {
+      if (layer.ownershipTiles.size && !(ownershipTiles instanceof Map)) {
+        throw new TypeError('Restoring a layer with owned pixels requires its exact ownership snapshot.');
+      }
+      if (ownershipTiles instanceof Map) validateOwnershipTilesForPixels(ownershipTiles, pixels, this.width, this.height);
+    }
+    const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2, tilesBefore = new Map();
     for (let y = 0; y < this.height; y += TILE_SIZE) for (let x = 0; x < this.width; x += TILE_SIZE) {
       const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE), key = `${tileX}:${tileY}`;
       tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
     }
-    layer.pixels.set(pixels);
+    let changedPixels = 0;
+    for (let y = 0; y < this.height; y++) for (let x = 0; x < this.width; x++) {
+      const pixel = y * this.width + x, offset = pixel * 4, owner = this.#ownerAt(layer, x, y);
+      if (!restore && owner !== 0 && owner !== styleOwner) continue;
+      if (layer.pixels[offset] === pixels[offset] && layer.pixels[offset + 1] === pixels[offset + 1] && layer.pixels[offset + 2] === pixels[offset + 2] && layer.pixels[offset + 3] === pixels[offset + 3]) continue;
+      layer.pixels.set(pixels.subarray(offset, offset + 4), offset);
+      if (!restore) this.#setOwner(layer, x, y, pixels[offset + 3] === 0 ? 0 : (owner || styleOwner));
+      changedPixels++;
+    }
+    if (restore && ownershipTiles instanceof Map) layer.ownershipTiles = cloneOwnershipTiles(ownershipTiles);
     this.#markAllCompositeDirty();
     const tiles = [...tilesBefore.entries()].map(([key, before]) => {
-      const [tileX, tileY] = key.split(':').map(Number);
-      return { tileX, tileY, before, after: this.#captureTile(layer, tileX, tileY) };
+      const [tileX, tileY] = key.split(':').map(Number), after = this.#captureTile(layer, tileX, tileY);
+      return { tileX, tileY, before, after };
+    }).filter(tile => {
+      for (let i = 0; i < tile.before.length; i += 4) if (tile.before[i] !== tile.after[i] || tile.before[i+1] !== tile.after[i+1] || tile.before[i+2] !== tile.after[i+2] || tile.before[i+3] !== tile.after[i+3]) return true;
+      const a = tile.before.owners, b = tile.after.owners;
+      if (!a || !b) return a !== b;
+      return a.some((value, index) => value !== b[index]);
     });
-    this.#record({ type: 'pixels', layerId: layer.id, tiles });
-    return { layerId: layer.id, changed: true, pixelBytes: pixels.length };
+    if (tiles.length) this.#record({ type: 'pixels', layerId: layer.id, tiles });
+    return { layerId: layer.id, changed: changedPixels > 0 || tiles.length > 0, changedPixels, pixelBytes: pixels.length };
   }
   sampleColorAt(x, y, { merged = true } = {}) {
     if (!Number.isInteger(x) || !Number.isInteger(y) || x < 0 || y < 0 || x >= this.width || y >= this.height) {
@@ -1125,7 +1235,7 @@ export class RasterDocument {
         x: layer.x, y: layer.y, scaleX: layer.scaleX, scaleY: layer.scaleY, rotation: layer.rotation, angle: layer.angle,
         blendMode: layer.blendMode, blur: layer.blur, brightness: layer.brightness, contrast: layer.contrast, saturation: layer.saturation,
         mask: structuredClone(layer.mask), clipping: structuredClone(layer.clipping), references: structuredClone(layer.references || []),
-        assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}), pixels: bytesToBase64(layer.pixels)
+        assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}), authoringMode: layer.authoringMode ?? null, modeOverrides: structuredClone(layer.modeOverrides || {}), ownershipTiles: [...(layer.ownershipTiles || new Map())].map(([key, owners]) => { const [tileX, tileY] = key.split(':').map(Number); const x = tileX * TILE_SIZE, y = tileY * TILE_SIZE; return { x, y, width: Math.min(TILE_SIZE, this.width - x), height: Math.min(TILE_SIZE, this.height - y), owners: bytesToBase64(owners) }; }), pixels: bytesToBase64(layer.pixels)
       })),
       drawingModel: this.drawingModel === null ? null : JSON.parse(JSON.stringify(this.drawingModel)),
       vectorModel: this.vectorModel === null ? null : JSON.parse(JSON.stringify(this.vectorModel)),
@@ -1142,7 +1252,7 @@ export class RasterDocument {
     validateDimensions(data.width, data.height);
     if (data.layers.length < 1 || data.layers.length > 64) throw new RangeError('Project layer count is outside the supported limit.');
     if (data.width * data.height * 4 * data.layers.length > MAX_DOCUMENT_BYTES) throw new RangeError('Project exceeds the 64 MiB total pixel-memory budget.');
-    const encodedProjectBytes = data.layers.reduce((sum, layer) => sum + (typeof layer?.pixels === 'string' ? layer.pixels.length : 0), PROJECT_JSON_METADATA_RESERVE_BYTES);
+    const encodedProjectBytes = data.layers.reduce((sum, layer) => sum + (typeof layer?.pixels === 'string' ? layer.pixels.length : 0) + (Array.isArray(layer?.ownershipTiles) ? layer.ownershipTiles.reduce((n, tile) => n + (typeof tile?.owners === 'string' ? tile.owners.length : 0), 0) : 0), PROJECT_JSON_METADATA_RESERVE_BYTES);
     if (encodedProjectBytes > MAX_PROJECT_JSON_BYTES) throw new RangeError('Project JSON exceeds PixelForge’s 96 MiB safe serialization budget.');
     const projectName = typeof data.name === 'string' ? data.name.trim().slice(0, 180) : '';
     const doc = new RasterDocument(data.width, data.height, projectName || 'Imported project');
@@ -1161,17 +1271,32 @@ export class RasterDocument {
       if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new RangeError('Layer opacity must be between 0 and 1.');
       const pixels = base64ToBytes(item.pixels, data.width * data.height * 4);
       if (pixels.length !== data.width * data.height * 4) throw new RangeError('Layer pixel data length does not match document dimensions.');
+      const ownershipTiles = new Map();
+      if (item.ownershipTiles !== undefined && !Array.isArray(item.ownershipTiles)) throw new TypeError('Layer ownershipTiles must be an array.');
+      for (const tile of item.ownershipTiles || []) {
+        if (!tile || !Number.isInteger(tile.x) || !Number.isInteger(tile.y) || tile.x < 0 || tile.y < 0 || tile.x % TILE_SIZE || tile.y % TILE_SIZE || tile.x >= data.width || tile.y >= data.height) throw new TypeError('Invalid layer ownership tile coordinate.');
+        const tileWidth = Math.min(TILE_SIZE, data.width - tile.x), tileHeight = Math.min(TILE_SIZE, data.height - tile.y);
+        if (tile.width !== tileWidth || tile.height !== tileHeight) throw new TypeError('Ownership tile dimensions do not match the canvas.');
+        const owners = base64ToBytes(tile.owners, tileWidth * tileHeight);
+        if (owners.some(owner => owner > 2) || !owners.some(owner => owner !== 0)) throw new TypeError('Ownership tile contains invalid or empty owner data.');
+        const key = `${tile.x / TILE_SIZE}:${tile.y / TILE_SIZE}`;
+        if (ownershipTiles.has(key)) throw new TypeError('Duplicate layer ownership tile.');
+        ownershipTiles.set(key, owners);
+      }
+      validateOwnershipTilesForPixels(ownershipTiles, pixels, data.width, data.height);
       const numeric = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
       const finiteOrState = (value, fallback) => ['inexistente', 'no_aplicable'].includes(value) ? value : numeric(value, fallback);
       return {
         id: newLayerId, name: item.name.trim().slice(0, 180) || `Layer ${index + 1}`,
-        visible: item.visible !== false, opacity, locked: Boolean(item.locked), pixels,
+        visible: item.visible !== false, opacity, locked: Boolean(item.locked), pixels, ownershipTiles,
         x: numeric(item.x, 0), y: numeric(item.y, 0), scaleX: numeric(item.scaleX, 1), scaleY: numeric(item.scaleY, 1),
         rotation: numeric(item.rotation, 0), angle: finiteOrState(item.angle, 0), blendMode: String(item.blendMode || 'normal'),
         blur: finiteOrState(item.blur, 0), brightness: finiteOrState(item.brightness, 0), contrast: finiteOrState(item.contrast, 0), saturation: finiteOrState(item.saturation, 0),
         mask: item.mask === undefined ? 'inexistente' : structuredClone(item.mask), clipping: item.clipping === undefined ? 'inexistente' : structuredClone(item.clipping),
         references: Array.isArray(item.references) ? structuredClone(item.references) : [], assets: Array.isArray(item.assets) ? structuredClone(item.assets) : [],
         metadata: item.metadata && typeof item.metadata === 'object' ? structuredClone(item.metadata) : {},
+        authoringMode: ['illustration', 'pixel-art'].includes(item.authoringMode) ? item.authoringMode : 'pixel-art',
+        modeOverrides: item.modeOverrides && typeof item.modeOverrides === 'object' && !Array.isArray(item.modeOverrides) ? structuredClone(item.modeOverrides) : {},
       };
     });
     doc.compositeCache = new Uint8ClampedArray(doc.width * doc.height * 4);
@@ -1193,6 +1318,7 @@ export class RasterDocument {
     doc.revision = newIdentity ? 0 : (data.revision ?? 0);
     doc.saveVersion = newIdentity ? 0 : (data.saveVersion ?? doc.revision);
     doc.serverRevision = newIdentity ? 0 : (data.serverRevision ?? 0);
+    estimateRasterProjectJSONBytes(doc.layers);
     doc.history = []; doc.future = []; doc.historyBytes = 0; doc.dirty = false;
     return doc;
   }
@@ -1204,6 +1330,8 @@ export class RasterDocument {
       const pixelIndex = py * this.width + px;
       if (this.selectionMask && !this.selectionMask[pixelIndex]) continue;
       if (stroke.opacity <= 0) continue;
+      const owner = this.#ownerAt(layer, px, py), styleOwner = stroke.authoringMode === 'illustration' ? 1 : 2;
+      if ((stroke.mode === 'erase' && owner !== styleOwner) || (stroke.mode === 'draw' && owner !== 0 && owner !== styleOwner)) continue;
       let coverage = 1;
       if (stroke.shape === 'circle') {
         const centerOffset = stroke.size % 2 === 0 ? 0.5 : 0;
@@ -1232,6 +1360,7 @@ export class RasterDocument {
       const tileX = Math.floor(px / TILE_SIZE), tileY = Math.floor(py / TILE_SIZE), key = `${tileX}:${tileY}`;
       if (!stroke.tilesBefore.has(key)) stroke.tilesBefore.set(key, this.#captureTile(layer, tileX, tileY));
       layer.pixels.set(next, i);
+      this.#setOwner(layer, px, py, next[3] === 0 ? 0 : (owner || styleOwner));
       this.compositeDirtyTiles.add(key);
     }
   }
@@ -1248,6 +1377,27 @@ export class RasterDocument {
     this.saveVersion++;
     this.dirty = true;
   }
+  #ownerAt(layer, x, y) {
+    const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE);
+    const owners = layer.ownershipTiles?.get(`${tileX}:${tileY}`);
+    if (!owners) return 0;
+    const width = Math.min(TILE_SIZE, this.width - tileX * TILE_SIZE);
+    return owners[(y - tileY * TILE_SIZE) * width + (x - tileX * TILE_SIZE)] || 0;
+  }
+  #setOwner(layer, x, y, owner) {
+    const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE), key = `${tileX}:${tileY}`;
+    const width = Math.min(TILE_SIZE, this.width - tileX * TILE_SIZE), height = Math.min(TILE_SIZE, this.height - tileY * TILE_SIZE);
+    let owners = layer.ownershipTiles.get(key);
+    if (!owners && owner === 0) return;
+    if (!owners) { owners = new Uint8Array(width * height); layer.ownershipTiles.set(key, owners); }
+    owners[(y - tileY * TILE_SIZE) * width + (x - tileX * TILE_SIZE)] = owner;
+    if (owner === 0 && !owners.some(value => value !== 0)) layer.ownershipTiles.delete(key);
+  }
+  #writeOwnershipTile(layer, tileX, tileY, owners) {
+    const key = `${tileX}:${tileY}`;
+    if (!owners || !owners.some(value => value !== 0)) layer.ownershipTiles.delete(key);
+    else layer.ownershipTiles.set(key, new Uint8Array(owners));
+  }
   #captureTile(layer, tileX, tileY) {
     const tile = new Uint8ClampedArray(TILE_SIZE * TILE_SIZE * 4);
     const startX = tileX * TILE_SIZE, startY = tileY * TILE_SIZE;
@@ -1256,6 +1406,8 @@ export class RasterDocument {
       const sourceStart = ((startY + row) * this.width + startX) * 4;
       tile.set(layer.pixels.subarray(sourceStart, sourceStart + width * 4), row * TILE_SIZE * 4);
     }
+    const key = `${tileX}:${tileY}`;
+    tile.owners = layer.ownershipTiles?.has(key) ? new Uint8Array(layer.ownershipTiles.get(key)) : null;
     return tile;
   }
   #markAllCompositeDirty() {
@@ -1268,6 +1420,7 @@ export class RasterDocument {
     }
   }
   #writeTile(layer, tileX, tileY, tile) {
+    if (Object.prototype.hasOwnProperty.call(tile, 'owners')) this.#writeOwnershipTile(layer, tileX, tileY, tile.owners);
     this.compositeDirtyTiles.add(`${tileX}:${tileY}`);
     const startX = tileX * TILE_SIZE, startY = tileY * TILE_SIZE;
     const width = Math.min(TILE_SIZE, this.width - startX), height = Math.min(TILE_SIZE, this.height - startY);

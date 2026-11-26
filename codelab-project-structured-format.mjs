@@ -59,6 +59,31 @@ function readRgba8(files, pixelsPath, width, height, label) {
   return bytes;
 }
 
+function normalizeOwnershipTiles(value, width, height, label) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) fail(label + '.ownershipTiles must be an array.');
+  const seen = new Set();
+  return value.map((tile, index) => {
+    if (!tile || typeof tile !== 'object' || Array.isArray(tile)) fail(label + '.ownershipTiles[' + index + '] is invalid.');
+    const tileX = requireInt(tile.tileX, label + '.ownershipTiles[' + index + '].tileX', 0, Math.ceil(width / 64) - 1);
+    const tileY = requireInt(tile.tileY, label + '.ownershipTiles[' + index + '].tileY', 0, Math.ceil(height / 64) - 1);
+    const key = tileX + ':' + tileY;
+    if (seen.has(key)) fail(label + '.ownershipTiles contains a duplicate tile: ' + key);
+    seen.add(key);
+    const tileWidth = Math.min(64, width - tileX * 64);
+    const tileHeight = Math.min(64, height - tileY * 64);
+    if (typeof tile.owners !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(tile.owners)) {
+      fail(label + '.ownershipTiles[' + index + '].owners must be canonical Base64.');
+    }
+    const owners = Buffer.from(tile.owners, 'base64');
+    if (owners.length !== tileWidth * tileHeight || owners.toString('base64') !== tile.owners ||
+        owners.some(owner => owner > 2) || !owners.some(owner => owner !== 0)) {
+      fail(label + '.ownershipTiles[' + index + '] has invalid owner bytes or dimensions.');
+    }
+    return { tileX, tileY, owners: tile.owners };
+  });
+}
+
 function normalizeTransform(transform = {}) {
   if (!transform || typeof transform !== 'object' || Array.isArray(transform)) fail('transform must be an object.');
   const keys = ['x', 'y', 'rotation', 'scaleX', 'scaleY', 'skewX', 'skewY'];
@@ -255,9 +280,16 @@ function installStructuredFrames(project, files, framesManifest) {
       const pixels = readRgba8(files, layer.pixelsPath, width, height, frameId + '/' + layerId);
       totalBytes += pixels.length;
       if (totalBytes > 64 * 1024 * 1024) fail('structured animation exceeds the 64 MiB RGBA8 pixel-memory budget.');
-      cels.push({ layerId, pixels: pixels.toString('base64') });
+      const authoringMode = ['illustration', 'pixel-art'].includes(layer.authoringMode) ? layer.authoringMode : 'pixel-art';
+      const modeOverrides = layer.modeOverrides && typeof layer.modeOverrides === 'object' && !Array.isArray(layer.modeOverrides)
+        ? structuredClone(layer.modeOverrides) : {};
+      const ownershipTiles = normalizeOwnershipTiles(layer.ownershipTiles, width, height, frameId + '/' + layerId);
+      totalBytes += ownershipTiles.reduce((sum, tile) => sum + Buffer.from(tile.owners, 'base64').length, 0);
+      if (totalBytes > 64 * 1024 * 1024) fail('structured animation RGBA8 pixels and ownership exceed the 64 MiB memory budget.');
+      cels.push({ layerId, pixels: pixels.toString('base64'), metadata: { authoringMode, modeOverrides, ownershipTiles } });
       frameMetadata.push({
         layerId, name: String(layer.name || ''), parentFrameId: String(layer.parentFrameId || frameId), index: requireInt(Number(layer.index ?? frameMetadata.length + 1), frameId + '/' + layerId + '.index', 1, MAX_LAYERS),
+        authoringMode, modeOverrides, ownershipTiles,
         position: { x: requireFinite(layer.position?.x ?? layer.x ?? 0, frameId + '/' + layerId + '.position.x'), y: requireFinite(layer.position?.y ?? layer.y ?? 0, frameId + '/' + layerId + '.position.y') },
         x: requireFinite(layer.x ?? layer.position?.x ?? 0, frameId + '/' + layerId + '.x'), y: requireFinite(layer.y ?? layer.position?.y ?? 0, frameId + '/' + layerId + '.y'),
         scaleX: requireFinite(layer.scaleX ?? 1, frameId + '/' + layerId + '.scaleX'), scaleY: requireFinite(layer.scaleY ?? 1, frameId + '/' + layerId + '.scaleY'),
@@ -277,6 +309,7 @@ function installStructuredFrames(project, files, framesManifest) {
       name: String(frame.name || frameId),
       index: frameIndex,
       durationMs,
+      authoringMode: ['illustration', 'pixel-art'].includes(frame.authoringMode) ? frame.authoringMode : 'pixel-art',
       cels,
       layerMetadata: structuredClone(frameMetadata),
       layerCount: cels.length,

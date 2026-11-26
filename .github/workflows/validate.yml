@@ -221,15 +221,17 @@ jobs:
             node --experimental-default-type=module --check "$file"
           done
           rm -rf "$RUNNER_TEMP/agent-headless"
-          mkdir -p "$RUNNER_TEMP/agent-headless/pixelforge/src"
-          cp -R public/pixelforge/src/. "$RUNNER_TEMP/agent-headless/pixelforge/src/"
+          mkdir -p "$RUNNER_TEMP/agent-headless/public/pixelforge/src"
+          cp -R public/pixelforge/src/. "$RUNNER_TEMP/agent-headless/public/pixelforge/src/"
           cp package.json "$RUNNER_TEMP/agent-headless/"
+          cp pixelforge-codelab-package.mjs "$RUNNER_TEMP/agent-headless/"
           if [ -f package-lock.json ]; then cp package-lock.json "$RUNNER_TEMP/agent-headless/"; fi
           printf '%s\n' \
             "repository=$GITHUB_REPOSITORY" \
             "commit=$GITHUB_SHA" \
             "ref=$GITHUB_REF_NAME" \
             "headless_source=public/pixelforge/src" \
+            "agent_package_builder=pixelforge-codelab-package.mjs" \
             "packaged_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             > "$RUNNER_TEMP/agent-headless/MANIFEST.txt"
           tar -C "$RUNNER_TEMP/agent-headless" -czf "$RUNNER_TEMP/agent-headless-$GITHUB_SHA.tar.gz" .
@@ -282,16 +284,18 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/agent-headless-extracted"
           tar -xzf "$RUNNER_TEMP/agent-headless-download/agent-headless-$GITHUB_SHA.tar.gz" -C "$RUNNER_TEMP/agent-headless-extracted"
-          test -f "$RUNNER_TEMP/agent-headless-extracted/pixelforge/src/headless.js"
-          echo "AGENT_HEADLESS_PACKAGE_DIR=$RUNNER_TEMP/agent-headless-extracted/pixelforge/src" >> "$GITHUB_ENV"
+          test -f "$RUNNER_TEMP/agent-headless-extracted/public/pixelforge/src/headless.js"
+          test -f "$RUNNER_TEMP/agent-headless-extracted/pixelforge-codelab-package.mjs"
+          echo "AGENT_HEADLESS_PACKAGE_DIR=$RUNNER_TEMP/agent-headless-extracted/public/pixelforge/src" >> "$GITHUB_ENV"
       - name: Run PixelForge integration against real PostgreSQL
         shell: bash
         run: |
           export PORT=3191
           export DATABASE_URL="postgres://codelab:codelab_test@127.0.0.1:5432/codelab_test"
           export CODELAB_DATABASE_SSL=disable
-          export CODELAB_AGENT_BRIDGE_ENABLED=0
+          export CODELAB_AGENT_BRIDGE_ENABLED=1
           export CODELAB_AGENT_BRIDGE_CONTROL_SECRET="test-only-agent-bridge-secret"
+          export ADMIN_BOOTSTRAP_PASSWORD="test-only-admin-bootstrap-password"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/2026-11-15-codelab-core-postgres.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/2026-11-24-codelab-project-import-storage.sql
           export CODELAB_E2E_BASE_URL="http://127.0.0.1:3191"

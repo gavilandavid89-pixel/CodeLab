@@ -32,13 +32,18 @@ Leer en este orden:
 |---|---|---|
 | Crear o editar dibujo/animación | [Flujo autónomo de animación](ANIMATION-AUTONOMOUS-WORKFLOW.md) | Preparación, ejecución, espera, verificación, inspección visual y aceptación. |
 | Instalar/ejecutar Headless del agente | [Headless Agent Runtime](HEADLESS-AGENT-RUNTIME.md) | Artefacto real, instalación en entorno local/efímero, ejecución y exportación. |
-| Consultar todas las capacidades de Headless | [Referencia completa de Headless](HEADLESS-CAPABILITIES-REFERENCE.md) | Funciones raster, capas, selección, referencias, vector, animación, propuestas, límites, flujos y restricciones. |
+| Usar la API Headless desde un agente | [API Headless para agentes](HEADLESS-AGENT-API-REFERENCE.md) | Inicialización, métodos, acciones, argumentos principales, modos mixtos, errores y límites. |
+| Consultar todas las capacidades de Headless | [Referencia completa de Headless](HEADLESS-CAPABILITIES-REFERENCE.md) | Explicación funcional de raster, capas, selección, referencias, vector, animación, propuestas y restricciones. |
 | Transferir un proyecto editable | [Bridge inline de artefactos](inline-artifact-bridge.md) | Manifiesto, chunks, SHA-256, commit, importación y lectura de vuelta. |
 | Historial de resolución de transferencia | [Informe de transferencia inline (24-11-2026)](INLINE-BRIDGE-TRANSFER-RESOLUTION-2026-11-24.md) | Correcciones aplicadas y evidencia de importación real en ADMIN. |
 | Entender órdenes, Neon, LISTEN/NOTIFY y worker | [Arquitectura extremo a extremo](CodeLab_Neon_comunicacion_extremo_a_extremo.md) | Cola durable, activación, ejecución, resultados, revisiones y recuperación. |
 | Consultar resumen de arquitectura | [Arquitectura CodeLab–Neon](CODELAB-NEON-ARCHITECTURE.md) | Vista compacta de componentes y límites. |
+| Entender los componentes internos de CodeLab | [Arquitectura interna y mapa de componentes](CODELAB-INTERNAL-ARCHITECTURE.md) | Responsabilidades, fronteras, flujos, contratos y estado real de integración. |
 | Consultar la API nativa del agente | [Protocolo Headless nativo](native-headless-protocol.md) | Cliente, mailbox, acciones nativas y modo navegador explícito. |
 | Procesar/capturar vídeo | [Procesamiento A/B](VIDEO-PROCESSING-AB.md) | Única finalidad de A/B: una sesión A y una B procesadora por trabajo. |
+| Adaptar vídeo a plataformas sociales | [Composición multiplataforma de Video Composer](PIXELFORGE-VIDEO-COMPOSER-COMPOSITION.md) | Perfiles 16:9, 9:16, 4:5 y 1:1, contain/cover, zonas seguras y reglas de no deformación. |
+| Alta resolución, almacenamiento y sincronización incremental PixelForge | [Arquitectura de alta resolución y sincronización](PIXELFORGE-HIGH-RESOLUTION-STORAGE-AND-INCREMENTAL-SYNC.md) | Límites verificados, cels por tiles, almacenamiento privado, parches con revisiones y migración segura. |
+| Dibujo raster tradicional y migración integral de PixelForge | [Migración raster tradicional](PIXELFORGE-TRADITIONAL-RASTER-MIGRATION.md) | Contrato de compatibilidad para lienzo, herramientas, capas, animación, ZIP, importador/exportador, Headless, CodeLab y vídeo. |
 | Comprender el formato PixelForge | [Paquete de proyecto PixelForge](PIXELFORGE-PROJECT-PACKAGE.md) | Estructura editable, frames, capas, cels y Reference Center. |
 | Recuperar un ZIP del inbox PixelForge | [Recuperación del ZIP del inbox](PIXELFORGE-INBOX-ZIP-RECOVERY.md) | Reemplazo binario en la misma ruta, verificación SHA, Git Data API, workflow y límites de importación. |
 | Incidente y recuperación Neon/PixelForge (24-11-2026) | [Incidente de importación y resolución de Neon](NEON-PIXELFORGE-IMPORT-INCIDENT-2026-11-24.md) | Causa raíz del listener, corrección de allowlist, expiración/reintento seguro y verificación de importación persistida en PixelForge ADMIN. |

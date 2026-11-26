@@ -499,6 +499,7 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
     parts: parts.map(part => ({
       ...part,
       pixels: sourceLayers.find(layer => layer.id === part.layerId)?.pixels || null,
+      ownershipTiles: structuredClone(sourceLayers.find(layer => layer.id === part.layerId)?.ownershipTiles || []),
     })),
     geometry: {
       canvas: { width: project.width, height: project.height },
@@ -516,15 +517,45 @@ export function buildReferenceFromProject({ projectId, project, name = 'Drawing 
     layerSnapshot: sourceLayers.map((layer, index) => ({
       id: layer.id, name: layer.name, index, opacity: layer.opacity, visible: layer.visible, locked: layer.locked,
       pixels: layer.pixels || null,
+      ownershipTiles: structuredClone(layer.ownershipTiles || []),
     })),
     frameLayerMap: Array.isArray(project.animation?.frames) ? project.animation.frames.map((frame, index) => ({
       index, frameId: frame.id, durationMs: frame.durationMs,
-      layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixels: cel.pixels || null })),
+      layers: frame.cels.map(cel => ({ layerId: cel.layerId, pixels: cel.pixels || null, ownershipTiles: structuredClone(frame.layerMetadata?.find(item => item.id === cel.layerId || item.layerId === cel.layerId)?.ownershipTiles || []), metadata: structuredClone(frame.layerMetadata?.find(item => item.layerId === cel.layerId) || {}) })),
     })) : [],
   };
 }
 
-export function copyReferencePixelsToActiveFrameLayer({ drawingDocument, animation = null, pixels } = {}) {
+export function compositeReferenceFrameOwnership(entry, frameIndex, width, height) {
+  if (!entry || !Array.isArray(entry.frames)) throw new TypeError('A reference animation is required.');
+  const frame = entry.frames.find(item => Number(item.index) === Number(frameIndex));
+  if (!frame) throw new Error('Reference frame was not found.');
+  const owners = new Uint8Array(width * height);
+  for (const source of frame.layers || []) {
+    if (typeof source.pixels !== 'string' || source.metadata?.visible === false || Number(source.metadata?.opacity ?? 1) <= 0) continue;
+    const pixels = deserializePixels(source.pixels);
+    if (pixels.length !== width * height * 4) throw new RangeError('Reference frame layer pixels have invalid dimensions.');
+    const sourceOwners = new Uint8Array(width * height);
+    for (const tile of source.ownershipTiles || []) {
+      const tileOwners = deserializePixels(tile.owners);
+      if (tileOwners.length !== tile.width * tile.height) throw new RangeError('Reference frame ownership tile has invalid dimensions.');
+      for (let row = 0; row < tile.height; row++) {
+        const target = (tile.y + row) * width + tile.x;
+        sourceOwners.set(tileOwners.subarray(row * tile.width, (row + 1) * tile.width), target);
+      }
+    }
+    for (let pixel = 0; pixel < owners.length; pixel++) if (pixels[pixel * 4 + 3] > 0) owners[pixel] = sourceOwners[pixel];
+  }
+  const tiles = [];
+  for (let y = 0; y < height; y += 64) for (let x = 0; x < width; x += 64) {
+    const tileWidth = Math.min(64, width - x), tileHeight = Math.min(64, height - y), bytes = new Uint8Array(tileWidth * tileHeight);
+    for (let row = 0; row < tileHeight; row++) bytes.set(owners.subarray((y + row) * width + x, (y + row) * width + x + tileWidth), row * tileWidth);
+    if (bytes.some(value => value !== 0)) tiles.push({ x, y, width: tileWidth, height: tileHeight, owners: serializePixels(bytes) });
+  }
+  return tiles;
+}
+
+export function copyReferencePixelsToActiveFrameLayer({ drawingDocument, animation = null, pixels, ownershipTiles = [] } = {}) {
   const layer = drawingDocument?.activeLayer;
   if (!drawingDocument || !layer) throw new TypeError('An active PixelForge layer is required.');
   if (layer.locked) throw new Error('The active PixelForge layer is locked.');
@@ -532,13 +563,15 @@ export function copyReferencePixelsToActiveFrameLayer({ drawingDocument, animati
     throw new TypeError('Reference pixels must match the active canvas RGBA8 dimensions.');
   }
   const copy = new Uint8Array(pixels);
+  const ownerMap = new Map((ownershipTiles || []).map(tile => [`${tile.x / 64}:${tile.y / 64}`, deserializePixels(tile.owners)]));
   if (animation) {
     if (typeof animation.setLayerPixels !== 'function' || !Number.isInteger(animation.activeFrameIndex)) {
       throw new TypeError('The active animation frame cannot accept reference pixels.');
     }
     animation.setLayerPixels(animation.activeFrameIndex, layer.id, new Uint8Array(copy));
+    if (typeof animation.setLayerMetadata === 'function') animation.setLayerMetadata(animation.activeFrameIndex, layer.id, { ...animation.getLayerMetadata(animation.activeFrameIndex, layer.id), ownershipTiles: ownerMap });
   }
-  drawingDocument.setLayerPixels(layer.id, copy);
+  drawingDocument.setLayerPixels(layer.id, copy, { restore: true, ownershipTiles: ownerMap });
   drawingDocument.dirty = true;
   return { layerId: layer.id, frameIndex: animation?.activeFrameIndex ?? null, copiedBytes: copy.byteLength };
 }

@@ -12,6 +12,7 @@ export function cloneRasterDocument(source, { name = source.name } = {}) {
     ...layer,
     id: crypto.randomUUID(),
     pixels: new Uint8ClampedArray(layer.pixels),
+    ownershipTiles: new Map([...(layer.ownershipTiles || new Map())].map(([key, owners]) => [key, new Uint8Array(owners)])),
   }));
   const layerMap = new Map(source.layers.map((layer, i) => [layer.id, copy.layers[i].id]));
   copy.activeLayerId = layerMap.get(source.activeLayerId) ?? copy.layers[0].id;

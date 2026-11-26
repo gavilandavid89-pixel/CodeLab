@@ -1,0 +1,274 @@
+# PixelForge high-resolution, scalable storage, and incremental synchronization
+
+**Status:** architecture decision / implementation plan. This document records constraints verified in the current code and the safe migration direction. It does not claim that object-backed project storage or incremental patch persistence is already implemented.
+
+## Product invariants
+
+1. The editable canvas is the source of truth for image detail. Export dimensions describe the encoded video frame, not newly created detail.
+2. Export must never stretch artwork to a different aspect ratio. It may contain, crop, or scale with an explicit policy and must disclose upscaling.
+3. Output FPS is not motion interpolation. If the source timeline has fewer unique poses, a higher output FPS may repeat poses. New motion requires authored/interpolated frames and must be clearly identified.
+4. Existing projects retain their original dimensions, frame IDs, layer IDs, and editable content.
+5. Binary assets are immutable, hash-addressed resources. Neon stores project structure, revision metadata, ownership, references, and lifecycle state.
+6. Incremental writes use a base revision and idempotency key. Conflicts are explicit; a patch never silently overwrites a newer project.
+7. Full import/export and full-snapshot recovery remain supported throughout migration.
+
+## Verified current constraints
+
+| Area | Current implementation |
+|---|---:|
+| Canvas maximum side | 4096 px |
+| Canvas maximum area | 16,777,216 pixels |
+| Raster layer memory budget | 64 MiB aggregate RGBA |
+| Animation raw cel budget | 64 MiB |
+| Animation frames | 240 maximum |
+| Animation FPS | 1–60 |
+| Animation JSON envelope | 96 MiB |
+| PixelForge project JSON | 96 MiB |
+| PixelForge account storage | 512 MiB |
+| Direct PixelForge JSON request | 32 MiB |
+| Chunked PixelForge save | 6 MiB per chunk |
+| Chunk request body | 9 MiB |
+| Staged uploads | 256 MiB per account |
+| General CodeLab JSON body | 10 MiB default, configurable up to 50 MiB |
+
+The general 10 MiB request-body default is not the PixelForge project-save ceiling. PixelForge has a dedicated 32 MiB JSON route and a resumable 6 MiB chunk protocol. Raising the general body limit would weaken unrelated endpoints and would not remove the 96 MiB project, 64 MiB raster/animation, or 512 MiB account limits.
+
+The current animation model stores a full RGBA cel for every frame/layer. The project serializer encodes those cels into base64 JSON. Chunked saves resume transport, but they still serialize and upload a complete project snapshot. These are separate constraints: browser memory, animation representation, serialized project size, transfer, and account quota.
+
+## Why the current R2 evidence path is not project storage
+
+The repository already contains a Cloudflare Worker and R2 path for visual evidence. Its existing `/evidence/` GET/HEAD behavior serves objects publicly with immutable cache headers; signed HMAC authorization is currently applied to PUT. That behavior is suitable for intentionally shareable evidence, but it must not be reused as-is for private project cels, reference images, audio, or user assets.
+
+Private project objects need a distinct authenticated namespace and signed reads, or a separate private bucket/worker binding. The browser must never receive R2 credentials. Object keys must be workspace-scoped and immutable, and every read/write must be authorized against the owning workspace/project.
+
+## Target architecture
+
+### 1. Sparse, tiled cel representation
+
+Replace dense per-frame RGBA storage with sparse tiles (initial candidate: 64×64 pixels; benchmark 64×64 against 128×128 before locking the format).
+
+- Omit fully transparent tiles.
+- Hash each tile with SHA-256 and deduplicate identical tiles across frames/layers.
+- Use copy-on-write: unchanged tiles are shared; editing a tile creates a new immutable tile.
+- Keep only the active frame and a small adjacent-frame window decoded in memory; use a bounded LRU tile cache.
+- Preserve a compatibility adapter so existing raster tools can continue reading/writing a full RGBA buffer for the active layer.
+- Version the animation/package format and keep a v1 dense-cel reader. Do not silently reinterpret v1 data.
+
+This makes memory use proportional to non-empty/changed image regions instead of canvas area × every frame × every layer. It also makes a one-pixel edit a small resource change rather than a new full-frame allocation.
+
+### Implemented in-memory tile-store contract (v2 foundation)
+
+The current isolated implementation is `SparseTileCelStore` in `public/pixelforge/src/animation-tiles.mjs`:
+
+| Method | Contract |
+|---|---|
+| `createCel(document)` | Validate a v2 sparse cel, verify every tile SHA-256, and register immutable resources. |
+| `createCelFromPixels(pixels, options)` | Encode a legacy dense RGBA buffer and register it as a sparse cel. |
+| `cloneCel(celId)` | Clone the coordinate map while retaining the same immutable tile resources. |
+| `updateTile(celId, x, y, pixels)` | Replace or remove one tile. Only that coordinate receives a new content hash; the source cel remains unchanged. |
+| `getTile(celId, x, y)` | Return a defensive copy of one decoded tile, or `null` for a sparse/empty coordinate. |
+| `readRegion(celId, region)` | Read a bounded rectangle by decoding only intersecting tiles; does not materialize the full canvas. |
+| `writeRegion(celId, region, pixels)` | Copy-on-write update of intersecting tiles; returns a new cel ID only when pixels change and leaves the source cel untouched. |
+| `composeCel(celId)` | Materialize a full RGBA buffer for compatibility with current raster tools. |
+| `exportCel(celId)` | Export the versioned sparse cel document. |
+| `diffCels(previousId, nextId)` | Return changed, added, and removed tile resources/coordinates. |
+| `createPatch(previousId, nextId, metadata)` | Build a versioned resource-only patch with project/base-revision/operation/frame/layer identity and only changed tile payloads or removed coordinates. |
+| `releaseCel(celId)` | Release tile references and reclaim unreferenced in-memory resources. |
+
+`createPatch()` returns a `pixelforge-cel-patch` v2 object. `tile.put` operations include the new tile's coordinates, edge dimensions, SHA-256, and base64 bytes; `tile.remove` operations include only the coordinate. Ownership-aware `ownership.put`/`ownership.remove` operations carry the sparse per-pixel Illustration/Pixel Art ownership plane without duplicating unchanged RGBA tiles. The patch carries `projectId`, `baseRevision`, `operationId`, `frameId`, and `layerId`, but no server applies it yet. The future server API must validate workspace authorization, operation idempotency, and compare-and-swap revision semantics before persistence.\n\nThe decoded-tile LRU cache defaults to 8 MiB and can be set to 0 to disable decoded caching. Cache memory is tracked separately from the canonical base64 tile resources. Resource references count cel-to-tile links, not project ownership or durable database references.
+
+**Important limitation:** this store currently lives only in the current JavaScript process. It is not durable across reloads, tabs, browser restarts, or deployments; it is not a quota system; and it does not authorize access to private assets. Do not describe it as the final project storage engine. The next integration must preserve the existing synchronous raster API or deliberately migrate its callers to an asynchronous tile-aware interface, while retaining v1 dense-cel read/write compatibility.
+
+### 2. Private content-addressed object storage
+
+Use a dedicated private object namespace for large binary resources:
+
+- RGBA tiles, full-resolution source images, audio, video, and other binary assets.
+- Object identity is content hash + MIME + byte length.
+- Neon tables store workspace/project ownership, hash, object key, byte length, MIME, reference count/lifecycle state, and creation metadata.
+- Upload/download URLs are short-lived, object-scoped, HMAC-signed, and restricted by method, key, expiry, and content type.
+- Uploads are verified by hash before a resource becomes visible to a project revision.
+- Orphan cleanup is reference-aware and delayed; never delete an object just because an upload or revision is temporarily unreferenced.
+- Quotas measure logical bytes and physical deduplicated bytes separately.
+
+Do not move project ownership, revision ordering, permissions, or operation history out of Neon. R2 is for binary bytes, not the canonical project state.
+
+### 3. Incremental project operations
+
+Introduce a versioned patch API with:
+
+- `projectId`, `baseRevision`, `operationId`, and a bounded list of typed operations.
+- Stable layer/frame IDs and tile/resource hashes.
+- Operations for tile replacement/removal, frame insertion/deletion/reorder, duration changes, layer metadata, and project metadata.
+- A transaction that locks/checks the current revision, rejects stale bases with 409, applies the patch, advances the revision, and records the operation result.
+- A unique idempotency constraint on (workspace, project, operationId), so a retry returns the original result rather than applying twice.
+- Read-back of the resulting revision/hash before the client treats a save as complete.
+- Periodic full-snapshot checkpoints and explicit full-save fallback for imports, migrations, recovery, or patch-chain compaction.
+
+The first patch implementation should be limited to one resource class (tiled cels) and one client (Headless). The editor and other clients can adopt it after the contract is proven.
+
+### 4. Canvas and export quality policy
+
+- Keep sprite templates small and explicit.
+- Add illustration/HD canvas presets only after the sparse-cel path can sustain their intended animation length.
+- Preserve custom dimensions and all old projects.
+- Display original canvas dimensions separately from output container dimensions.
+- Offer YouTube 16:9, TikTok/Shorts 9:16, square, and original-aspect presets.
+- Default to contain (no distortion); crop/fill must be explicit.
+- Smooth scaling is appropriate for illustrations; nearest-neighbor remains available for pixel art.
+- Warn when source content is enlarged. A 1280×720 source exported in a 3840×2160 container is still 720p detail.
+- Treat 24/30/60 FPS as output cadence. Do not claim that changing the dropdown creates intermediate poses.
+
+## Migration sequence and acceptance gates
+
+1. **Video export correctness:** preserve aspect ratio, smooth/nearest scaling choice, source-resolution disclosure, named social presets, and timeline-clock preview. Verify actual WebM dimensions and decoded frames.
+2. **Tiled cel model:** add v2 format, v1 compatibility, sparse tile encode/decode, deduplication, copy-on-write, bounded active-frame cache, and undo/redo tests.
+3. **Private object store:** add signed PUT and signed GET/HEAD, workspace authorization, integrity checks, resource metadata, quotas, and orphan lifecycle tests. Do not change production bucket bindings until a deployment plan and rollback are documented.
+4. **Incremental patch API:** add CAS revision checks, idempotency, atomic operations, patch replay, checkpointing, and conflict tests.
+5. **Headless adoption:** make proposals report tile/resource diffs and persist only changed resources; retain explicit full-snapshot fallback.
+6. **End-to-end stress test:** create a high-resolution multi-layer animation with many frames, edit a small region, prove that only changed tile objects and patch metadata transfer, reload from persisted resources, compare pixels/hashes, and export horizontal and vertical videos without modifying the source project.
+
+No production database schema, R2 bucket, Render service, or account quota should be changed until the relevant isolated tests pass and the exact storage/cost impact is known.
+
+## Current implementation status
+
+- **Implemented as an isolated v2 building block:** `public/pixelforge/src/animation-tiles.mjs` encodes dense RGBA cels into sparse 64×64 tiles (with 32/128 benchmark options), omits all-zero tiles, preserves exact RGBA bytes, validates each tile with SHA-256, and computes added/changed/removed tile diffs.
+- **In-memory resource store implemented:** `SparseTileCelStore` deduplicates immutable tile resources by SHA-256, shares tile references when cloning a cel, applies copy-on-write when a tile changes, removes references when cels are released, and exposes a bounded LRU cache for decoded tiles. It also offers a full-RGBA composition adapter for legacy raster consumers.
+- Contract tests in `tests/pixelforge-animation-tiles.test.mjs` cover exact round trips, edge tiles, integrity rejection, tile diffs, copy-on-write sharing, resource reference cleanup, and LRU eviction. They also verify bounded region reads/edits across tile boundaries, no-op updates, sparse erasure, source immutability, and resource cleanup. They are included in `npm run test:pixelforge`.
+- **Integration boundary:** this store remains an isolated in-memory primitive. It is not yet wired into `PixelForgeAnimation`, undo/redo, project serialization, Headless persistence, or private object storage. It does not change the current 64 MiB animation budget or enable larger canvas defaults.
+- Video Composer aspect-safe scaling, source-quality assessment, scaling-mode selection, source-vs-output disclosure, named 16:9/9:16 presets, and timeline-clock preview are implemented in the source-quality/motion export branch; CI has passed the PixelForge validation, animation-core, and Headless runtime workflows for the current tested revision.
+- Dense RGBA cels, full-project JSON serialization, 96 MiB project envelope, 64 MiB raster/animation budgets, and 512 MiB account quota remain current constraints.
+- Private project-object storage and incremental patch persistence are design targets, not yet implemented.
+
+
+## Pixel-capacity rejection audit (verified against code)
+
+**Answer to “can anything still reject adding more pixels?”: yes.** The v1 editor and server deliberately enforce several independent ceilings. They have not all been removed, and removing only one would not make larger projects work end-to-end.
+
+| Gate | Current enforcement point | Effect |
+|---|---|---|
+| Canvas side / area | `core.js: validateDimensions`; `animation.mjs: assertDimensions`; tiled codec and adapter; `server.js: validatePixelForgeProjectPayload` | Rejects a canvas above 4096 px on either side or 16,777,216 total pixels. |
+| Raster layer count | `RasterDocument.addLayer/insertLayer/duplicateLayer/fromJSON`; tiled adapter; server project validator | Rejects more than 64 raster layers. |
+| Dense raster memory | `core.js: estimateRasterProjectJSONBytes`, add/duplicate/crop/fromJSON; `server.js: validatePixelForgeProjectPayload` | Rejects aggregate dense RGBA layer buffers above 64 MiB. |
+| Dense animation memory | `animation.mjs: constructor/addFrame/addLayer/fromJSON/#assertMemoryBudget`; `editor.js: canGrowAnimationLayer`; `server.js: validatePixelForgeAnimation` | Rejects animation cels above 64 MiB aggregate raw RGBA. |
+| Frames / animation layers | `animation.mjs` and server animation validator | Maximum 240 frames and 64 animation layers. |
+| Project/animation JSON | `core.js`, `animation.mjs`, server project validator | Maximum 96 MiB serialized project and 96 MiB animation JSON. |
+| HTTP / transfer | `server.js` PixelForge routes | 32 MiB direct JSON request; chunk upload uses 6 MiB chunks with a 9 MiB chunk-request body ceiling. |
+| Account storage | `server.js` account save validation | 512 MiB account-wide PixelForge storage. |
+| Import/staging | editor import handler / inline bridge | Editor import rejects a single file above 256 MiB; staged inline artifacts have a separate 256 MiB account ceiling. |
+| Project count | server account save | `CODELAB_MAX_PROJECTS` applies to project count, not pixels. |
+
+These gates are not interchangeable. For example, increasing the HTTP body size does not increase the dense RGBA allocation budget; increasing the project JSON envelope does not make animation cels sparse; and raising the account quota does not fix browser memory pressure.
+
+### What the tiled path proves today
+
+A new contract test constructs a 4096×4096 tiled project with 17 sparse layers (over 1 GiB of *theoretical dense RGBA layer footprint*) while allocating only one 32×32 tile resource, deduplicated across all 17 layers. It reads the same pixel through any layer and exports the sparse manifest without creating 17 full-canvas buffers. This proves the in-memory tiled representation can avoid the legacy aggregate 64 MiB dense-layer ceiling for sparse content.
+
+**Important remaining blockers:**
+- This proof uses the opt-in `TiledRasterProjectDocument`; the visible editor still uses dense `RasterDocument`.
+- `TiledRasterProjectDocument.fromDocument()` starts by calling `document.toJSON()`, so it still cannot migrate a dense source document that already exceeds the v1 64 MiB budget.
+- `toLegacyProjectJSON()` deliberately materializes full RGBA layers and therefore remains bounded by dense memory and v1 serialization limits.
+- Animation editing, undo/redo, canvas compositing, selection/fill/brush/transform tools, ZIP package import/export, Headless actions and server persistence are not yet using the tiled manifest as their canonical format.
+- The tiled format still enforces 4096 px side, 16,777,216 canvas area and 64 layers. It removes the *aggregate dense pixel-buffer* ceiling inside the sparse in-memory model; it does not provide unlimited canvas geometry, unlimited layers, or durable storage.
+- No production server, Neon schema, R2 bucket, account quota, or API limit has been raised.
+
+### Safe removal order
+
+Do not delete the 64 MiB checks in v1 as a shortcut. First make the editor create/open tiled projects natively (without a dense v1 migration), then migrate brush/eraser/fill/selection/transforms/compositing and history to tile-level copy-on-write. Next make animation frames and layer cels share tile resources, and migrate ZIP/Headless readers and writers to a versioned sparse package. Only then add authenticated private tile persistence and incremental patch/CAS APIs. Raise geometry, layer, JSON, request and account limits independently after desktop/mobile stress tests, quota accounting, and end-to-end read-back. Until each gate is migrated, it must continue rejecting payloads it cannot safely process.
+
+
+### Native sparse project creation and bounded edit proof
+
+- Added `SparseTileCelStore.createBlankCel()`: it registers canvas geometry and an empty tile map without allocating a dense RGBA canvas.
+- Added `TiledRasterProjectDocument.createBlank()`: it creates a first-class tiled project and layer directly, without constructing `RasterDocument`, calling `toJSON()`, or passing through the legacy dense migration path.
+- Added a 4096×4096 contract test that writes a single pixel in the middle of the canvas, verifies only one tile resource is created, duplicates the layer with shared resources, edits the duplicate, and verifies copy-on-write isolation and manifest export.
+- This removes the dense-v1 migration dependency for *new projects created through this adapter only*. It does not yet make the visible editor create/open tiled projects, migrate tools/history/animation, or persist manifests to the server. Geometry and 64-layer limits remain unchanged.
+
+
+### Copy-on-write reference lifecycle correction
+
+The native sparse-edit CI test exposed a cel ownership leak: the adapter replaced a layer's cel ID after a successful copy-on-write edit but retained the old cel reference. The adapter now releases the replaced layer-owned cel after switching to the new cel. Other layers that share the original cel retain their own references. The regression test asserts that exactly the two live layer cels remain after editing both branches, and that disposal releases all cels and tile resources.
+
+
+### Bounded viewport compositing milestone
+
+The tiled document now exposes `readCompositeRegion(region)`, which composites only a requested viewport-sized RGBA region across visible layers. This is the next bridge needed by the editor renderer: a 4096×4096 project does not need a 4096×4096 composite just to display a small zoomed viewport. A regression test confirms a 16×16 read from a 4096×4096 sparse project returns only 1024 RGBA pixels and preserves the edited pixel exactly.
+
+**Validation follow-up:** the bounded-region API now validates viewport coordinates against canvas geometry before reading or compositing. This prevents an invalid editor viewport from silently requesting out-of-range tile data. A regression test covers both right/bottom overflow and negative coordinates. The editor renderer has not yet switched to this API; that remains the next integration boundary.
+
+This still does not replace the editor's legacy full-canvas `doc.composite()` calls. The next integration step is to route viewport rendering through this bounded API and keep full-canvas materialization only for operations that genuinely require it.
+
+
+### Editor bounded viewport renderer
+
+The editor renderer now detects the opt-in `readCompositeRegion(region)` capability and uses it only for tiled documents. The visible CSS viewport is converted back into document coordinates, clamped to the canvas bounds, composited into a reusable temporary canvas sized to the visible source region, and scaled onto the screen. Dense `RasterDocument` documents keep the existing dirty-tile/full-composite preview path unchanged.
+
+This boundary was intentionally kept capability-based rather than switching the editor's document constructor to the tiled model. Brush rasterization, fill, selection, transforms, history, animation, import/export and persistence still assume dense APIs in other places. The renderer change therefore proves bounded display without pretending that the editor is already a canonical tiled editor.
+
+### Mixed illustration / pixel-art edge-case audit
+
+Projects that enable both drawing modes were checked as a separate compatibility surface rather than treating the mode selector as a cosmetic toggle. Repeated illustration → pixel-art → illustration transitions now have regression coverage for independent per-mode brush profiles; malformed/duplicated mode metadata is normalized back to the two supported modes; and switching remains metadata/presentation-only rather than rewriting source pixels.
+
+The tiled renderer also applies the active mode's presentation policy after bounded compositing: illustration keeps smooth/high-quality scaling, while pixel-art keeps nearest-neighbor rendering. The tiled viewport therefore does not accidentally erase the distinction between the two modes merely because its source pixels arrive through a different storage path.
+
+Additional tiled edge coverage verifies exact right/bottom canvas boundaries, rejection of one-pixel overflow in either axis, and alpha compositing across two sparse layers with different opacity. These cases are specifically useful for catching off-by-one viewport calculations and accidental mode/storage coupling.
+
+**Current boundary:** a project containing both modes is supported as a persisted drawing-configuration contract and the renderer preserves their presentation behavior, but the editor still stores its canonical raster data in dense `RasterDocument`. The remaining tile migration work is unchanged: native editor creation/open, tool parity, history, animation cels, versioned package persistence, Headless, authenticated durable tile storage and incremental CAS patches.
+
+
+### Sparse tiled brush/eraser rasterization foundation
+
+- Added an opt-in `raster-tiled-brush.mjs` primitive that rasterizes bounded square/circular brush dabs directly against `TiledRasterProjectDocument.readRegion()/writeRegion()`; it never materializes a full-canvas or full-layer RGBA buffer.
+- Draw blending, partial-opacity erasing, circle hardness coverage, even/odd brush centers, segment interpolation, and clipping at canvas edges follow the same pixel math and sampling cadence as `RasterDocument.#dab()/strokeTo()`.
+- Added parity tests that compare the tiled output byte-for-byte against dense `RasterDocument` for mixed draw/erase strokes crossing tile boundaries and touching all canvas edges, plus validation/locked-layer/no-op sparse allocation cases.
+- This is an isolated editing primitive, not yet wired into the visible editor pointer lifecycle. Stroke undo/redo snapshots, selection-mask clipping, symmetry, and atomic multi-dab history still need migration before the editor can switch its canonical document model. Existing dense editor behavior and limits remain unchanged.
+
+
+### Transactional sparse stroke history
+
+- Added `TiledRasterStrokeHistory`, which groups bounded dab/segment edits into one stroke command and stores before/after snapshots only for changed dab rectangles. It supports commit, cancel, undo, and redo without allocating a full-canvas snapshot.
+- Undo applies entries in reverse order and redo applies them in forward order, preserving correctness when successive dab rectangles overlap.
+- Each active stroke has a configurable byte budget (16 MiB default). If the next dab would exceed it, the active stroke is rolled back before a range error is raised. Command count and retained undo bytes are bounded; a new committed stroke clears redo history.
+- Tests cover overlapping strokes, exact undo/redo restoration, cancellation, active-stroke guards, and byte-budget rollback.
+- This remains an opt-in migration primitive. It is not wired to the editor's pointer handlers or existing selection/symmetry/history stack; those integrations and end-to-end editor parity are still required before changing the editor's canonical document type.
+
+
+### Sparse pointer gesture lifecycle
+
+- Added a DOM-independent `TiledRasterPointerStrokeController` that groups pointer-down, pointer-move segments, pointer-up, pointer-cancel, and lost-pointer-capture into the transactional sparse history API.
+- Pointer IDs are isolated: events from a second pointer are ignored, out-of-canvas movement is ignored without corrupting the active stroke, pointer cancellation/lost capture rolls back, and controller disposal cancels an active gesture.
+- CI tests verify one undoable command per gesture, pointer ownership, outside-canvas movement, cancellation, lost capture, and disposal.
+- The controller is a tested integration seam, not yet connected to `editor.js`: the visible editor still constructs `RasterDocument` and its existing tools, selection masks, symmetry, fills, transforms, animation, and persistence remain dense-model dependencies. Do not infer that the UI is already running on sparse tiles.
+
+
+### Browser visual matrix for mixed drawing modes
+
+A Chromium end-to-end test now drives the actual visible PixelForge canvas with real pointer gestures. It checks the 2 × 2 × 4 matrix of illustration/pixel-art modes, square/circular brushes, and symmetry off/2/4/8, then samples the rendered canvas pixels at every expected mirrored position. This is deliberately stronger than checking that the symmetry function or stored pixels look correct in isolation.
+
+The browser test also checks:
+- Odd, non-square 127 × 91 canvases with 2/4/8-way symmetry, including mirrored points that must be clipped outside the document.
+- Shape distinction (5px square versus circle diagonal coverage) and the visible 32px brush maximum clipped against both edges of a non-square canvas (the lower-level raster primitive's 128px capacity is not exposed by the current UI).
+- Mode-specific defaults and restoration of independent custom brush size, hardness and opacity after repeated mode switches.
+- Actual rendered edge sampling: illustration mode must show blended edge pixels at fractional zoom, while pixel-art must remain crisp without blended colors.
+- Dabs at the top-left and bottom-right canvas pixels, plus a pointer stroke that leaves and re-enters the canvas.
+- Browser runtime errors and captured per-mode canvas screenshots.
+
+CI uploads the screenshots and matrix evidence as the `pixelforge-editor-visual-matrix` artifact. These tests exercise the current visible dense editor and its presentation behavior. They do **not** claim that the sparse tiled adapter is already the editor's canonical model or that its primitives are connected to the UI; that integration still needs tool-by-tool parity and visual checks.
+
+
+**Defect found by the first real-browser run:** a new blank project displayed illustration as its active mode but retained the HTML pixel-art brush defaults (1 px square, 100% hardness). The mode metadata and pure configuration tests did not catch this startup-only visual mismatch. The editor bootstrap now applies the active drawing configuration to a fresh document before its first render; the browser matrix asserts the visible control defaults so this regression cannot return.
+
+
+## Visible editor sparse-project integration (November 2026)
+
+The editor now has an opt-in dense-to-tiled document factory at 1,048,576 pixels (1024×1024). New projects at or above that threshold use `TiledRasterProjectDocument`; smaller projects continue to use the legacy `RasterDocument`. Imported raster projects that cross the same threshold are migrated to the tiled manifest before they are saved and installed. Existing tiled manifests are restored through the tiled adapter, and project snapshots are asynchronous so sparse manifests are serialized without materializing a full-canvas RGBA buffer.
+
+The visible editor pointer lifecycle is connected for sparse brush and eraser gestures. Pointer-down, move, up, cancellation, and lost capture use the tile-aware controller and transactional history. The editor serializes gesture operations so a quick second tap cannot race the asynchronous commit of the previous stroke. Symmetry points are forwarded as one gesture, and the existing viewport renderer reads only the visible document rectangle. Illustration and pixel-art presentation settings continue to control smoothing and brush profiles independently.
+
+The visible sparse path is deliberately restricted to operations with a verified tile-aware implementation. Dense-only fill, selection, transforms, shape tools, layer authoring/reordering, animation editing, scene workspaces, AI proposals, Reference Center authoring, and ZIP/sprite/video exports are disabled or report that migration is pending. Layer selection, brush, eraser, pan, eyedropper, save/load, undo, and redo are the current supported surface. This is a compatibility boundary, not a claim that every editor feature is sparse-native.
+
+### Browser-level visual evidence
+
+The Chromium editor E2E matrix now crosses the real 1024×1024 dense-to-tiled threshold and samples the rendered canvas after actual pointer gestures. It checks both illustration and pixel-art modes, square and circle brushes, symmetry 0/2/4/8, brush footprints clipped against both canvas edges, visible brush and eraser gestures, and undo/redo restoration for both operations. It also sends rapid consecutive taps to exercise the async pointer-up/new-pointer-down race, then verifies that autosave sends a tile manifest rather than a dense layer pixel string. These checks complement byte-level raster parity tests: a passing storage test alone does not establish that the user can see the expected pixels.
+
+The 4096px side, 16,777,216px area, 64-layer, 64MiB raster/animation memory, 96MiB project, 32MiB direct request, 6MiB chunk, 9MiB chunk request, 512MiB account storage, and 256MiB import/staging guards remain in force. The new editor threshold does not raise or remove any of them. Durable private tile-object storage and complete sparse-native tool/export/animation support remain future work.

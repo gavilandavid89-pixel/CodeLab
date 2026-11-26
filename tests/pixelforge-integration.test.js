@@ -28,6 +28,27 @@ function makePixelProject(id, name, width = 2, height = 2) {
   };
 }
 
+function makeDistinctTilePixels(width, height, layerIndex, tileSize = 64) {
+  const pixels = Buffer.alloc(width * height * 4);
+  const columns = Math.ceil(width / tileSize), rows = Math.ceil(height / tileSize);
+  for (let tileY = 0; tileY < rows; tileY++) {
+    for (let tileX = 0; tileX < columns; tileX++) {
+      const tileIndex = tileY * columns + tileX;
+      const rgba = [tileIndex & 255, (tileIndex >>> 8) & 255, layerIndex + 32, 255];
+      const left = tileX * tileSize, top = tileY * tileSize;
+      const right = Math.min(width, left + tileSize), bottom = Math.min(height, top + tileSize);
+      for (let y = top; y < bottom; y++) {
+        for (let x = left; x < right; x++) {
+          const offset = (y * width + x) * 4;
+          pixels[offset] = rgba[0]; pixels[offset + 1] = rgba[1];
+          pixels[offset + 2] = rgba[2]; pixels[offset + 3] = rgba[3];
+        }
+      }
+    }
+  }
+  return pixels.toString('base64');
+}
+
 async function main() {
   const health = await (await fetch(base + '/api/health')).json();
   const usesPostgres = health.persistence === 'postgresql';
@@ -145,6 +166,139 @@ async function main() {
   assert.equal(coreWorkspaceResponse.status, 200, 'PixelForge must use the same authenticated CodeLab workspace identity');
   const coreWorkspace = await coreWorkspaceResponse.json();
   assert.equal(coreWorkspace.workspaceId, 'ws_github_pixelforge-integration-user', 'PixelForge account identity should match CodeLab workspace identity');
+
+  // This path deliberately loads Headless and the native package builder from
+  // the downloaded CI artifact, not from the repository checkout.
+  if (testSessionPool && process.env.AGENT_HEADLESS_PACKAGE_DIR) {
+    const headlessDir = path.resolve(process.env.AGENT_HEADLESS_PACKAGE_DIR);
+    const headlessEntry = path.join(headlessDir, 'headless.js');
+    assert.ok(fs.existsSync(headlessEntry), 'the extracted Agent Headless artifact must contain headless.js');
+    const { createHeadlessRuntime } = await import(pathToFileURL(headlessEntry).href);
+    const packageBuilderPath = path.resolve(headlessDir, '../../../pixelforge-codelab-package.mjs');
+    assert.ok(fs.existsSync(packageBuilderPath), 'the extracted artifact must include its matching CodeLab package builder');
+    const { createPixelForgeCodeLabPackageZip } = await import(pathToFileURL(packageBuilderPath).href);
+
+    const agentProjectName = 'Agent Headless Bridge E2E ' + Date.now();
+    const runtime = createHeadlessRuntime({ width: 32, height: 32, name: agentProjectName });
+    const executeAgentAction = action => {
+      const outcome = runtime.execute(action);
+      assert.equal(outcome.ok, true, 'installed Agent Headless action failed: ' + action.name + ' ' + JSON.stringify(outcome.error));
+      return outcome.result;
+    };
+    executeAgentAction({ name: 'drawing.mode.set', mode: 'illustration' });
+    executeAgentAction({ name: 'canvas.draw_line', x0: 2, y0: 4, x1: 14, y1: 4, color: '#E85D75', size: 3 });
+    executeAgentAction({ name: 'drawing.mode.set', mode: 'pixel-art' });
+    executeAgentAction({ name: 'canvas.draw_line', x0: 3, y0: 9, x1: 17, y1: 9, color: '#342D52', size: 1 });
+    executeAgentAction({ name: 'layer.add', layerName: 'Pixel details' });
+    executeAgentAction({ name: 'canvas.draw_line', x0: 5, y0: 15, x1: 20, y1: 15, color: '#55BFA3', size: 1 });
+    executeAgentAction({
+      name: 'vector.object.create',
+      object: { type: 'ellipse', x: 22, y: 3, width: 7, height: 7, fill: '#F2C66D', stroke: 'none' }
+    });
+    executeAgentAction({ name: 'animation.frame.capture_document', frameName: 'Agent pose 1', durationMs: 120 });
+    executeAgentAction({ name: 'canvas.draw_line', x0: 6, y0: 16, x1: 21, y1: 16, color: '#55BFA3', size: 1 });
+    executeAgentAction({ name: 'animation.frame.capture_document', frameName: 'Agent pose 2', durationMs: 140 });
+    const [illustrationLayer, pixelLayer] = runtime.sandbox.layers;
+    for (const frameIndex of [0, 1]) {
+      executeAgentAction({ name: 'animation.frame.set_active', index: frameIndex });
+      executeAgentAction({ name: 'layer.select', layerId: illustrationLayer.id });
+      executeAgentAction({ name: 'drawing.mode.set', mode: 'illustration' });
+      executeAgentAction({ name: 'layer.select', layerId: pixelLayer.id });
+      executeAgentAction({ name: 'drawing.mode.set', mode: 'pixel-art' });
+    }
+    runtime.createProposal('Artifact Headless mixed-style animation');
+    assert.equal(runtime.acceptProposal().status, 'applied', 'agent-created work must be accepted before serialization');
+    const agentProject = runtime.toJSON();
+    assert.equal(agentProject.animation.frames.length, 2);
+    const packageArtifact = createPixelForgeCodeLabPackageZip(agentProject);
+    const packageBytes = Buffer.from(packageArtifact.bytes);
+    const packageSha = crypto.createHash('sha256').update(packageBytes).digest('hex');
+    const bridgeToken = String(process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET || '');
+    assert.ok(bridgeToken, 'the PostgreSQL E2E must provide its isolated bridge test secret');
+
+    const bridgeHeaders = { 'x-codelab-agent-bridge-token': bridgeToken };
+    const bridgeStateResponse = await fetch(base + '/api/agent/bridge/state', { headers: bridgeHeaders });
+    assert.equal(bridgeStateResponse.status, 200, 'the agent must resolve the ADMIN bridge workspace before transfer');
+    const bridgeState = await bridgeStateResponse.json();
+    const chunkSize = 1024 * 1024;
+    const totalChunks = Math.ceil(packageBytes.length / chunkSize);
+    const beginResponse = await fetch(base + '/api/agent/bridge/artifacts', {
+      method: 'POST',
+      headers: { ...bridgeHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        total_bytes: packageBytes.length, total_chunks: totalChunks, sha256: packageSha,
+        filename: packageArtifact.filename, target_workspace_id: bridgeState.workspaceId,
+        artifact_kind: 'codelab_zip_upload', editor_id: 'pixelforge',
+        source_project_id: agentProject.id, project_name: agentProject.name
+      })
+    });
+    assert.equal(beginResponse.status, 201, 'the inline bridge must accept the agent-created CodeLab package manifest');
+    const begin = await beginResponse.json();
+    for (let index = 0; index < totalChunks; index++) {
+      const bytes = packageBytes.subarray(index * chunkSize, Math.min(packageBytes.length, (index + 1) * chunkSize));
+      const uploaded = await fetch(base + '/api/agent/bridge/artifacts/' + begin.artifactId + '/' + index, {
+        method: 'PUT',
+        headers: { ...bridgeHeaders, 'content-type': 'application/octet-stream' },
+        body: bytes
+      });
+      assert.equal(uploaded.status, 200, 'the bridge must accept every binary artifact chunk');
+    }
+    const commitResponse = await fetch(base + '/api/agent/bridge/artifacts/' + begin.artifactId + '/commit', {
+      method: 'POST',
+      headers: { ...bridgeHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ sha256: packageSha })
+    });
+    assert.equal(commitResponse.status, 202, 'the bridge must enqueue the native project import after SHA verification');
+    const commit = await commitResponse.json();
+    assert.equal(commit.status, 'queued');
+    const ensureResponse = await fetch(base + '/api/agent/bridge/ensure', { method: 'POST', headers: bridgeHeaders });
+    assert.equal(ensureResponse.status, 200, 'the isolated native worker must be explicitly started for the import test');
+
+    let completedCommand = null;
+    let finalState = null;
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const stateResponse = await fetch(base + '/api/agent/bridge/state', { headers: bridgeHeaders });
+      assert.equal(stateResponse.status, 200);
+      finalState = await stateResponse.json();
+      completedCommand = finalState.commands.find(item => item.command_id === commit.commandId) || null;
+      if (completedCommand && ['succeeded', 'failed', 'rejected', 'expired'].includes(completedCommand.status)) break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    assert.ok(completedCommand, 'the worker must publish the import command result');
+    assert.equal(completedCommand.status, 'succeeded',
+      'the native worker must complete the imported package: ' + JSON.stringify(completedCommand.result));
+    const persisted = await testSessionPool.query(
+      'SELECT project_id, project, server_revision, content_sha256 FROM public.codelab_pixelforge_projects WHERE workspace_id=$1 AND name=$2 ORDER BY updated_at DESC LIMIT 1',
+      [bridgeState.workspaceId, agentProject.name]
+    );
+    assert.equal(persisted.rowCount, 1, 'the imported agent project must be present in the ADMIN PixelForge workspace');
+    const persistedProject = persisted.rows[0].project;
+    assert.equal(persistedProject.animation.frames.length, 2, 'the persisted project must retain both animation frames');
+    assert.ok(persistedProject.animation.frames.some(frame =>
+      (frame.cels || []).some(cel => cel.metadata?.ownershipTiles?.length)),
+    'mixed-style pixel ownership must survive the agent artifact → bridge → worker → PostgreSQL path');
+    assert.ok(persistedProject.vectorModel?.objects?.length,
+      'the vector model must survive the native package import and database read-back');
+    assert.ok(Number(persisted.rows[0].server_revision) >= 1);
+    assert.match(persisted.rows[0].content_sha256, /^[a-f0-9]{64}$/);
+    await testSessionPool.query(
+      'DELETE FROM public.codelab_pixelforge_projects WHERE workspace_id=$1 AND project_id=$2',
+      [bridgeState.workspaceId, persisted.rows[0].project_id]
+    );
+    if (begin.importRequestId) {
+      // Artifact rows reference the import request. Remove the dependent rows
+      // first so PostgreSQL cleanup does not emit a foreign-key violation.
+      await testSessionPool.query(
+        'DELETE FROM public.codelab_project_artifacts WHERE import_request_id=$1',
+        [begin.importRequestId]
+      );
+      await testSessionPool.query(
+        'DELETE FROM public.codelab_project_import_requests WHERE import_request_id=$1',
+        [begin.importRequestId]
+      );
+    }
+  }
+
   const workspaceFile = path.join(dataDir, 'workspaces', coreWorkspace.workspaceId + '.json');
   if (health.persistence === 'postgresql') {
     const repeatedInit = await fetch(base + '/api/workspace/init', {
@@ -848,7 +1002,7 @@ async function main() {
     assert.equal(importedAfterSave.serverRevision, importedRevisionBeforeEdit + 1,
       'the first explicit save after import must advance the server revision instead of conflicting with its own import');
     const editorSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'pixelforge', 'src', 'editor.js'), 'utf8');
-    const importDocAssignmentAt = editorSource.indexOf('doc = importedDoc;');
+    const importDocAssignmentAt = editorSource.indexOf('installDocument(importedDoc);');
     const importAnimationRestoreAt = editorSource.indexOf('animation = importedDoc.animationData', importDocAssignmentAt);
     const importWorkspaceRebindAt = editorSource.indexOf('clearSelectionState(); resetAIWorkspaceForDocument();', importAnimationRestoreAt);
     assert.ok(importDocAssignmentAt >= 0 && importAnimationRestoreAt > importDocAssignmentAt && importWorkspaceRebindAt > importAnimationRestoreAt,
@@ -1023,17 +1177,23 @@ async function main() {
     await accountPage.locator('#projects-button').click().catch(() => {});
     const referenceCleanup = await fetch(base + '/api/pixelforge/projects/reference-materialization-fixture', { method: 'DELETE', headers: authHeaders });
     assert.equal(referenceCleanup.status, 200, 'the E2E reference fixture should be removable after the test');
+    // Opening Saved Projects awaits autosave and project-list rendering inside
+    // an async click handler. Wait for showModal() rather than racing the handler.
+    await accountPage.locator('#projects-dialog').waitFor({ state: 'visible' });
+    await accountPage.waitForFunction(() => document.querySelector('#projects-dialog')?.open === true);
+    await accountPage.locator('#close-projects').click();
+    await accountPage.waitForFunction(() => document.querySelector('#projects-dialog')?.open === false);
 
     if (usesPostgres) {
     // A 3-layer 2048×1024 document exceeds the single-request threshold but stays within
     // the 64 MiB raw raster budget. The upload is interrupted once and must resume safely.
     const largeFixture = makePixelProject('chunked-import-fixture', 'Large chunked artwork', 2048, 1024);
     const layerBytes = 2048 * 1024 * 4;
-    largeFixture.layers[0].pixels = Buffer.alloc(layerBytes).toString('base64');
+    largeFixture.layers[0].pixels = makeDistinctTilePixels(2048, 1024, 0);
     for (let index = 2; index <= 3; index++) {
       largeFixture.layers.push({
         id: 'layer-chunked-' + index, name: 'Layer ' + index, visible: true, opacity: 1, locked: false,
-        pixels: Buffer.alloc(layerBytes).toString('base64')
+        pixels: makeDistinctTilePixels(2048, 1024, index - 1)
       });
     }
     const largeUploadIp = '198.51.100.77';
@@ -1070,22 +1230,36 @@ async function main() {
       .projects.find(project => project.name === 'Large chunked artwork (imported)');
     assert.ok(largeMetadata, 'large chunked import must be durably listed in the account');
     const largeStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: largeUploadHeaders })).json()).project;
+    assert.equal(largeStored.format, 'pixelforge-tiled-project',
+      'large imports must be stored as sparse tiled manifests rather than dense layer buffers');
     assert.equal(largeStored.layers.length, 3, 'all raster layers must survive chunked persistence');
     assert.equal(largeStored.serverRevision, 1, 'chunked import must receive the first server revision');
+    assert.equal(await accountPage.locator('#add-layer').isEnabled(), true,
+      'sparse layer authoring must be available with transactional layer-history support');
     failChunkOnce = true;
-    // Import may reopen the saved-project picker; close it before interacting with the layer stack.
-    if (await projectsDialog.isVisible()) {
-      await accountPage.keyboard.press('Escape');
-      await projectsDialog.waitFor({ state: 'hidden' });
-    }
-    await accountPage.locator('#add-layer').click();
+    // Force a real sparse raster edit so the retry tests a tile-manifest chunk
+    // upload rather than an unsupported dense-only layer operation.
+    await accountPage.locator('#brush-tool').click();
+    await accountPage.locator('#brush-size').evaluate(element => {
+      element.value = '9';
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const largeCanvasBox = await accountPage.locator('#canvas').boundingBox();
+    assert.ok(largeCanvasBox, 'the imported tiled canvas should have a measurable browser viewport');
+    await accountPage.mouse.click(
+      largeCanvasBox.x + largeCanvasBox.width / 2,
+      largeCanvasBox.y + largeCanvasBox.height / 2
+    );
+    await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Unsaved changes'),
+      null, { timeout: 15000 });
     await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Autosave unavailable'),
       null, { timeout: 60000 });
     await accountPage.locator('#save').click();
     await accountPage.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Saved to your CodeLab account'),
       null, { timeout: 60000 });
     const resumedStored = (await (await fetch(base + '/api/pixelforge/projects/' + largeMetadata.id, { headers: largeUploadHeaders })).json()).project;
-    assert.equal(resumedStored.layers.length, 4, 'retry after a dropped chunk must persist the complete edited document');
+    assert.equal(resumedStored.format, 'pixelforge-tiled-project');
+    assert.equal(resumedStored.layers.length, 3, 'retry after a dropped chunk must preserve every imported sparse layer');
     assert.equal(resumedStored.serverRevision, 2, 'resumed chunk upload must commit exactly one new server revision');
     fs.rmSync(largeFixturePath, { force: true });
     // Free the deliberately huge fixture before testing the independent project-count

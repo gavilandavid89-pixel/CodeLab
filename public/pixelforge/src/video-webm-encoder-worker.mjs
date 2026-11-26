@@ -1,7 +1,8 @@
 import { encodeWebMFromChunks } from './video-webm-encoder.mjs';
+import { drawFrameToCanvas, drawLayeredFrameToCanvas } from './video-capture-layout.mjs';
 
 self.onmessage = async (event) => {
-  const { frames, width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null } = event.data || {};
+  const { frames, width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null, scalingMode = 'smooth', fitMode = 'contain', focalPoint = null } = event.data || {};
   try {
     if (!Array.isArray(frames) || !frames.length) throw new Error('El codificador no recibió fotogramas.');
     if (!self.OffscreenCanvas || !self.VideoEncoder || !self.VideoFrame) {
@@ -30,22 +31,35 @@ self.onmessage = async (event) => {
     encoder.configure(config);
     const canvas = new OffscreenCanvas(width, height);
     const context = canvas.getContext('2d', { alpha: true });
-    context.imageSmoothingEnabled = false;
     let timestampUs = 0;
     for (let index = 0; index < frames.length; index++) {
       if (event.data.cancelled) throw new DOMException('Exportación cancelada.', 'AbortError');
       const frame = frames[index];
-      const bitmap = await createImageBitmap(frame.blob);
-      try {
-        const durationUs = Math.max(1000, Math.round(frame.durationMs * 1000));
-        context.clearRect(0, 0, width, height);
-        if (backgroundColor) { context.fillStyle = backgroundColor; context.fillRect(0, 0, width, height); }
-        context.drawImage(bitmap, 0, 0, width, height);
-        const vf = new VideoFrame(canvas, { timestamp: timestampUs, duration: durationUs });
-        encoder.encode(vf, { keyFrame: index === 0 || index % Math.max(1, Math.round(fps * 2)) === 0 });
-        vf.close();
-        timestampUs += durationUs;
-      } finally { bitmap.close?.(); }
+      const durationUs = Math.max(1000, Math.round(frame.durationMs * 1000));
+      if (Array.isArray(frame.layers) && frame.layers.length) {
+        const layerBitmaps = await Promise.all(frame.layers.map(async layer => ({
+          ...layer, bitmap: await createImageBitmap(layer.blob),
+        })));
+        try {
+          drawLayeredFrameToCanvas(context, layerBitmaps, frame.width || layerBitmaps[0].bitmap.width,
+            frame.height || layerBitmaps[0].bitmap.height, width, height, { backgroundColor, fitMode, focalPoint: frame.focalPoint || focalPoint });
+        } finally {
+          for (const layer of layerBitmaps) layer.bitmap.close?.();
+        }
+      } else {
+        const bitmap = await createImageBitmap(frame.blob);
+        try {
+          drawFrameToCanvas(context, bitmap, width, height, {
+            backgroundColor,
+            scalingMode: ['smooth', 'pixelated'].includes(frame.scalingMode) ? frame.scalingMode : scalingMode,
+            fitMode, focalPoint: frame.focalPoint || focalPoint
+          });
+        } finally { bitmap.close?.(); }
+      }
+      const vf = new VideoFrame(canvas, { timestamp: timestampUs, duration: durationUs });
+      encoder.encode(vf, { keyFrame: index === 0 || index % Math.max(1, Math.round(fps * 2)) === 0 });
+      vf.close();
+      timestampUs += durationUs;
       self.postMessage({ type:'progress', value:(index+1)/frames.length, label:'Codificando fotograma '+(index+1)+' de '+frames.length });
     }
     await encoder.flush();

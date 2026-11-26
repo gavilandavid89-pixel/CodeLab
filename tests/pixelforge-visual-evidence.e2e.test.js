@@ -52,7 +52,9 @@ const EXPECTED_VIDEO_SECONDS = 5;
   page.on('requestfailed', req => requestFailures.push(`${req.method()} ${req.url()} :: ${req.failure()?.errorText || 'failed'}`));
 
   try {
-    await page.goto(visualBase + '/pixelforge/index.html?createDemo=walk-crouch-24&capture=video', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Use capture=1 for layout only. capture=video starts playback during boot,
+    // which can finish before this test reaches its explicit playback assertion.
+    await page.goto(visualBase + '/pixelforge/index.html?createDemo=walk-crouch-24&capture=1', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.locator('#canvas').waitFor({ state: 'visible', timeout: 30000 });
     await page.locator('#animation-frame-count').waitFor({ state: 'visible', timeout: 30000 });
     try {

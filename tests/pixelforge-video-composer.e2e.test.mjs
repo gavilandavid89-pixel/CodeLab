@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { createZipBlob } from '../public/pixelforge/src/zip-export.js';
+import { HeadlessEditorRuntime } from '../public/pixelforge/src/headless.js';
+import { createPixelForgeCodeLabPackageZip } from '../pixelforge-codelab-package.mjs';
 
 const root = path.resolve('public/pixelforge');
 const mime = {
@@ -105,6 +107,56 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
     const videoPath = await videoDownload.path();
     assert.ok(fs.statSync(videoPath).size > 0, 'the browser encoder must produce a non-empty local video file');
   }
+
+  // Exercise the native CodeLab package path: the importer must reconstruct
+  // editable cels and preserve Illustration/Pixel Art modes per layer.
+  const runtime = new HeadlessEditorRuntime({ width: 32, height: 32, name: 'Mixed style fixture' });
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 2, y0: 4, x1: 12, y1: 4, color: '#E85D75', size: 3
+  }).ok, true);
+  const layerResult = runtime.execute({ name: 'layer.add', layerName: 'Pixel details' });
+  assert.equal(layerResult.ok, true);
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'pixel-art' }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 4, y0: 12, x1: 16, y1: 12, color: '#342D52', size: 1
+  }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'vector.object.create',
+    object: { type: 'ellipse', x: 20, y: 4, width: 8, height: 8, fill: '#55BFA3', stroke: 'none' }
+  }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'animation.frame.capture_document', frameName: 'Pose 1', durationMs: 120
+  }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 6, y0: 13, x1: 18, y1: 13, color: '#342D52', size: 1
+  }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'animation.frame.capture_document', frameName: 'Pose 2', durationMs: 140
+  }).ok, true);
+  runtime.createProposal('Native mixed-style Video Composer fixture');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const nativePackage = createPixelForgeCodeLabPackageZip(runtime.toJSON());
+  const nativePageErrors = [];
+  page.on('pageerror', error => nativePageErrors.push(error.message));
+  await page.locator('#vc-file').setInputFiles({
+    name: 'mixed-style.zip',
+    mimeType: 'application/zip',
+    buffer: nativePackage.bytes,
+  });
+  await page.waitForFunction(() => {
+    const name = document.querySelector('#vc-project-name')?.textContent || '';
+    const status = document.querySelector('#vc-export-note')?.textContent || '';
+    return name === 'mixed-style' || status.includes('No se pudo importar el ZIP:');
+  });
+  const nativeImportStatus = await page.locator('#vc-export-note').textContent();
+  assert.equal(await page.locator('#vc-project-name').textContent(), 'mixed-style',
+    'native CodeLab package import failed: ' + nativeImportStatus);
+  await page.waitForFunction(() => Number(document.querySelector('#vc-stat-frames')?.textContent || 0) === 2);
+  assert.equal(await page.locator('.vc-frame-card').count(), 2,
+    'native CodeLab packages must import every animation frame');
+  assert.deepEqual(nativePageErrors, [],
+    'native mixed-style import and per-layer composition must not raise browser errors');
 
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await mobile.goto('http://127.0.0.1:' + address.port + '/video-composer.html');
