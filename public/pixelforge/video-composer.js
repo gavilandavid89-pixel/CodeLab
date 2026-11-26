@@ -455,6 +455,33 @@ async function buildTimeline() {
   }
   ui.timeline.append(fragment);
 }
+function drawSparseCelToContext(context, cel, width, height, layerName) {
+  if (!cel || cel.format !== 'pixelforge-tiled-cel' || cel.version !== 2 ||
+      Number(cel.width) !== width || Number(cel.height) !== height || !Array.isArray(cel.tiles)) {
+    throw new Error('El manifiesto tiled de la capa ' + layerName + ' no coincide con el lienzo.');
+  }
+  const seen = new Set();
+  for (const tile of cel.tiles) {
+    if (!tile || !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
+        !Number.isInteger(tile.width) || !Number.isInteger(tile.height) ||
+        tile.x < 0 || tile.y < 0 || tile.width < 1 || tile.height < 1 ||
+        tile.x + tile.width > width || tile.y + tile.height > height ||
+        typeof tile.rgba !== 'string') {
+      throw new Error('El manifiesto contiene un tile inválido en la capa ' + layerName + '.');
+    }
+    const key = tile.x + ':' + tile.y;
+    if (seen.has(key)) throw new Error('El manifiesto contiene tiles duplicados en la capa ' + layerName + '.');
+    seen.add(key);
+    const raw = atob(tile.rgba);
+    if (raw.length !== tile.width * tile.height * 4) {
+      throw new Error('El tamaño RGBA del tile no coincide con su geometría en la capa ' + layerName + '.');
+    }
+    const pixels = new Uint8ClampedArray(raw.length);
+    for (let index = 0; index < raw.length; index++) pixels[index] = raw.charCodeAt(index);
+    context.putImageData(new ImageData(pixels, tile.width, tile.height), tile.x, tile.y);
+  }
+}
+
 async function composeNativeFrame(project, frame) {
   const width = project.width, height = project.height;
   const canvas = document.createElement('canvas');
@@ -469,13 +496,20 @@ async function composeNativeFrame(project, frame) {
     if (!cel) throw new Error('El fotograma no contiene el cel de la capa ' + layer.name + '.');
     const meta = metadataByLayer.get(String(layer.id)) || cel.metadata || {};
     if (layer.visible === false || meta.visible === false) continue;
-    const raw = atob(cel.pixels);
-    const pixels = new Uint8ClampedArray(raw.length);
-    for (let i = 0; i < raw.length; i++) pixels[i] = raw.charCodeAt(i);
-    if (pixels.length !== width * height * 4) throw new Error('El tamaño RGBA de la capa ' + layer.name + ' no coincide con el lienzo.');
     const source = document.createElement('canvas');
     source.width = width; source.height = height;
-    source.getContext('2d').putImageData(new ImageData(pixels, width, height), 0, 0);
+    const sourceContext = source.getContext('2d', { alpha: true });
+    if (!sourceContext) throw new Error('No se pudo crear la superficie de la capa ' + layer.name + '.');
+    const celManifest = cel.cel;
+    if (celManifest?.format === 'pixelforge-tiled-cel') {
+      drawSparseCelToContext(sourceContext, celManifest, width, height, layer.name || layer.id);
+    } else {
+      const raw = atob(cel.pixels || '');
+      const pixels = new Uint8ClampedArray(raw.length);
+      for (let i = 0; i < raw.length; i++) pixels[i] = raw.charCodeAt(i);
+      if (pixels.length !== width * height * 4) throw new Error('El tamaño RGBA de la capa ' + layer.name + ' no coincide con el lienzo.');
+      sourceContext.putImageData(new ImageData(pixels, width, height), 0, 0);
+    }
     const layerBlob = await new Promise((resolve, reject) => source.toBlob(value =>
       value ? resolve(value) : reject(new Error('No se pudo preparar el cel de la capa ' + layer.name + '.')), 'image/png'));
     const authoringMode = resolveDrawingMode({ cel, frame, layer, project });
