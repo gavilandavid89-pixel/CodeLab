@@ -89,8 +89,8 @@ rt.createProposal("Animación de impacto nativa en Illustration: atacante establ
 const accepted=rt.acceptProposal();
 const project=rt.toJSON();
 project.id="6f9cdb50-55a3-4d78-bd34-9cc95b54a5be";
-if(!project.layers.every(layer=>layer.authoringMode===MODE))throw new Error("Every project layer must remain Illustration.");
-if(!project.animation.frames.every(frame=>frame.authoringMode===MODE&&frame.cels.every(cel=>(cel.metadata?.authoringMode??cel.authoringMode)===MODE)))throw new Error("Every frame and cel must remain Illustration.");
+if(!project.layers.every(layer=>layer.authoringMode===M))throw new Error("Every project layer must remain Illustration.");
+if(!project.animation.frames.every(frame=>frame.authoringMode===M&&frame.cels.every(cel=>(cel.metadata?.authoringMode??cel.authoringMode)===M)))throw new Error("Every frame and cel must remain Illustration.");
 const artifact=createPixelForgeCodeLabPackageZip(project);
 const output=process.argv[2];
 if(!output)throw new Error("Pass the output .codelab package path as argv[2].");
