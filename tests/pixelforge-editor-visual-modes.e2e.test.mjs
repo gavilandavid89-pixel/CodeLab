@@ -737,18 +737,17 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     'native package must retain the incremental patch pixel in its animation cel');
   assert.equal(packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).authoringMode, 'pixel-art',
     'native package must retain per-cel authoring mode metadata');
-  assert.ok(packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).ownershipTiles.length > 0,
+  const packageMode = packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).authoringMode;
+  const packageOwnershipTileCount = packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).ownershipTiles.length;
+  assert.ok(packageOwnershipTileCount > 0,
     'native package must retain the sparse mixed-style ownership plane');
   packageAnimation.dispose();
   packageDocument.dispose();
 
   await page.locator('#import-file').setInputFiles(tiledPackagePath);
   await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Import complete and saved'), null, { timeout: 30000 });
-  await page.waitForFunction(() => {
-    const saved = window.__unused;
-    return document.querySelector('#document-size')?.textContent.includes('1024 × 1024') &&
-      document.querySelectorAll('.animation-frame').length === 2;
-  }, null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelector('#document-size')?.textContent.includes('1024 × 1024') &&
+    document.querySelectorAll('.animation-frame').length === 2, null, { timeout: 20000 });
   await page.locator('.animation-frame').nth(0).click();
   await page.waitForTimeout(80);
   await assertVisibleColor(incrementalPoint, '#f0c674', 'tiled/package-import/reloaded-pixel');
@@ -765,8 +764,9 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     height: tiledPackage.project.height,
     layers: tiledPackage.project.layers.length,
     frames: tiledPackage.project.animation.frames.length,
-    mode: packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).authoringMode,
-    ownershipTileCount: reimportedSnapshot.animation.frames[0].cels[0].cel.ownershipTiles.length,
+    mode: packageMode,
+    ownershipTileCount: packageOwnershipTileCount,
+    reimportedOwnershipTileCount: reimportedSnapshot.animation.frames[0].cels[0].cel.ownershipTiles.length,
     reimportedProjectId: reimportedSnapshot.id,
     pixel: { point: incrementalPoint, rgba: [240, 198, 116, 255] },
   }, null, 2));
