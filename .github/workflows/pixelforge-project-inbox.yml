@@ -29,6 +29,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Node for native Headless package builders
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.0'
+
       - name: Find changed project folders
         id: projects
         shell: bash
@@ -71,8 +76,18 @@ jobs:
           while IFS= read -r SLUG; do
             [[ -n "$SLUG" ]] || continue
             [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { echo "::error::Invalid project folder: $SLUG"; exit 1; }
-            PACKAGE="projects/animation-inbox/$SLUG/project.codelab"
-            test -f "$PACKAGE" || { echo "::error::Missing $PACKAGE"; exit 1; }
+            PROJECT_DIR="projects/animation-inbox/$SLUG"
+            PACKAGE="$RUNNER_TEMP/$SLUG.codelab"
+            if [[ -f "$PROJECT_DIR/project.codelab" ]]; then
+              PACKAGE="$PROJECT_DIR/project.codelab"
+            elif [[ -f "$PROJECT_DIR/build-project.mjs" ]]; then
+              echo "Building native PixelForge package through the project's documented Headless actions: $SLUG"
+              node "$PROJECT_DIR/build-project.mjs" "$PACKAGE"
+            else
+              echo "::error::Missing project.codelab or build-project.mjs in $PROJECT_DIR"
+              exit 1
+            fi
+            test -s "$PACKAGE"
             unzip -tq "$PACKAGE"
             ROOT="$RUNNER_TEMP/pixelforge-inbox-$SLUG"
             rm -rf "$ROOT" && mkdir -p "$ROOT"
