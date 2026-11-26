@@ -187,12 +187,15 @@ select(opponent.id);
 for(let index=1;index<poses.length;index++){
   run({name:"animation.frame.duplicate",index:index-1});
   const pose=poses[index];
+  let cel=null;
   if(Number.isInteger(pose.horizontalY)){
     run({name:"animation.frame.set_active",index});
     select(opponent.id);
     clear();
     drawOpponentHorizontal(pose.horizontalY);
-  }else{
+    bounds={x:0,y:260,width:170,height:140};
+    cel=stampCel(opponent.id,index);
+  }else if(pose.hold!==true){
     const transformed=run({
       name:"canvas.transform_region",...bounds,
       dx:pose.dx,dy:pose.dy,rotate:0,
@@ -207,9 +210,9 @@ for(let index=1;index<poses.length;index++){
         height:Math.min(H-Math.max(0,Math.floor(transformed.bounds.y)),Math.ceil(transformed.bounds.height))
       };
     }
+    cel=stampCel(opponent.id,index);
   }
-  const cel=stampCel(opponent.id,index);
-  if(cel.changedPixels===0) throw new Error("Pose "+index+" did not change the opponent cel.");
+  if(pose.hold!==true && cel.changedPixels===0) throw new Error("Pose "+index+" did not change the opponent cel.");
   run({name:"animation.frame.set_duration",index,durationMs:pose.duration});
 }
 run({name:"animation.frame.set_duration",index:0,durationMs:poses[0].duration});
