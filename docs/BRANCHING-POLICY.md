@@ -1,49 +1,43 @@
 # CodeLab — Branching Policy
 
-## Regla única: una sola rama de trabajo derivada de main
+## Regla única: una rama principal y una rama permanente de pruebas
 
-**CodeLab mantiene una sola rama principal: main, y permite una sola rama de trabajo activa a la vez, creada desde main.**
+**CodeLab mantiene `main` como rama principal de integración y una única rama compartida y permanente para TODO el trabajo de pruebas: `test/pixelforge-illustration-impact-animation`.** El nombre conserva su origen histórico, pero su alcance queda generalizado: no es exclusiva de la animación Illustration.
 
-El trabajo nuevo no se desarrolla directamente sobre main. Se crea una única rama temporal de trabajo a partir del último main, y allí se implementa, documenta y prueba la tarea completa.
+El desarrollo de producto se prepara desde `main` siguiendo el flujo de integración vigente. La rama de pruebas es el único destino autorizado para ejecutar y mantener pruebas, validaciones, regresiones, experimentos de QA y evidencia de cualquier área del proyecto: PixelForge, Illustration, Pixel, Animation, Video Composer, Headless, Agent, importación/exportación, documentación y demás módulos.
 
-No deben existir varias ramas de trabajo activas en paralelo. Esto aplica a features, fixes, tests, regresiones, experimentos, documentación, PixelForge, Illustration, Pixel, Animation, Video Composer, Headless, Agent, importación y exportación.
-
-La rama de trabajo es temporal: se integra en main cuando cumple los controles y luego se elimina. No se convierte en una rama permanente.
+No se crean ramas de prueba adicionales por tarea, módulo, tipo de test, experimento ni duración. La rama de pruebas NO se elimina después de cada tarea: se conserva y reutiliza para todas las pruebas futuras. Solo se elimina si el usuario cambia expresamente esta política y se establece una sustituta.
 
 ## Flujo obligatorio
 
 ~~~text
-main actualizado
+main (código fuente de integración)
     ↓
-crear UNA rama de trabajo desde main
+actualizar la rama compartida de pruebas desde main cuando corresponda
     ↓
-implementar + documentar + probar en esa rama
+test/pixelforge-illustration-impact-animation
     ↓
-revisar diferencias de código Y documentación contra main
+ejecutar TODAS las pruebas + regresiones + QA + evidencia
     ↓
-reconciliar cualquier diferencia o contradicción
+revisar código y documentación frente a main
     ↓
-ejecutar CI / Actions y verificar resultados
+reconciliar diferencias y verificar Actions
     ↓
-merge a main
-    ↓
-eliminar la rama temporal
-    ↓
-siguiente tarea: nueva rama desde el main actualizado
+reportar resultados; integrar cambios de producto por el flujo aprobado
 ~~~
 
-**Solo puede haber una rama de trabajo activa a la vez.** No se inicia otra tarea en una segunda rama mientras la rama de trabajo actual siga abierta o pendiente de integrar/cerrar.
+**La única rama de pruebas es permanente y se reutiliza indefinidamente.** Una sola rama de pruebas activa significa que no se abren ramas paralelas para cada nueva tarea.
 
 ## Antes de empezar una tarea
 
 Todo agente debe:
 
 1. Consultar el estado actual de main y confirmar su SHA.
-2. Comprobar que no haya otra rama de trabajo activa para otra tarea.
-3. Crear una sola rama temporal desde el último main.
-4. Hacer todo el trabajo de esa tarea en esa rama, incluidos tests y documentación.
-5. No crear ramas adicionales para dividir la tarea ni para ejecutar pruebas.
-6. Mantener la rama actualizada con main si main cambia durante el trabajo y reconciliar los cambios antes de integrar.
+2. Confirmar que la rama compartida `test/pixelforge-illustration-impact-animation` existe y es la única rama de pruebas autorizada.
+3. Actualizarla/reconciliarla con el `main` vigente de forma segura antes de validar cambios que dependan de código nuevo.
+4. Ejecutar allí todos los tests, regresiones, experimentos y comprobaciones, sin crear ramas paralelas.
+5. Mantener evidencia de qué SHA de `main` y qué SHA de la rama de pruebas se validaron.
+6. No renombrar, eliminar ni sustituir la rama permanente sin autorización expresa del usuario.
 
 ## Documentación: requisito obligatorio antes del merge
 
@@ -64,7 +58,7 @@ Antes de aprobar el merge hay que:
 
 ## Pruebas y verificación
 
-Las pruebas se ejecutan en la única rama de trabajo activa, que debe partir del main vigente.
+Todas las pruebas se ejecutan en la rama permanente `test/pixelforge-illustration-impact-animation`, actualizada/reconciliada con el `main` vigente.
 
 1. Registrar el SHA base de main.
 2. Implementar y ejecutar las pruebas necesarias en la rama de trabajo.
@@ -74,7 +68,7 @@ Las pruebas se ejecutan en la única rama de trabajo activa, que debe partir del
 6. Revisar el diff final de código y documentación contra main.
 7. Solo entonces fusionar.
 
-No se crea una rama separada para tests, para resultados de CI, para experimentos ni para una segunda etapa de la misma tarea.
+No se crea ninguna rama adicional para tests, resultados de CI, experimentos, módulos nuevos ni etapas posteriores. La rama compartida conserva el historial y la evidencia de pruebas.
 
 ## Ramas antiguas: clasificación para eliminación
 
@@ -93,52 +87,39 @@ La rama feat/pixelforge-tiled-spritesheet-export ya fue integrada en main. Si a�
 
 Antes de borrar una rama antigua, comprobar si contiene commits o cambios exclusivos que aún sean necesarios. Rescatar únicamente lo necesario, aplicarlo a la rama de trabajo única creada desde main, verificarlo y después eliminar la rama histórica. Nunca reanudar el desarrollo sobre una rama obsoleta.
 
-## Qué hacer si main cambia mientras se trabaja
+## Qué hacer si main cambia
 
-Si otro cambio se integra en main mientras la rama temporal está activa:
+Cuando `main` avance:
 
-- detener cualquier intento de abrir una segunda rama;
-- actualizar/rebasar la única rama de trabajo desde main según el flujo seguro del repositorio;
+- no crear una rama de pruebas nueva;
+- actualizar/reconciliar la rama permanente de pruebas con el nuevo `main` mediante merge o rebase seguro, sin descartar su historial de evidencia;
 - resolver conflictos;
-- volver a revisar código, tests y documentación;
-- repetir los checks requeridos antes del merge.
+- revisar de nuevo código, tests y documentación;
+- registrar los SHAs exactos de base y validación;
+- repetir los checks afectados.
 
 ## Regla estricta para futuros agentes
 
 Un agente no debe crear ramas paralelas porque la tarea sea grande, tenga varias etapas, necesite pruebas, sea experimental o tarde varios días.
 
-**Una sola rama temporal de trabajo a la vez. Una sola rama principal: main.** Cada tarea se termina, verifica, documenta, fusiona y limpia antes de iniciar la siguiente rama de trabajo.
+**`main` + UNA ÚNICA RAMA PERMANENTE DE PRUEBAS.** La rama de pruebas nunca se elimina al cerrar una tarea; se reutiliza para todas las pruebas futuras. La integración de cambios de producto y la promoción a `main` siguen el flujo de revisión aprobado, pero los tests siempre se ejecutan en la rama compartida.
 
 ~~~text
 main
+  ↓ sincronizar/reconciliar
+ test/pixelforge-illustration-impact-animation
   ↓
-UNA ÚNICA RAMA TEMPORAL
+TODAS las pruebas, QA y regresiones
   ↓
-código + documentación + pruebas
-  ↓
-reconciliación y verificación
-  ↓
-merge a main
-  ↓
-eliminar rama temporal
+reconciliar docs + revisar evidencia
 ~~~
 
 La existencia de ramas antiguas en GitHub no modifica esta política.
 
-## Excepción activa y acotada: prueba de animación Illustration
+## Alcance de la rama permanente
 
-La rama `test/pixelforge-illustration-impact-animation` es la **única rama de trabajo activa** para la prueba de animación basada en la imagen aportada por el usuario.
+La rama `test/pixelforge-illustration-impact-animation` se creó inicialmente para la prueba de animación Illustration basada en la imagen aportada por el usuario. **Desde esta revisión, deja de ser una rama específica de esa prueba y pasa a ser la rama permanente para TODAS las pruebas futuras de CodeLab.**
 
-Su propósito es validar una secuencia de acción en **modo Illustration exclusivamente**: preparación de poses, golpe, desplazamiento del personaje golpeado por el aire, caída y pose final en el suelo. La prueba debe realizarse dentro del flujo real de CodeLab/PixelForge y conservar un proyecto editable con sus frames y capas; un vídeo renderizado fuera del editor no demuestra la integración.
+La primera prueba que se ejecutará allí es la secuencia Illustration: preparación de poses, golpe, desplazamiento del personaje golpeado por el aire, caída y pose final en el suelo. El proyecto debe permanecer editable, con frames y capas; un vídeo externo por sí solo no demuestra la integración.
 
-Reglas específicas:
-
-- Esta rama nace del `main` vigente y es la única rama temporal autorizada mientras dure esta prueba.
-- No se debe crear otra rama para separar implementación, generación, pruebas E2E o documentación.
-- Todo el código, los assets de prueba permitidos, las pruebas y la documentación de esta tarea se mantienen en esta misma rama.
-- El modo de autoría de todos los frames/capas usados en esta prueba debe ser explícitamente `illustration` (o el identificador canónico que establezca el contrato vigente); no se debe convertir a Pixel ni inferir el modo por índice.
-- La documentación de la rama y la documentación vigente en `main` deben reconciliarse antes del merge: ningún contrato, comportamiento, límite o instrucción puede quedar contradictorio. Si esta prueba descubre una diferencia, se actualiza la documentación necesaria en esta rama y se verifica de nuevo.
-- Antes de declarar éxito, ejecutar y revisar las pruebas relevantes en el SHA exacto, inspeccionar la reproducción y validar la exportación sin deformación.
-- Al finalizar, integrar mediante el flujo de revisión/merge acordado y eliminar esta rama temporal. No convertirla en una rama permanente de pruebas.
-
-Esta excepción no cambia la política general: **solo una rama temporal activa a la vez**. Para esta tarea, la rama única activa es `test/pixelforge-illustration-impact-animation`; una vez cerrada, la siguiente tarea debe crear su propia rama desde el `main` actualizado.
+El modo de autoría de todos los frames/capas de esa prueba debe ser explícitamente `illustration` (o el identificador canónico del contrato vigente), sin inferirlo por índice ni convertirlo a Pixel. Después de esta prueba, la misma rama seguirá utilizándose para cualquier test futuro, sea o no de animación.
