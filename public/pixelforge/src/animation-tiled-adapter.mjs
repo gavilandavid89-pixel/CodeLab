@@ -1,11 +1,11 @@
 /**
- * Lossless migration adapter between the legacy dense PixelForgeAnimation v1
- * model and a tile-backed animation working document.
+ * Tile-backed animation document used by the PixelForge editor for tiled
+ * projects. The adapter also provides a lossless bridge to/from the legacy
+ * dense PixelForgeAnimation v1 model for compatibility and migration.
  *
- * This is an opt-in bridge: the editor still uses PixelForgeAnimation v1 until
- * its tools/history/serializer are migrated. The tiled document stores cels by
- * stable frame/layer identity and never needs to compose a full canvas for
- * bounded region reads or writes.
+ * Frames and layer cels are addressed by stable identity, share the project's
+ * sparse tile store, and support bounded region reads/writes without requiring
+ * a full-canvas RGBA buffer for ordinary editing and timeline operations.
  */
 import { SparseTileCelStore, DEFAULT_CEL_TILE_SIZE } from './animation-tiles.mjs';
 import { PIXELFORGE_DRAWING_MODES } from './drawing-mode-config.mjs';
