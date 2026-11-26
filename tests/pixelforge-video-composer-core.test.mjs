@@ -287,6 +287,11 @@ test('Video Composer resolves per-cel mode before frame, layer and project defau
   const js = fs.readFileSync(new URL('../public/pixelforge/video-composer.js', import.meta.url), 'utf8');
   const worker = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder-worker.mjs', import.meta.url), 'utf8');
   const encoder = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder.mjs', import.meta.url), 'utf8');
+  const exportWorker = fs.readFileSync(new URL('../pixelforge-video-composer-export.mjs', import.meta.url), 'utf8');
+  assert.match(exportWorker, /createPixelForgeCodeLabPackageZip/);
+  assert.match(exportWorker, /perLayerDrawingModes: true/);
+  assert.match(js, /vectorModelToSVG/);
+  assert.match(js, /authoringMode: 'illustration'/);
   assert.match(js, /resolveDrawingMode\(\{ cel, frame, layer, project \}\)/);
   assert.match(js, /layers: renderLayers/);
   assert.match(js, /drawingModesPresent/);
