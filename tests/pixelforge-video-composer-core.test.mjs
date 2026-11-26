@@ -220,7 +220,7 @@ test('constant-FPS resampling rejects unsafe frame explosions and invalid timeli
 
 
 test('composition guides expose centered safe bounds and video fitting never stretches source frames', async () => {
-  const { getCompositionGuide, coverSourceRect, drawFrameToCanvas } = await import('../public/pixelforge/src/video-capture-layout.mjs');
+  const { getCompositionGuide, coverSourceRect, coverSourceRectAtFocalPoint, drawFrameToCanvas } = await import('../public/pixelforge/src/video-capture-layout.mjs');
   const horizontal = getCompositionGuide(1000, 1000, 1920, 1080);
   assert.deepEqual(horizontal.safeArea, { x: 0, y: 219, width: 1000, height: 563 });
   assert.equal(horizontal.aspectRatio, '1920:1080');
@@ -228,6 +228,10 @@ test('composition guides expose centered safe bounds and video fitting never str
   assert.deepEqual(vertical.safeArea, { x: 219, y: 0, width: 563, height: 1000 });
 
   const crop = coverSourceRect(1920, 1080, 1080, 1920);
+  const rightFocused = coverSourceRectAtFocalPoint(1920, 1080, 1080, 1920, { x: 0.9, y: 0.5 });
+  assert.ok(rightFocused.x > crop.x, 'focal-point reframe should move the crop toward the requested subject');
+  assert.equal(rightFocused.width, crop.width);
+  assert.equal(rightFocused.height, crop.height);
   assert.equal(crop.width, 607.5);
   assert.equal(crop.height, 1080);
   assert.equal(crop.x, 656.25);
@@ -259,12 +263,15 @@ test('Video Composer exposes an agent-readable composition guide and routes fit 
   const encoder = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder.mjs', import.meta.url), 'utf8');
   const worker = fs.readFileSync(new URL('../public/pixelforge/src/video-webm-encoder-worker.mjs', import.meta.url), 'utf8');
   assert.match(html, /id="vc-fit-mode"/);
+  assert.match(html, /id="vc-reframe"/);
   assert.match(html, /value="cover" selected/);
   assert.match(html, /id="vc-copy-agent-guide"/);
   assert.match(js, /getCompositionGuide/);
   assert.match(js, /instagram-feed/);
   assert.match(js, /Platform profiles are output presets/);
   assert.match(js, /normalizedSafeArea/);
+  assert.match(js, /currentFocalPoint/);
+  assert.match(js, /focalPoint: currentFocalPoint\(\)/);
   assert.match(js, /drawingModesPresent/);
   assert.match(js, /layerModesByFrame/);
   assert.match(js, /Keep each layer authoring mode exactly as listed in layerModesByFrame/);
