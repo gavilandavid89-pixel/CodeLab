@@ -125,7 +125,7 @@ El proyecto editable y su revisión son la fuente de verdad. PNG, capturas y ví
 - El modo de autoría por capa/frame/cel debe sobrevivir al guardado, duplicación, importación/exportación y composición.
 - Cambiar de modo no debe resamplear, aplanar ni modificar píxeles, geometría, capas o timing.
 - En contenido mixto, el procesamiento visual debe resolver el modo por capa/cel; no aplicar un filtro global después de aplanar.
-- La migración tiled sigue siendo parcial hasta que herramientas, historia, animación, serialización y persistencia tengan paridad comprobada.
+- El editor usa el modelo tiled para documentos de al menos 1.048.576 píxeles; la integración está activa pero la paridad de herramientas sigue siendo parcial. Consultar [la auditoría post-merge PixelForge](PIXELFORGE-POST-MERGE-AUDIT-2026-11-26.md) para la lista concreta de rutas habilitadas y bloqueadas.
 
 ### Video Composer
 - El lienzo fuente mantiene su geometría. El formato de salida define el contenedor, no una deformación del proyecto.
@@ -163,13 +163,13 @@ Después de editar:
 |---|---|---|
 | Modos illustration/pixel-art | Persistencia y propagación en documentos densos, Headless y paquetes estructurados | No significa que todas las herramientas tiled estén migradas |
 | Cambio de modo | No destructivo y basado en metadatos | No debe reescribir píxeles ni geometría |
-| Capas y cels tiled | Documento tiled usado como modelo activo en proyectos de alta resolución; referencias sparse y operaciones regionales | Algunas herramientas densas y flujos auxiliares aún no tienen paridad |
-| Herramientas tiled | Brush/eraser, fill y gradientes transaccionales, selecciones geométricas y contornos de línea/rectángulo/elipse | Magic wand y transforms requieren migración/paridad |
+| Capas y cels tiled | Documento tiled usado como modelo activo desde 1.048.576 píxeles; referencias sparse y operaciones regionales | Algunas herramientas densas y flujos auxiliares aún no tienen paridad; ver auditoría post-merge |
+| Herramientas tiled | Brush/eraser, fill, gradientes, contornos geométricos, selección rectangular/elíptica/lasso, pan y eyedropper | Magic wand, transforms, clipboard, flip, color replacement y outline generation siguen bloqueados; consultar auditoría post-merge |
 | Historia tiled | Historia transaccional de trazos y operaciones de metadatos de capa; timeline conserva un historial independiente por frame | No implica que todos los comandos densos tengan equivalente tiled |
 | Animación tiled | Timeline integrada en el editor: frame switching por referencias compartidas, add/duplicate/delete/reorder, FPS/duración, onion skin regional, thumbnails sparse, playback, autosave y export por lotes | Mantener explícitas las limitaciones de herramientas tiled y no convertir cels a buffers RGBA completos |
 | Ownership Illustration/Pixel Art | Plano sparse por píxel separado de RGBA; guardas en rutas raster dense/tiled y snapshots de historia/frame | No asumir cobertura de cada caller directo, patch remoto ni export RGBA legacy |
 | Video nativo mixto | Compositor/exportador por capa conserva modo y sampling | Paquetes legacy aplanados no pueden recuperar metadatos por capa ausentes |
-| Almacenamiento remoto tiled | Manifiestos/validación y generación de patch local | No existe todavía receptor durable server-side para aplicar `pixelforge-cel-patch`; no asumir sync incremental end-to-end |
+| Persistencia tiled | Snapshots completos más patch incremental de un cel de animación cuando el cambio es elegible; endpoint PostgreSQL con revisión/CAS e idempotencia | Cambios estructurales o múltiples cels usan snapshot; el patch no sustituye todos los caminos de guardado |
 
 Este cuadro es una fotografía técnica y debe actualizarse con código y pruebas antes de cada gran hito.
 
@@ -189,15 +189,17 @@ El modo activo y la propiedad del contenido son conceptos distintos. El modo act
 
 ### 6.2 Límites de sync remoto y evidencia visual
 
-- El `pixelforge-cel-patch` generado localmente no implica que CodeLab tenga un endpoint que lo reciba, valide contra una revisión base y aplique sus deltas de forma durable. El validator de manifiestos no equivale a un receptor/aplicador de patches. Antes de implementar ese circuito, inspeccionar rutas, autorización, revisiones/CAS y backend de objetos existente.
-- La persistencia de proyectos acepta snapshots JSONB completos: `PUT /api/pixelforge/projects` o el protocolo `/uploads` por chunks, con `serverRevision` y `content_sha256` y control de revisión en `savePixelForgeProjectToDatabase()`. Los chunks reanudables son transporte de snapshot, no sync incremental.
+- El endpoint `POST /api/pixelforge/projects/:projectId/patches` ya recibe, valida y aplica de forma durable patches de cels tiled de animación bajo revisión/CAS e idempotencia PostgreSQL. No confundir este alcance con parches para cels base fuera de timeline.
+- La persistencia admite snapshots JSONB completos (`PUT /api/pixelforge/projects` o `/uploads` por chunks) y patches incrementales de un cel de animación cuando el editor confirma que el delta es elegible. Los cambios estructurales, metadatos, múltiples cels y formatos no compatibles continúan por snapshot.
 - **Envelope tiled con animación:** `pixelforge-tiled-project-validation.js` valida ahora `animation` cuando usa `pixelforge-tiled-animation` v1. Comprueba dimensiones, FPS, frame activo, IDs/orden de capas, límites de frames/duración, cels tiled y metadatos `authoringMode`; los tiles RGBA y ownership de todos los cels se validan bajo los mismos límites sparse. El proyecto y la animación se guardan juntos en el snapshot JSONB y pasan por la misma revisión/CAS.
 - **Parches incrementales:** `POST /api/pixelforge/projects/:projectId/patches` requiere sesión, proyecto tiled con animación y `baseRevision` exacta. `pixelforge-patch-store.js` valida el target frame/layer, coordenadas, dimensiones edge, base64/SHA-256, ownership 0/1/2, y aplica RGBA + ownership bajo una transacción PostgreSQL con `SELECT ... FOR UPDATE`. `codelab_pixelforge_patch_operations` garantiza idempotencia por `operationId`: repetir el mismo payload devuelve el receipt; reutilizar el ID con otro payload devuelve conflicto. El cambio del proyecto, revisión, digest y receipt se confirman en la misma transacción.
-- El cliente expone `applyCelPatch(project, patch)` en `public/pixelforge/src/persistence.js`. Esto habilita el transporte del patch, pero no convierte automáticamente cada edición del editor en patch: el coordinador de edición aún debe generar el delta y llamarlo, o seguir usando snapshot save. El endpoint aplica parches a cels tiled de animación, no a cels base fuera de timeline.
+- El cliente expone `applyCelPatch(project, patch)` y el coordinador de autosave de `editor.js` genera/aplica el patch cuando el snapshot difiere en exactamente un cel de animación y los metadatos estructurales permanecen estables. Los casos fuera de ese subconjunto usan snapshot save. El endpoint aplica parches a cels tiled de animación, no a cels base fuera de timeline.
 - El workflow verde de unit/integration/validation no sustituye una prueba browser que demuestre playback visible. Para playback, la evidencia debe comparar frames realmente renderizados durante el reloj de animación y verificar que el timeline/fixture tiene al menos dos poses visualmente distintas. No reducir el requisito a un click ni desactivar la aserción si falla.
 - Incidente E2E resuelto en el commit `55db5bd00b016ab3382cdf88d9a6a7ca1da8da69`: la página abría con `capture=video`, que iniciaba automáticamente la animación en modo no-loop; cuando el test pulsaba Play explícitamente, la reproducción podía haber llegado ya al último frame. El test ahora usa `capture=1` (solo layout) y controla el inicio de playback por sí mismo. El workflow `pixelforge-visual-animation.yml` también se activa para push y pull request de esta rama, en lugar de quedar limitado a otra rama. En ese SHA, las ejecuciones push y PR del workflow terminaron en success y publicaron el artefacto `reference-guided-soldier-animation`; el vídeo fue inspeccionado y contiene frames distintos a lo largo de la reproducción. Esto valida el fixture E2E y el playback visible de esta demo, no todas las animaciones posibles.
 
 ## 7. Documentación canónica por dominio
+
+- [Auditoría post-merge PixelForge (26-11-2026)](PIXELFORGE-POST-MERGE-AUDIT-2026-11-26.md) — estado actual, evidencia CI y brechas concretas de paridad tiled.
 
 - [Índice operativo de documentación](README.md)
 - [Política del agente y bridge](agent-ai-bridge-policy.md)
