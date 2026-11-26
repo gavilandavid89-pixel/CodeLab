@@ -35,10 +35,32 @@ function diffPlane(before, after, ownership = false) {
   return operations;
 }
 function celFreeProject(project) {
-  const copy = structuredClone(project);
+  // Build a metadata-only comparison view without cloning large base64 tile
+  // payloads. The editor already holds the previous confirmed snapshot and the
+  // freshly serialized snapshot; copying both full manifests here multiplies
+  // peak memory for high-resolution projects.
+  const copy = { ...project };
   delete copy.revision; delete copy.saveVersion; delete copy.serverRevision; delete copy.dirty;
-  for (const layer of copy.layers || []) delete layer.cel;
-  for (const frame of copy.animation?.frames || []) for (const entry of frame.cels || []) delete entry.cel;
+  if (Array.isArray(project.layers)) {
+    copy.layers = project.layers.map(layer => {
+      const metadata = { ...layer };
+      delete metadata.cel;
+      return metadata;
+    });
+  }
+  if (project.animation && Array.isArray(project.animation.frames)) {
+    copy.animation = {
+      ...project.animation,
+      frames: project.animation.frames.map(frame => ({
+        ...frame,
+        cels: (frame.cels || []).map(entry => {
+          const metadata = { ...entry };
+          delete metadata.cel;
+          return metadata;
+        }),
+      })),
+    };
+  }
   return copy;
 }
 
