@@ -109,7 +109,12 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   project.drawingConfiguration = { version: 1, availableModes: ['illustration', 'pixel-art'], initialMode: 'illustration', activeMode: 'pixel-art' };
   project.layers[0].authoringMode = 'illustration';
   project.animation.frames[0].authoringMode = 'illustration';
-  project.animation.frames[0].layerMetadata[0] = { ...(project.animation.frames[0].layerMetadata[0] || {}), authoringMode: 'pixel-art', modeOverrides: { illustration: { brushSize: 7 } } };
+  const mixedOwners = new Uint8Array(project.width * project.height);
+  mixedOwners[5 * project.width + 4] = 1;
+  mixedOwners[5 * project.width + 5] = 2;
+  const ownershipTiles = [{ x: 0, y: 0, width: Math.min(64, project.width), height: Math.min(64, project.height), owners: Buffer.from(mixedOwners.subarray(0, Math.min(64, project.width) * Math.min(64, project.height))).toString('base64') }];
+  project.animation.frames[0].layerMetadata[0] = { ...(project.animation.frames[0].layerMetadata[0] || {}), authoringMode: 'pixel-art', modeOverrides: { illustration: { brushSize: 7 } }, ownershipTiles };
+  project.animation.frames[0].cels[0].metadata = { ...(project.animation.frames[0].cels[0].metadata || {}), ownershipTiles };
   if (project.animation.frames[1]) {
     project.animation.frames[1].authoringMode = 'pixel-art';
     project.animation.frames[1].layerMetadata[0] = { ...(project.animation.frames[1].layerMetadata[0] || {}), authoringMode: 'illustration' };
@@ -166,6 +171,8 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   assert.equal(imported.project.animation.frames[0].authoringMode, 'illustration', 'frame authoring mode must survive the package');
   assert.equal(imported.project.animation.frames[0].cels[0].metadata.authoringMode, 'pixel-art', 'per-cel authoring mode must survive the package');
   assert.deepEqual(imported.project.animation.frames[0].cels[0].metadata.modeOverrides, { illustration: { brushSize: 7 } }, 'per-cel mode profiles must survive the package');
+  assert.deepEqual(imported.project.animation.frames[0].cels[0].metadata.ownershipTiles, ownershipTiles, 'per-cel mixed-style ownership must survive the CodeLab ZIP round-trip');
+  assert.deepEqual(imported.project.animation.frames[0].layerMetadata[0].ownershipTiles, ownershipTiles, 'layer metadata must preserve the same cel ownership map');
   if (project.animation.frames[1]) {
     assert.equal(imported.project.animation.frames[1].authoringMode, 'pixel-art');
     assert.equal(imported.project.animation.frames[1].cels[0].metadata.authoringMode, 'illustration');
