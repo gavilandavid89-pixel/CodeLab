@@ -2,7 +2,7 @@ import { encodeWebMFromChunks } from './video-webm-encoder.mjs';
 import { drawFrameToCanvas, drawLayeredFrameToCanvas } from './video-capture-layout.mjs';
 
 self.onmessage = async (event) => {
-  const { frames, width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null, scalingMode = 'smooth', fitMode = 'contain' } = event.data || {};
+  const { frames, width, height, codec = 'vp9', fps = 12, durationMs = 0, backgroundColor = null, scalingMode = 'smooth', fitMode = 'contain', focalPoint = null } = event.data || {};
   try {
     if (!Array.isArray(frames) || !frames.length) throw new Error('El codificador no recibió fotogramas.');
     if (!self.OffscreenCanvas || !self.VideoEncoder || !self.VideoFrame) {
@@ -42,7 +42,7 @@ self.onmessage = async (event) => {
         })));
         try {
           drawLayeredFrameToCanvas(context, layerBitmaps, frame.width || layerBitmaps[0].bitmap.width,
-            frame.height || layerBitmaps[0].bitmap.height, width, height, { backgroundColor, fitMode });
+            frame.height || layerBitmaps[0].bitmap.height, width, height, { backgroundColor, fitMode, focalPoint: frame.focalPoint || focalPoint });
         } finally {
           for (const layer of layerBitmaps) layer.bitmap.close?.();
         }
@@ -52,7 +52,7 @@ self.onmessage = async (event) => {
           drawFrameToCanvas(context, bitmap, width, height, {
             backgroundColor,
             scalingMode: ['smooth', 'pixelated'].includes(frame.scalingMode) ? frame.scalingMode : scalingMode,
-            fitMode
+            fitMode, focalPoint: frame.focalPoint || focalPoint
           });
         } finally { bitmap.close?.(); }
       }
