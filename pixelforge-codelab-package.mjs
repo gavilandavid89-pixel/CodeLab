@@ -283,6 +283,7 @@ function addAnimation(project, files) {
         authoringMode: ['illustration', 'pixel-art'].includes(cel?.metadata?.authoringMode ?? cel?.authoringMode ?? metadata.authoringMode ?? layer.authoringMode)
           ? (cel?.metadata?.authoringMode ?? cel?.authoringMode ?? metadata.authoringMode ?? layer.authoringMode) : 'pixel-art',
         modeOverrides: structuredClone(cel?.metadata?.modeOverrides ?? metadata.modeOverrides ?? layer.modeOverrides ?? {}),
+        ownershipTiles: structuredClone(cel?.metadata?.ownershipTiles ?? metadata.ownershipTiles ?? layer.ownershipTiles ?? []),
         pixelsPath, position: { x: Number(layer.x ?? 0), y: Number(layer.y ?? 0) },
         x: Number(layer.x ?? 0), y: Number(layer.y ?? 0), scaleX: Number(layer.scaleX ?? 1), scaleY: Number(layer.scaleY ?? 1),
         rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1),
