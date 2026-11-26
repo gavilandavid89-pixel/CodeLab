@@ -16,6 +16,7 @@ const { URL } = require('url');
 const designTools = require('./public/design-tools.js');
 const pixelForgeUploads = require('./pixelforge-upload-store.js');
 const { validatePixelForgeTiledProjectPayload } = require('./pixelforge-tiled-project-validation.js');
+const pixelForgePatches = require('./pixelforge-patch-store.js');
 const neonEvidence = require('./neon-pixelforge-evidence.js');
 
 const PORT = process.env.PORT || 3000;
@@ -864,6 +865,7 @@ async function ensurePixelForgeTable() {
     ON codelab_pixelforge_projects (workspace_id, last_opened_at DESC)
   `);
   await pixelForgeUploads.ensureSchema(accountPool);
+  await pixelForgePatches.ensureSchema(accountPool);
   // Evidence is an auxiliary capability: a storage/schema issue must not take
   // the PixelForge editor itself offline. Saves remain durable in PostgreSQL.
   try {
@@ -3499,6 +3501,35 @@ const server = http.createServer(async (req, res) => {
         if (!row.rowCount || row.rows[0].target_workspace_id !== targetWorkspace) return sendJson(res, 404, { error: 'capture_command_not_found' });
         const result = row.rows[0];
         return sendJson(res, 200, { commandId: result.command_id, action: result.action, status: result.status, result: result.result, createdAt: result.created_at, startedAt: result.started_at, finishedAt: result.finished_at, expiresAt: result.expires_at });
+      }
+
+      // Apply a single tiled cel delta atomically against the project's current server revision.
+      const pixelForgePatchMatch = req.method === 'POST'
+        ? pathname.match(/^\\/api\\/pixelforge\\/projects\\/([A-Za-z0-9_-]{1,100})\\/patches$/) : null;
+      if (pixelForgePatchMatch) {
+        const user = await getSessionUser(req);
+        if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
+        if (!accountPool || !pixelForgeTableReady) return sendJson(res, 503, { error: 'pixelforge_database_unavailable' });
+        const workspaceId = PIXELFORGE_GUEST_MODE ? PIXELFORGE_GUEST_WORKSPACE_ID : userWorkspaceId(user);
+        try {
+          const projectId = decodePixelForgeProjectId(pixelForgePatchMatch[1]);
+          if (!projectId) return sendJson(res, 400, { error: 'invalid_project_id' });
+          const patch = await readBody(req, PIXELFORGE_MAX_PROJECT_BYTES);
+          const result = await pixelForgePatches.applyPatchToDatabase(accountPool, workspaceId, projectId, patch, {
+            validateProject: validatePixelForgeProjectPayload,
+            maxProjectBytes: PIXELFORGE_MAX_PROJECT_BYTES,
+            maxAccountBytes: PIXELFORGE_MAX_ACCOUNT_BYTES,
+          });
+          return sendJson(res, result.replayed ? 200 : 200, result);
+        } catch (error) {
+          const status = error.status || (error.code === 'PAYLOAD_TOO_LARGE' ? 413 : ['INVALID_JSON', 'REQUEST_ABORTED'].includes(error.code) ? 400 : 503);
+          if (status >= 500) console.error('PixelForge cel patch failed:', error.message);
+          return sendJson(res, status, {
+            error: error.code || 'pixelforge_patch_failed',
+            ...(Number.isInteger(error.revision) ? { revision: error.revision } : {}),
+            ...(Number.isInteger(error.maxBytes) ? { maxBytes: error.maxBytes } : {})
+          });
+        }
       }
 
       // PixelForge projects belong to the signed-in CodeLab account, not browser-local storage.
