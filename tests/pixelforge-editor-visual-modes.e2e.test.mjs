@@ -733,7 +733,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
     const canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height;
     const context = canvas.getContext('2d'); context.drawImage(bitmap, 0, 0);
-    const pixel = [...context.getImageData(2, 2, 1, 1).data];
+    const pixel = [...context.getImageData(1 + ${incrementalPoint.x}, 1 + ${incrementalPoint.y}, 1, 1).data];
     return { width: bitmap.width, height: bitmap.height, pixel };
   }, spritePngBase64);
   assert.deepEqual(spritePixel, { width: 1026, height: 1026, pixel: [240, 198, 116, 255] },
