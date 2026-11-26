@@ -728,14 +728,14 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.equal(spriteManifest.frames.length, 1);
   assert.equal(spriteManifest.frames[0].authoringMode, 'pixel-art');
   const spritePngBase64 = Buffer.from(await spritePngEntry.blob.arrayBuffer()).toString('base64');
-  const spritePixel = await page.evaluate(async base64 => {
+  const spritePixel = await page.evaluate(async ({ base64, x, y }) => {
     const binary = atob(base64), bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
     const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
     const canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height;
     const context = canvas.getContext('2d'); context.drawImage(bitmap, 0, 0);
-    const pixel = [...context.getImageData(1 + ${incrementalPoint.x}, 1 + ${incrementalPoint.y}, 1, 1).data];
+    const pixel = [...context.getImageData(1 + x, 1 + y, 1, 1).data];
     return { width: bitmap.width, height: bitmap.height, pixel };
-  }, spritePngBase64);
+  }, { base64: spritePngBase64, x: incrementalPoint.x, y: incrementalPoint.y });
   assert.deepEqual(spritePixel, { width: 1026, height: 1026, pixel: [240, 198, 116, 255] },
     'tiled sprite-sheet export must preserve exact source pixels and one-pixel padding');
   await fs.promises.writeFile(path.join(artifactDir, 'tiled-spritesheet-evidence.json'), JSON.stringify({
