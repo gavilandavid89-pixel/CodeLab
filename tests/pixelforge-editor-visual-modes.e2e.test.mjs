@@ -679,9 +679,13 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   const patchCountBeforeIncrementalDraw = receivedCelPatches.length;
   const fullSaveCountBeforeIncrementalDraw = fullSnapshotSaveCount;
   await drawAt(incrementalPoint);
-  await page.waitForTimeout(1300);
+  await assertVisibleColor(incrementalPoint, '#f0c674', 'tiled/incremental-patch/local-draw');
+  await page.waitForTimeout(1800);
   assert.ok(receivedCelPatches.length > patchCountBeforeIncrementalDraw,
-    'a one-cel drawing edit must reach POST /projects/:id/patches through editor autosave');
+    'a one-cel drawing edit must reach POST /projects/:id/patches through editor autosave ' +
+    JSON.stringify({ patchesBefore: patchCountBeforeIncrementalDraw, patchesAfter: receivedCelPatches.length,
+      fullPutsBefore: fullSaveCountBeforeIncrementalDraw, fullPutsAfter: fullSnapshotSaveCount,
+      status: await page.locator('#status').textContent().catch(() => 'status-unavailable') }));
   assert.equal(fullSnapshotSaveCount, fullSaveCountBeforeIncrementalDraw,
     'an eligible single-cel edit must not fall back to a full-project PUT');
   const incrementalPatch = receivedCelPatches.at(-1);
