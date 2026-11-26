@@ -1,7 +1,7 @@
 # Referencia completa de capacidades de PixelForge Headless
 
-**Estado:** referencia técnica de capacidades implementadas en la rama `main`.  
-**Fuente primaria del runtime:** `public/pixelforge/src/headless.js`, especialmente `HEADLESS_CAPABILITIES` y `HeadlessEditorRuntime`.  
+**Estado:** referencia técnica de capacidades implementadas; verificar siempre contra el artefacto Headless instalado y la rama/commit que lo generó.  
+**Fuente primaria del runtime:** `public/pixelforge/src/headless.js`, especialmente `HEADLESS_CAPABILITIES` y `HeadlessEditorRuntime`. Para la invocación directa desde un agente, consultar también [API Headless para agentes](HEADLESS-AGENT-API-REFERENCE.md), que reúne métodos públicos, acciones y argumentos principales.  
 **Catálogo complementario:** `CODELAB-PIXELFORGE-COMMAND-CATALOG.md`, que documenta también la mailbox, el worker y los comandos externos.
 
 Este documento explica qué puede hacer el runtime Headless, para qué sirve cada familia de operaciones, cómo se usa, qué comportamiento debe esperar el agente y cuáles son sus límites. Describe capacidades reales del runtime, no promesas de funciones que solo existan en la interfaz gráfica o en otros servicios.
