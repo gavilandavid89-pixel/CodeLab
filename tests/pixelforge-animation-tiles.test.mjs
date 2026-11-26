@@ -141,7 +141,7 @@ test('sparse cel store deduplicates immutable tiles and applies copy-on-write ed
     frameId: 'frame-1', layerId: 'layer-1',
   });
   assert.equal(patch.format, 'pixelforge-cel-patch');
-  assert.deepEqual(patch.summary, { added: 0, changed: 1, removed: 0 });
+  assert.deepEqual(patch.summary, { added: 0, changed: 1, removed: 0, ownershipAdded: 0, ownershipChanged: 0, ownershipRemoved: 0 });
   assert.equal(patch.operations.length, 1);
   assert.equal(patch.operations[0].type, 'tile.put');
   assert.deepEqual([patch.operations[0].x, patch.operations[0].y], [0, 0]);
@@ -194,7 +194,7 @@ test('sparse cel store removes empty tiles and rejects invalid cache budgets', a
     projectId: 'project-2', baseRevision: 3, operationId: 'operation-remove',
     frameId: 'frame-2', layerId: 'layer-2',
   });
-  assert.deepEqual(removalPatch.summary, { added: 0, changed: 0, removed: 1 });
+  assert.deepEqual(removalPatch.summary, { added: 0, changed: 0, removed: 1, ownershipAdded: 0, ownershipChanged: 0, ownershipRemoved: 0 });
   assert.deepEqual(removalPatch.operations, [{ type: 'tile.remove', x: 0, y: 0 }]);
   store.releaseCel(celId);
   store.releaseCel(cloneId);
