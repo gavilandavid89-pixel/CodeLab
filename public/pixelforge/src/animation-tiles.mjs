@@ -399,13 +399,46 @@ export class SparseTileCelStore {
 
   async createCelFromPixels(pixels, options) {
     const document = await encodeSparseTiles(pixels, options);
-    if (options?.ownershipTiles instanceof Map) {
-      document.ownershipTiles = await Promise.all([...options.ownershipTiles].map(async ([key, owners]) => {
-        const [tileX, tileY] = key.split(':').map(Number), x = tileX * document.tileSize, y = tileY * document.tileSize;
-        const width = Math.min(document.tileSize, document.width - x), height = Math.min(document.tileSize, document.height - y);
-        if (!(owners instanceof Uint8Array) || owners.byteLength !== width * height) throw new TypeError('Dense ownership tile dimensions do not match the sparse cel.');
-        return { x, y, width, height, sha256: await sha256(owners), owners: bytesToBase64(owners) };
-      }));
+    if (options?.ownershipTiles instanceof Map && options.ownershipTiles.size) {
+      // Dense RasterDocument / PixelForgeAnimation ownership uses a fixed
+      // 64px logical grid. Re-tile that plane to the sparse cel's chosen tile
+      // size instead of assuming both grids have identical coordinates.
+      const ownerTileSize = options.ownershipTileSize ?? 64;
+      assertTileSize(ownerTileSize);
+      const ownerPlane = new Uint8Array(document.width * document.height);
+      for (const [key, owners] of options.ownershipTiles) {
+        const [tileX, tileY] = key.split(':').map(Number);
+        const x = tileX * ownerTileSize, y = tileY * ownerTileSize;
+        const ownerWidth = Math.min(ownerTileSize, document.width - x);
+        const ownerHeight = Math.min(ownerTileSize, document.height - y);
+        if (!Number.isInteger(tileX) || !Number.isInteger(tileY) || tileX < 0 || tileY < 0 ||
+            ownerWidth < 1 || ownerHeight < 1 || !(owners instanceof Uint8Array) ||
+            owners.byteLength !== ownerWidth * ownerHeight) {
+          throw new TypeError('Dense ownership tile dimensions do not match the source ownership grid.');
+        }
+        for (let row = 0; row < ownerHeight; row++) {
+          ownerPlane.set(owners.subarray(row * ownerWidth, (row + 1) * ownerWidth),
+            (y + row) * document.width + x);
+        }
+      }
+      document.ownershipTiles = [];
+      for (let y = 0; y < document.height; y += document.tileSize) {
+        for (let x = 0; x < document.width; x += document.tileSize) {
+          const width = Math.min(document.tileSize, document.width - x);
+          const height = Math.min(document.tileSize, document.height - y);
+          const owners = new Uint8Array(width * height);
+          let nonzero = false;
+          for (let row = 0; row < height; row++) {
+            const source = ownerPlane.subarray((y + row) * document.width + x,
+              (y + row) * document.width + x + width);
+            owners.set(source, row * width);
+            if (!nonzero && source.some(value => value !== 0)) nonzero = true;
+          }
+          if (nonzero) document.ownershipTiles.push({
+            x, y, width, height, sha256: await sha256(owners), owners: bytesToBase64(owners),
+          });
+        }
+      }
     }
     return this.createCel(document);
   }

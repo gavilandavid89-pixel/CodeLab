@@ -242,3 +242,31 @@ test('tiled animation restore refuses to discard ownership without an exact snap
   assert.deepEqual([...tiled.readOwnershipRegion(0, 'ink', { x: 0, y: 0, width: 1, height: 1 })], [1]);
   tiled.dispose();
 });
+
+
+test('dense 64px ownership grid is losslessly re-tiled for 32px sparse animation cels', async () => {
+  const animation = new PixelForgeAnimation({ width: 64, height: 64, layerIds: ['ink'] });
+  const pixels = new Uint8ClampedArray(64 * 64 * 4);
+  pixels.set([70, 80, 90, 255], 0);
+  pixels.set([100, 110, 120, 255], (40 * 64 + 40) * 4);
+  animation.setLayerPixels(0, 'ink', pixels);
+  const owners = new Uint8Array(64 * 64);
+  owners[0] = 1;
+  owners[40 * 64 + 40] = 2;
+  animation.setLayerMetadata(0, 'ink', {
+    authoringMode: 'illustration',
+    ownershipTiles: [{ tileX: 0, tileY: 0, owners: Buffer.from(owners).toString('base64') }],
+  });
+
+  const tiled = await TiledAnimationDocument.fromAnimation(animation, { tileSize: 32 });
+  const manifest = await tiled.toManifest();
+  const ownerTiles = manifest.frames[0].cels[0].cel.ownershipTiles;
+  assert.equal(ownerTiles.length, 2);
+  assert.deepEqual(ownerTiles.map(tile => [tile.x, tile.y]), [[0, 0], [32, 32]]);
+  assert.deepEqual([...tiled.readOwnershipRegion(0, 'ink', { x: 0, y: 0, width: 1, height: 1 })], [1]);
+  assert.deepEqual([...tiled.readOwnershipRegion(0, 'ink', { x: 40, y: 40, width: 1, height: 1 })], [2]);
+  const restored = await TiledAnimationDocument.fromManifest(manifest);
+  assert.deepEqual([...restored.readOwnershipRegion(0, 'ink', { x: 40, y: 40, width: 1, height: 1 })], [2]);
+  restored.dispose();
+  tiled.dispose();
+});

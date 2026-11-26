@@ -330,3 +330,22 @@ test('restore paths refuse to change owned pixels without exact owner snapshots'
   assert.deepEqual([...tiled.readOwnershipRegion(layerId, { x: 0, y: 0, width: 1, height: 1 })], [1]);
   tiled.dispose();
 });
+
+
+test('dense 64px layer ownership grid is re-tiled when migrating to 32px sparse project cels', async () => {
+  const source = new RasterDocument(64, 64, 'Dense ownership retile');
+  source.activeLayer.pixels.set([70, 80, 90, 255], 0);
+  source.activeLayer.pixels.set([100, 110, 120, 255], (40 * 64 + 40) * 4);
+  const owners = new Uint8Array(64 * 64);
+  owners[0] = 1;
+  owners[40 * 64 + 40] = 2;
+  source.activeLayer.ownershipTiles = new Map([['0:0', owners]]);
+  const tiled = await TiledRasterProjectDocument.fromDocument(source, { tileSize: 32 });
+  const manifest = await tiled.toManifest();
+  const ownerTiles = manifest.layers[0].cel.ownershipTiles;
+  assert.equal(ownerTiles.length, 2);
+  assert.deepEqual(ownerTiles.map(tile => [tile.x, tile.y]), [[0, 0], [32, 32]]);
+  assert.deepEqual([...tiled.readOwnershipRegion(source.activeLayer.id, { x: 0, y: 0, width: 1, height: 1 })], [1]);
+  assert.deepEqual([...tiled.readOwnershipRegion(source.activeLayer.id, { x: 40, y: 40, width: 1, height: 1 })], [2]);
+  tiled.dispose();
+});
