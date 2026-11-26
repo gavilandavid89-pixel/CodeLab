@@ -39,6 +39,8 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
 }, async t => {
   await fs.promises.mkdir(artifactDir, { recursive: true });
   const savedProjectSnapshots = [];
+  const receivedCelPatches = [];
+  const appliedPatchReceipts = new Map();
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
     if (url.pathname === '/api/pixelforge/mode') {
@@ -63,11 +65,81 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
       }
       return;
     }
+    const patchRoute = url.pathname.match(/^\/api\/pixelforge\/projects\/([^/]+)\/patches$/);
+    if (patchRoute && request.method === 'POST') {
+      let patch;
+      try {
+        let body = '';
+        for await (const chunk of request) body += chunk;
+        patch = JSON.parse(body);
+      } catch {
+        response.writeHead(400, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: 'invalid_patch' }));
+        return;
+      }
+      const replay = appliedPatchReceipts.get(patch.operationId);
+      if (replay) {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify(replay));
+        return;
+      }
+      const projectId = decodeURIComponent(patchRoute[1]);
+      const current = [...savedProjectSnapshots].reverse().find(item => item.id === projectId);
+      if (!current || patch.projectId !== projectId || patch.baseRevision !== (current.serverRevision || 1)) {
+        response.writeHead(409, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: 'pixelforge_revision_conflict' }));
+        return;
+      }
+      const updated = structuredClone(current);
+      const frame = updated.animation?.frames?.find(item => item.id === patch.frameId);
+      const entry = frame?.cels?.find(item => item.layerId === patch.layerId);
+      if (!entry?.cel) {
+        response.writeHead(409, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: 'patch_target_not_found' }));
+        return;
+      }
+      const applyPlane = (items, operation, prefix, dataKey) => {
+        const key = item => item.x + ':' + item.y;
+        const index = items.findIndex(item => key(item) === operation.x + ':' + operation.y);
+        if (operation.type === prefix + '.remove') {
+          if (index >= 0) items.splice(index, 1);
+        } else if (operation.type === prefix + '.put') {
+          const tile = { x: operation.x, y: operation.y, width: operation.width, height: operation.height, sha256: operation.sha256, [dataKey]: operation[dataKey] };
+          if (index >= 0) items[index] = tile; else items.push(tile);
+        }
+      };
+      entry.cel.tiles ||= [];
+      entry.cel.ownershipTiles ||= [];
+      for (const operation of patch.operations || []) {
+        if (operation.type.startsWith('tile.')) applyPlane(entry.cel.tiles, operation, 'tile', 'rgba');
+        else if (operation.type.startsWith('ownership.')) applyPlane(entry.cel.ownershipTiles, operation, 'ownership', 'owners');
+        else {
+          response.writeHead(400, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({ error: 'invalid_patch_operation' }));
+          return;
+        }
+      }
+      entry.cel.tiles.sort((a, b) => a.y - b.y || a.x - b.x);
+      entry.cel.ownershipTiles.sort((a, b) => a.y - b.y || a.x - b.x);
+      const frameIndex = updated.animation.frames.findIndex(item => item.id === patch.frameId);
+      if (frameIndex === updated.animation.activeFrameIndex) {
+        const layer = updated.layers?.find(item => item.id === patch.layerId);
+        if (layer) layer.cel = structuredClone(entry.cel);
+      }
+      updated.serverRevision = (current.serverRevision || 1) + 1;
+      savedProjectSnapshots.push(updated);
+      receivedCelPatches.push(structuredClone(patch));
+      const receipt = { project: { ...updated }, operationId: patch.operationId, serverRevision: updated.serverRevision };
+      appliedPatchReceipts.set(patch.operationId, receipt);
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(receipt));
+      return;
+    }
     if (url.pathname.startsWith('/api/pixelforge/projects/')) {
       const id = decodeURIComponent(url.pathname.slice('/api/pixelforge/projects/'.length));
       const project = [...savedProjectSnapshots].reverse().find(item => item.id === id) || null;
       response.writeHead(project ? 200 : 404, { 'content-type': 'application/json' });
-      response.end(JSON.stringify(project ? { project: { ...project, serverRevision: 1 } } : { error: 'project_not_found' }));
+      response.end(JSON.stringify(project ? { project: { ...project, serverRevision: project.serverRevision || 1 } } : { error: 'project_not_found' }));
       return;
     }
     const pathname = decodeURIComponent(url.pathname);
@@ -592,6 +664,51 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await page.waitForTimeout(60);
   await assertVisibleColor(frame0Point, '#e84a5f', 'tiled/timeline/restored-frame-0');
 
+  // Exercise the actual editor autosave integration: one isolated brush stroke
+  // after reload must POST a single-cel patch (not a full project PUT), advance
+  // the server revision, and survive another reload from the patched manifest.
+  await setMode('illustration');
+  await setSymmetry(0);
+  await setColor('#f0c674');
+  await setValue('#brush-size', 5);
+  await setValue('#brush-hardness', 100);
+  await setValue('#brush-opacity', 100);
+  const incrementalPoint = { x: 900, y: 900 };
+  await drawAt(incrementalPoint);
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('Saved to your CodeLab account'), null, { timeout: 15000 }).catch(() => {});
+  await page.waitForFunction(() => window.__pixelforgePatchTestCount > 0, null, { timeout: 1000 }).catch(() => {});
+  // The in-process server records the real request; poll through a test-only
+  // endpoint rather than exposing mutable test state on the browser window.
+  await page.waitForTimeout(1200);
+  assert.ok(receivedCelPatches.length >= 1,
+    'a one-cel drawing edit must reach POST /projects/:id/patches through editor autosave');
+  const incrementalPatch = receivedCelPatches.at(-1);
+  assert.equal(incrementalPatch.format, 'pixelforge-cel-patch');
+  assert.equal(incrementalPatch.frameId, savedProjectSnapshots.at(-1).animation.frames[0].id);
+  assert.ok(incrementalPatch.operations.some(operation => operation.type === 'tile.put'),
+    'the brush edit must be encoded as a tile.put operation');
+  const patchedSnapshot = [...savedProjectSnapshots].reverse().find(project => project.id === savedTiled.id);
+  assert.ok(patchedSnapshot.serverRevision >= 2, 'successful cel patch must advance the server revision');
+  const patchedFrame = patchedSnapshot.animation.frames.find(item => item.id === incrementalPatch.frameId);
+  const patchedCel = patchedFrame.cels.find(item => item.layerId === incrementalPatch.layerId).cel;
+  assert.ok(patchedCel.tiles.some(tile => tile.sha256 === incrementalPatch.operations.find(operation => operation.type === 'tile.put').sha256),
+    'the patch receiver must persist the exact changed tile in the animation cel');
+
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.documentElement.dataset.pixelforgeReady === 'true', null, { timeout: 30000 });
+  await page.waitForFunction(() => document.querySelectorAll('.animation-frame').length === 2, null, { timeout: 20000 });
+  await page.locator('.animation-frame').nth(0).click();
+  await page.waitForTimeout(80);
+  await assertVisibleColor(incrementalPoint, '#f0c674', 'tiled/incremental-patch/reloaded-pixel');
+
+  await fs.promises.writeFile(path.join(artifactDir, 'cel-patch-persistence-evidence.json'), JSON.stringify({
+    patchCount: receivedCelPatches.length,
+    operationId: incrementalPatch.operationId,
+    baseRevision: incrementalPatch.baseRevision,
+    persistedServerRevision: patchedSnapshot.serverRevision,
+    operations: incrementalPatch.operations.map(operation => ({ type: operation.type, x: operation.x, y: operation.y, sha256: operation.sha256 })),
+    reloadedPixel: { point: incrementalPoint, color: '#f0c674' },
+  }, null, 2));
   await fs.promises.writeFile(path.join(artifactDir, 'tiled-visual-matrix.json'), JSON.stringify(tiledMatrix, null, 2));
   await fs.promises.writeFile(path.join(artifactDir, 'visual-matrix.json'), JSON.stringify({ matrix, interpolationEvidence, tiledMatrix }, null, 2));
   await page.close();
