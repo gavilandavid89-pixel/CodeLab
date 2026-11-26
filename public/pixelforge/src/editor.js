@@ -922,6 +922,7 @@ async function persistEditorSnapshot(snapshot, targetDoc) {
     // Replaying the exact operationId lets the server return its durable receipt.
     await applyCelPatch(pendingCelPatch.snapshot, pendingCelPatch.patch);
     targetDoc.serverRevision = pendingCelPatch.snapshot.serverRevision;
+    snapshot.serverRevision = targetDoc.serverRevision;
     lastConfirmedProjectSnapshot = structuredClone(pendingCelPatch.snapshot);
     pendingCelPatch = null;
   }
