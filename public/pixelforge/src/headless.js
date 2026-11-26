@@ -406,13 +406,7 @@ export class HeadlessEditorRuntime {
       frame.authoringMode = mode;
       const ownershipTiles = [...(layer.ownershipTiles || new Map())].map(([key, owners]) => {
         const [tileX, tileY] = key.split(':').map(Number);
-        const x = tileX * 64, y = tileY * 64;
-        return {
-          x, y,
-          width: Math.min(64, this.#workspace.sandbox.width - x),
-          height: Math.min(64, this.#workspace.sandbox.height - y),
-          owners: encodeBase64(owners),
-        };
+        return { tileX, tileY, owners: encodeBase64(owners) };
       });
       const cel = frame.cels?.find(item => item.layerId === layer.id);
       if (cel) cel.metadata = { ...(cel.metadata || {}), authoringMode: mode, ownershipTiles: structuredClone(ownershipTiles) };
