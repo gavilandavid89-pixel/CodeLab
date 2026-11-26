@@ -106,11 +106,11 @@ test('server enforces the serialized project cap and accepts a valid tiled anima
 
   const invalid = structuredClone(project);
   invalid.animation.frames[0].cels[0].layerId = 'missing-layer';
-  assert.equal(validation.validatePixelForgeTiledProjectPayload(invalid).error, 'invalid_pixelforge_project');
+  assert.equal(validation.validatePixelForgeTiledProjectPayload(invalid).error, 'invalid_pixelforge_animation');
 
   const badMode = structuredClone(project);
   badMode.animation.frames[0].cels[0].metadata.authoringMode = 'unknown';
-  assert.equal(validation.validatePixelForgeTiledProjectPayload(badMode).error, 'invalid_pixelforge_project');
+  assert.equal(validation.validatePixelForgeTiledProjectPayload(badMode).error, 'invalid_pixelforge_animation');
 });
 
 test('server rejects invalid layer metadata and active-layer references', () => {
