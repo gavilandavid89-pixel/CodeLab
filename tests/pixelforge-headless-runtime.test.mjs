@@ -30,6 +30,58 @@ test('headless runtime preserves project drawing modes through edits and seriali
   assert.equal(saved.layers[0].authoringMode, 'pixel-art', 'agent raster edits must stamp the active mode onto the edited layer');
 });
 
+test('Headless switches drawing mode before raster writes and enforces mixed-style pixel ownership', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 16, height: 16, name: 'Mixed style agent fixture' });
+  const layerId = runtime.sandbox.activeLayerId;
+
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 2, y0: 2, x1: 6, y1: 2, color: '#EE2211', size: 1,
+  }).ok, true);
+
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'pixel-art' }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 2, y0: 2, x1: 6, y1: 2, color: '#2211EE', size: 1,
+  }).ok, true, 'a foreign-style write is a safe no-op, not a command failure');
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_line', x0: 2, y0: 3, x1: 6, y1: 3, color: '#2211EE', size: 1,
+  }).ok, true);
+
+  assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' }).ok, true);
+  assert.equal(runtime.execute({
+    name: 'canvas.draw_stroke', points: [{ x: 4, y: 3 }], color: '#000000', size: 1, mode: 'erase',
+  }).ok, true, 'Illustration erase must not remove Pixel Art-owned pixels');
+
+  const mode = runtime.execute({ name: 'drawing.mode.get' });
+  assert.equal(mode.ok, true);
+  assert.equal(mode.result.activeMode, 'illustration');
+  assert.equal(mode.result.layerMode, 'illustration');
+
+  runtime.createProposal('Verify mixed Illustration and Pixel Art ownership in Headless');
+  assert.equal(runtime.acceptProposal().status, 'applied');
+  const saved = runtime.toJSON();
+  const layer = saved.layers.find(item => item.id === layerId);
+  const pixels = Buffer.from(layer.pixels, 'base64');
+  const tile = layer.ownershipTiles.find(item => item.x === 0 && item.y === 0);
+  assert.ok(tile, 'ownership tile must be serialized with the raster layer');
+  const owners = Buffer.from(tile.owners, 'base64');
+  const pixel = (x, y) => [...pixels.subarray((y * 16 + x) * 4, (y * 16 + x) * 4 + 4)];
+  const owner = (x, y) => owners[y * 16 + x];
+  assert.deepEqual(pixel(3, 2), [238, 34, 17, 255], 'Pixel Art draw must not overwrite Illustration pixels');
+  assert.equal(owner(3, 2), 1);
+  assert.deepEqual(pixel(3, 3), [34, 17, 238, 255], 'Illustration erase must not remove Pixel Art pixels');
+  assert.equal(owner(3, 3), 2);
+});
+
+test('Headless rejects unsupported drawing modes without mutating the active mode', () => {
+  const runtime = new HeadlessEditorRuntime({ width: 8, height: 8 });
+  const before = runtime.execute({ name: 'drawing.mode.get' }).result.activeMode;
+  const invalid = runtime.execute({ name: 'drawing.mode.set', mode: 'vector' });
+  assert.equal(invalid.ok, false);
+  assert.equal(runtime.execute({ name: 'drawing.mode.get' }).result.activeMode, before);
+  assert.equal(runtime.hasPendingChanges, false);
+});
+
 test('headless runtime opens a persisted PixelForge project without changing its identity', () => {
   const fixture = projectFixture();
   fixture.serverRevision = 7;
