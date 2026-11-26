@@ -198,6 +198,10 @@ runtime.execute({
 
 - `canvas.draw_line`
 - `canvas.draw_stroke`
+- `canvas.erase_pixel`
+- `canvas.erase_line`
+- `canvas.erase_direction`
+- `canvas.erase_region`
 - `canvas.fill`
 - `canvas.clear_region`
 - `canvas.copy_region`
@@ -217,6 +221,10 @@ Argumentos principales verificados en el dispatcher:
 |---|---|
 | `canvas.draw_line` | `x0, y0, x1, y1, color`; opcionales `size` (1–128), `symmetryMode` (0, 2, 4, 8), `authoringMode`. |
 | `canvas.draw_stroke` | `points: [{x,y}]` (1–4096), `color`; opcionales `size` (1–128), `opacity` (0–1), `hardness` (0–1), `mode: draw|erase`, `shape: square|circle`, `symmetryMode`, `authoringMode`. |
+| `canvas.erase_pixel` | `x, y`; opcionales `size` (1–128), `opacity`, `hardness`, `shape: square|circle`. |
+| `canvas.erase_line` | `x0, y0, x1, y1`; opcionales `size` (1–128), `opacity`, `hardness`, `shape: square|circle`. |
+| `canvas.erase_direction` | `x, y, length`; opcionales `angleDeg` (0 por defecto), `size`, `opacity`, `hardness`, `shape`. |
+| `canvas.erase_region` | `x, y, width, height`. |
 | `canvas.fill` | `x, y, color`; opcionales `tolerance` (0–255), `contiguous`, `pattern: solid|checker`, `secondaryColor`, `scale` (1–16), `authoringMode`. |
 | `canvas.clear_region` | `x, y, width, height`; opcional `authoringMode`. |
 | `canvas.copy_region` | `x, y, width, height`. Guarda clipboard dentro de esta instancia. |
