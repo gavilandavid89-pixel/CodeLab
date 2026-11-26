@@ -412,12 +412,14 @@ export class SparseTileCelStore {
         const ownerWidth = Math.min(ownerTileSize, document.width - x);
         const ownerHeight = Math.min(ownerTileSize, document.height - y);
         if (!Number.isInteger(tileX) || !Number.isInteger(tileY) || tileX < 0 || tileY < 0 ||
-            ownerWidth < 1 || ownerHeight < 1 || !(owners instanceof Uint8Array) ||
+            ownerWidth < 1 || ownerHeight < 1 ||
+            (!(owners instanceof Uint8Array) && !(owners instanceof Uint8ClampedArray)) ||
             owners.byteLength !== ownerWidth * ownerHeight) {
           throw new TypeError('Dense ownership tile dimensions do not match the source ownership grid.');
         }
+        const ownerBytes = owners instanceof Uint8Array ? owners : new Uint8Array(owners);
         for (let row = 0; row < ownerHeight; row++) {
-          ownerPlane.set(owners.subarray(row * ownerWidth, (row + 1) * ownerWidth),
+          ownerPlane.set(ownerBytes.subarray(row * ownerWidth, (row + 1) * ownerWidth),
             (y + row) * document.width + x);
         }
       }
