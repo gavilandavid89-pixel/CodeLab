@@ -15,7 +15,7 @@ on:
         default: '30'
         type: string
       project_id:
-        description: 'Persisted ADMIN PixelForge project'
+        description: 'Persisted ADMIN PixelForge project; A pins the latest saved revision and content hash'
         required: false
         default: '6f9cdb50-55a3-4d78-bd34-9cc95b54a5be'
         type: string
