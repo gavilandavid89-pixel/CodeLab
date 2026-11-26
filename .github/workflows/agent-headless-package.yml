@@ -45,7 +45,6 @@ jobs:
           cp -R public/pixelforge/src/. "$RUNNER_TEMP/agent-headless/public/pixelforge/src/"
           cp package.json "$RUNNER_TEMP/agent-headless/"
           cp pixelforge-codelab-package.mjs "$RUNNER_TEMP/agent-headless/"
-          cp pixelforge-codelab-package.mjs "$RUNNER_TEMP/agent-headless/"
           if [ -f package-lock.json ]; then cp package-lock.json "$RUNNER_TEMP/agent-headless/"; fi
           printf '%s\n' \
             "repository=$GITHUB_REPOSITORY" \
