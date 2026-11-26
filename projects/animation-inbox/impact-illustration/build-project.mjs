@@ -24,6 +24,7 @@ if (!Number.isInteger(snapshot.serverRevision) || snapshot.serverRevision < 1 ||
 }
 const sourceProject = snapshot.project;
 const sourceFrameCount = sourceProject.animation?.frames?.length || 0;
+console.log("[Headless] incremental Illustration polish from ADMIN revision", snapshot.serverRevision, "with", sourceFrameCount, "source frames.");
 if (sourceFrameCount < 2 || sourceProject.layers?.length !== 3) throw new Error("Unexpected source project structure.");
 delete process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET;
 delete process.env.BRIDGE_TOKEN;
@@ -177,7 +178,7 @@ for(let index=1;index<poses.length;index++){
 }
 run({name:"animation.frame.set_duration",index:0,durationMs:poses[0].duration});
 const summary=run({name:"animation.get_summary"});
-rt.createProposal("Pulido incremental de la animación de impacto: redibujo anatómico de ambos personajes en sus capas existentes, diez poses con anticipación, impacto, retroceso, vuelo, giro y caída, manteniendo el proyecto ADMIN y modo Illustration.");
+rt.createProposal("Segunda pasada de pulido incremental de la animación de impacto: anatomía más clara y diez poses con anticipación, impacto, retroceso, vuelo, giro y caída, conservando proyecto ADMIN y modo Illustration.");
 const diff=rt.getDiff();
 if(!diff) throw new Error("Headless did not produce a reviewable diff.");
 const accepted=rt.acceptProposal();
