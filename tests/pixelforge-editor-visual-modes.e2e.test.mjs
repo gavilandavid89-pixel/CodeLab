@@ -669,7 +669,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   // Exercise the actual editor autosave integration: one isolated brush stroke
   // after reload must POST a single-cel patch (not a full project PUT), advance
   // the server revision, and survive another reload from the patched manifest.
-  await setMode('illustration');
+  await setMode('pixel-art');
   await setSymmetry(0);
   await setColor('#f0c674');
   await setValue('#brush-size', 5);
