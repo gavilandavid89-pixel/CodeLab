@@ -138,7 +138,8 @@ export async function encodeWebMFrames(frames, options = {}) {
     durationMs: frame.durationMs, blob: frame.blob,
     width: frame.width, height: frame.height,
     layers: Array.isArray(frame.layers) ? frame.layers.map(layer => ({ ...layer })) : undefined,
-    scalingMode: ['smooth', 'pixelated'].includes(frame.scalingMode) ? frame.scalingMode : options.scalingMode
+    scalingMode: ['smooth', 'pixelated'].includes(frame.scalingMode) ? frame.scalingMode : options.scalingMode,
+    focalPoint: frame.focalPoint || options.focalPoint
   }));
     return await new Promise((resolve, reject) => {
       let settled = false;
@@ -166,7 +167,7 @@ export async function encodeWebMFrames(frames, options = {}) {
       worker.postMessage({
         frames: transferableFrames, width:options.width, height:options.height, codec:options.codec,
         fps:options.fps, durationMs:options.durationMs, backgroundColor:options.backgroundColor,
-        scalingMode:options.scalingMode, fitMode:options.fitMode
+        scalingMode:options.scalingMode, fitMode:options.fitMode, focalPoint:options.focalPoint
       });
     });
   }
