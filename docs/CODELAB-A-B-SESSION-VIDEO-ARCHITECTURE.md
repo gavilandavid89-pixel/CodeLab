@@ -403,13 +403,13 @@ El secreto `CODELAB_AGENT_BRIDGE_CONTROL_SECRET` se usa únicamente como secreto
 Una vez que el proyecto ya aparece en PixelForge ADMIN:
 
 1. Copiar el `id` real del proyecto, que es el valor `project.json.id` del paquete y el identificador con el que quedó persistido en ADMIN. El slug de la carpeta del inbox **no sustituye** al ID del proyecto.
-2. En **Actions → CodeLab Independent Session A → Run workflow**, seleccionar la rama `main` y escribir ese ID en `project_id`. A debe iniciarse primero y alcanzar el estado READY.
+2. En **Actions → CodeLab Independent Session A → Run workflow**, seleccionar la rama `test/pixelforge-illustration-impact-animation` y escribir ese ID en `project_id`. A debe iniciarse primero y alcanzar el estado READY.
 3. En **Actions → CodeLab Independent Session B → Run workflow**, seleccionar la misma rama y escribir exactamente el mismo ID en `project_id`. Se puede dejar `session_id` vacío para que B descubra una sesión A activa, o indicar la sesión concreta.
 4. B comprueba que el READY de A corresponde al mismo `project_id` y al workspace `ws_local_admin`. También exige revisión, hash y datos de timeline fijados por A. Si los IDs no coinciden, B falla antes de enviar la solicitud.
-5. B solicita a A la exportación de esa revisión. A opera la web real y el Video Composer; B recibe los bloques, reconstruye el WebM, comprueba SHA-256/EBML y valida decodificación, duración, dimensiones y muestras temporales con Chromium.
+5. B solicita a A la exportación de esa revisión. A opera la web real y el Video Composer; B recibe los bloques, reconstruye el WebM, comprueba SHA-256/EBML y valida decodificación, duración, dimensiones y muestras temporales con Chromium. La duración esperada se calcula sumando los `durationMs` de todos los frames; no se debe asumir `frameCount / fps` cuando el timeline usa duraciones variables.
 6. B publica el resultado y sube el WebM junto con `verification.json` como artefacto de Actions. El cierre visual y la entrega al usuario siguen sujetos a la regla de inspección de la sección 5.2 de `ANIMATION-AUTONOMOUS-WORKFLOW.md`.
 
-El valor por defecto de ambos workflows sigue siendo `soldier-walk-60f-20261124` por compatibilidad histórica. Para cualquier otro proyecto se debe introducir el mismo ID en A y B; cambiar solo uno no cambia el proyecto de la sesión.
+El valor por defecto de ambos workflows se mantiene sincronizado con el proyecto de prueba vigente en la rama compartida. Para cualquier otro proyecto se debe introducir el mismo ID en A y B; cambiar solo uno no cambia el proyecto de la sesión.
 
 ### Ciclo de vida, limpieza y conservación
 
