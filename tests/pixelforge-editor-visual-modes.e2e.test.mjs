@@ -729,6 +729,10 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
       latestDrawingConfiguration: debugAfter?.drawingConfiguration,
       previousLayerMode: debugBefore?.layers?.[0]?.authoringMode,
       latestLayerMode: debugAfter?.layers?.[0]?.authoringMode,
+      previousLayer: debugBefore?.layers?.[0] ? Object.fromEntries(Object.entries(debugBefore.layers[0]).filter(([key]) => key !== 'cel')) : null,
+      latestLayer: debugAfter?.layers?.[0] ? Object.fromEntries(Object.entries(debugAfter.layers[0]).filter(([key]) => key !== 'cel')) : null,
+      previousCelMetadata: debugBefore?.animation?.frames?.[0]?.cels?.[0]?.metadata,
+      latestCelMetadata: debugAfter?.animation?.frames?.[0]?.cels?.[0]?.metadata,
       status: await page.locator('#status').textContent().catch(() => 'status-unavailable') }));
   assert.equal(fullSnapshotSaveCount, fullSaveCountBeforeIncrementalDraw,
     'an eligible single-cel edit must not fall back to a full-project PUT');
