@@ -118,7 +118,7 @@ function validatePixelForgeTiledProjectPayload(project, serializedInput = null, 
       typeof project.activeLayerId !== 'string' ||
       (project.projectMetadata !== undefined && (!project.projectMetadata || typeof project.projectMetadata !== 'object' || Array.isArray(project.projectMetadata))) ||
       (project.drawingConfiguration !== undefined && (!project.drawingConfiguration || typeof project.drawingConfiguration !== 'object' || Array.isArray(project.drawingConfiguration))) ||
-      Object.prototype.hasOwnProperty.call(project, 'animation')) {
+      (project.animation !== undefined && (!project.animation || typeof project.animation !== 'object' || Array.isArray(project.animation)))) {
     return failure();
   }
 
@@ -136,6 +136,38 @@ function validatePixelForgeTiledProjectPayload(project, serializedInput = null, 
     layerIds.add(layer.id);
   }
   if (!layerIds.has(project.activeLayerId)) return failure();
+
+  if (project.animation !== undefined) {
+    const animation = project.animation;
+    if (animation.format !== 'pixelforge-tiled-animation' || animation.version !== 1 ||
+        animation.width !== project.width || animation.height !== project.height ||
+        !Number.isInteger(animation.fps) || animation.fps < 1 || animation.fps > 60 ||
+        !Number.isInteger(animation.activeFrameIndex) ||
+        !Array.isArray(animation.layerIds) || animation.layerIds.length !== project.layers.length ||
+        animation.layerIds.some((id, index) => id !== project.layers[index].id) ||
+        new Set(animation.layerIds).size !== animation.layerIds.length ||
+        !Array.isArray(animation.frames) || animation.frames.length < 1 || animation.frames.length > 240 ||
+        animation.activeFrameIndex < 0 || animation.activeFrameIndex >= animation.frames.length) return failure('invalid_pixelforge_animation');
+
+    const frameIds = new Set();
+    for (const frame of animation.frames) {
+      if (!frame || typeof frame !== 'object' || Array.isArray(frame) ||
+          typeof frame.id !== 'string' || !frame.id.trim() || frame.id.length > 180 || frameIds.has(frame.id) ||
+          !Number.isFinite(frame.durationMs) || frame.durationMs < 1 || frame.durationMs > 10000 ||
+          !Array.isArray(frame.cels) || frame.cels.length !== animation.layerIds.length) return failure('invalid_pixelforge_animation');
+      frameIds.add(frame.id);
+      const celLayerIds = new Set();
+      for (const entry of frame.cels) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+            typeof entry.layerId !== 'string' || !layerIds.has(entry.layerId) || celLayerIds.has(entry.layerId) ||
+            !entry.metadata || typeof entry.metadata !== 'object' || Array.isArray(entry.metadata) ||
+            !['illustration', 'pixel-art'].includes(entry.metadata.authoringMode) ||
+            !validateCel(entry.cel, project.width, project.height, state)) return failure('invalid_pixelforge_animation');
+        celLayerIds.add(entry.layerId);
+      }
+      if (celLayerIds.size !== animation.layerIds.length) return failure('invalid_pixelforge_animation');
+    }
+  }
 
   const serialized = typeof serializedInput === 'string' ? serializedInput : JSON.stringify(project);
   const projectBytes = Buffer.byteLength(serialized, 'utf8');
