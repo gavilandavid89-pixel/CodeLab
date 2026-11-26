@@ -7,6 +7,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
+import { importPixelForgeCodeLabPackage } from '../public/pixelforge/src/codelab-package.js';
+import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
+import { TiledAnimationDocument } from '../public/pixelforge/src/animation-tiled-adapter.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const artifactDir = process.env.PIXELFORGE_VISUAL_ARTIFACT_DIR
@@ -704,6 +707,69 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await page.locator('.animation-frame').nth(0).click();
   await page.waitForTimeout(80);
   await assertVisibleColor(incrementalPoint, '#f0c674', 'tiled/incremental-patch/reloaded-pixel');
+
+  // Export the actual high-resolution tiled editor document through the normal
+  // project ZIP action, then validate the native package and import it back
+  // through the visible editor. This must preserve sparse tiles, animation,
+  // drawing modes and per-pixel ownership without a dense RGBA conversion.
+  const [tiledPackageDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#export-project').click(),
+  ]);
+  const tiledPackagePath = path.join(artifactDir, tiledPackageDownload.suggestedFilename());
+  await tiledPackageDownload.saveAs(tiledPackagePath);
+  const tiledPackageBytes = await fs.promises.readFile(tiledPackagePath);
+  const tiledPackage = await importPixelForgeCodeLabPackage(new Blob([tiledPackageBytes]));
+  assert.equal(tiledPackage.project.format, 'pixelforge-tiled-project',
+    'the editor ZIP export must retain the native sparse tiled project format');
+  assert.equal(tiledPackage.project.width, 1024);
+  assert.equal(tiledPackage.project.height, 1024);
+  assert.equal(tiledPackage.project.animation.format, 'pixelforge-tiled-animation');
+  assert.equal(tiledPackage.project.animation.frames.length, 2);
+  assert.ok(!Object.hasOwn(tiledPackage.project.layers[0], 'pixels'),
+    'native tiled package must not materialize a dense full-layer RGBA buffer');
+  assert.ok(tiledPackage.project.layers[0].cel.tiles.length > 0,
+    'native package must contain the layer sparse tile manifest');
+  const packageDocument = await TiledRasterProjectDocument.fromManifest(tiledPackage.project);
+  const packageAnimation = await TiledAnimationDocument.fromManifest(tiledPackage.project.animation, { store: packageDocument.tileStore });
+  assert.deepEqual(packageAnimation.readRegion(0, incrementalPatch.layerId, { x: incrementalPoint.x, y: incrementalPoint.y, width: 1, height: 1 }),
+    new Uint8ClampedArray([240, 198, 116, 255]),
+    'native package must retain the incremental patch pixel in its animation cel');
+  assert.equal(packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).authoringMode, 'pixel-art',
+    'native package must retain per-cel authoring mode metadata');
+  assert.ok(packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).ownershipTiles.length > 0,
+    'native package must retain the sparse mixed-style ownership plane');
+  packageAnimation.dispose();
+  packageDocument.dispose();
+
+  await page.locator('#import-file').setInputFiles(tiledPackagePath);
+  await page.waitForFunction(() => document.querySelector('#status')?.textContent.includes('Import complete and saved'), null, { timeout: 30000 });
+  await page.waitForFunction(() => {
+    const saved = window.__unused;
+    return document.querySelector('#document-size')?.textContent.includes('1024 × 1024') &&
+      document.querySelectorAll('.animation-frame').length === 2;
+  }, null, { timeout: 20000 });
+  await page.locator('.animation-frame').nth(0).click();
+  await page.waitForTimeout(80);
+  await assertVisibleColor(incrementalPoint, '#f0c674', 'tiled/package-import/reloaded-pixel');
+  const reimportedSnapshot = [...savedProjectSnapshots].reverse().find(project =>
+    project.format === 'pixelforge-tiled-project' && project.id !== savedTiled.id);
+  assert.ok(reimportedSnapshot, 'importing the exported tiled ZIP must persist a new native project');
+  assert.equal(reimportedSnapshot.animation.frames.length, 2);
+  assert.ok(reimportedSnapshot.animation.frames[0].cels[0].cel.ownershipTiles.length > 0,
+    'imported project persistence must retain ownership tiles');
+
+  await fs.promises.writeFile(path.join(artifactDir, 'tiled-package-roundtrip-evidence.json'), JSON.stringify({
+    format: tiledPackage.project.format,
+    width: tiledPackage.project.width,
+    height: tiledPackage.project.height,
+    layers: tiledPackage.project.layers.length,
+    frames: tiledPackage.project.animation.frames.length,
+    mode: packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).authoringMode,
+    ownershipTileCount: reimportedSnapshot.animation.frames[0].cels[0].cel.ownershipTiles.length,
+    reimportedProjectId: reimportedSnapshot.id,
+    pixel: { point: incrementalPoint, rgba: [240, 198, 116, 255] },
+  }, null, 2));
 
   await fs.promises.writeFile(path.join(artifactDir, 'cel-patch-persistence-evidence.json'), JSON.stringify({
     patchCount: receivedCelPatches.length,
