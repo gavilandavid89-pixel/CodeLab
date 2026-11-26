@@ -1,0 +1,39 @@
+name: PixelForge tiled package round-trip
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/pixelforge-tiled-package-roundtrip.yml"
+      - "public/pixelforge/src/editor.js"
+      - "public/pixelforge/src/codelab-package.js"
+      - "public/pixelforge/src/raster-tiled-adapter.mjs"
+      - "public/pixelforge/src/animation-tiled-adapter.mjs"
+      - "tests/pixelforge-editor-visual-modes.e2e.test.mjs"
+  workflow_dispatch:
+
+jobs:
+  tiled-package-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.17.0"
+      - name: Install PixelForge runtime and Chromium
+        run: npm install --ignore-scripts
+      - name: Run visible editor tiled package round-trip
+        env:
+          PIXELFORGE_VISUAL_ARTIFACT_DIR: ${{ runner.temp }}/pixelforge-tiled-package-roundtrip
+        run: node --test --test-concurrency=1 tests/pixelforge-editor-visual-modes.e2e.test.mjs
+      - name: Upload tiled package round-trip evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelforge-tiled-package-roundtrip
+          path: ${{ runner.temp }}/pixelforge-tiled-package-roundtrip
+          if-no-files-found: warn
+          retention-days: 14
