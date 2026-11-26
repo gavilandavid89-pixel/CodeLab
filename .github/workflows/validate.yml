@@ -224,12 +224,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/agent-headless/public/pixelforge/src"
           cp -R public/pixelforge/src/. "$RUNNER_TEMP/agent-headless/public/pixelforge/src/"
           cp package.json "$RUNNER_TEMP/agent-headless/"
+          cp pixelforge-codelab-package.mjs "$RUNNER_TEMP/agent-headless/"
           if [ -f package-lock.json ]; then cp package-lock.json "$RUNNER_TEMP/agent-headless/"; fi
           printf '%s\n' \
             "repository=$GITHUB_REPOSITORY" \
             "commit=$GITHUB_SHA" \
             "ref=$GITHUB_REF_NAME" \
-            "headless_source=public/pixelforge/src"
+            "headless_source=public/pixelforge/src" \
             "agent_package_builder=pixelforge-codelab-package.mjs" \
             "packaged_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             > "$RUNNER_TEMP/agent-headless/MANIFEST.txt"
