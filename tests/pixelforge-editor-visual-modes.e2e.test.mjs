@@ -57,9 +57,11 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
         for await (const chunk of request) body += chunk;
         let project = {};
         try { project = JSON.parse(body).project || {}; } catch {}
-        savedProjectSnapshots.push(structuredClone(project));
+        const previous = [...savedProjectSnapshots].reverse().find(item => item.id === project.id);
+        const persisted = { ...project, serverRevision: previous ? (previous.serverRevision || 1) + 1 : 1 };
+        savedProjectSnapshots.push(structuredClone(persisted));
         response.writeHead(200, { 'content-type': 'application/json' });
-        response.end(JSON.stringify({ project: { ...project, serverRevision: 1 } }));
+        response.end(JSON.stringify({ project: persisted }));
       } else {
         const latest = savedProjectSnapshots.at(-1);
         const projects = latest ? [{ id: latest.id, name: latest.name, width: latest.width, height: latest.height, updatedAt: '2026-11-25T00:00:00.000Z' }] : [];
@@ -88,7 +90,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
       }
       const projectId = decodeURIComponent(patchRoute[1]);
       const current = [...savedProjectSnapshots].reverse().find(item => item.id === projectId);
-      if (!current || patch.projectId !== projectId || patch.baseRevision !== (current.serverRevision || 1)) {
+      if (!current || patch.projectId !== projectId || patch.baseRevision !== current.serverRevision) {
         response.writeHead(409, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ error: 'pixelforge_revision_conflict' }));
         return;
@@ -142,7 +144,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
       const id = decodeURIComponent(url.pathname.slice('/api/pixelforge/projects/'.length));
       const project = [...savedProjectSnapshots].reverse().find(item => item.id === id) || null;
       response.writeHead(project ? 200 : 404, { 'content-type': 'application/json' });
-      response.end(JSON.stringify(project ? { project: { ...project, serverRevision: project.serverRevision || 1 } } : { error: 'project_not_found' }));
+      response.end(JSON.stringify(project ? { project: { ...project, serverRevision: project.serverRevision } } : { error: 'project_not_found' }));
       return;
     }
     const pathname = decodeURIComponent(url.pathname);
