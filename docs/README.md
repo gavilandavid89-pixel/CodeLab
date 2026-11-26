@@ -41,6 +41,7 @@ Leer en este orden:
 | Entender los componentes internos de CodeLab | [Arquitectura interna y mapa de componentes](CODELAB-INTERNAL-ARCHITECTURE.md) | Responsabilidades, fronteras, flujos, contratos y estado real de integración. |
 | Consultar la API nativa del agente | [Protocolo Headless nativo](native-headless-protocol.md) | Cliente, mailbox, acciones nativas y modo navegador explícito. |
 | Procesar/capturar vídeo | [Procesamiento A/B](VIDEO-PROCESSING-AB.md) | Única finalidad de A/B: una sesión A y una B procesadora por trabajo. |
+| Adaptar vídeo a plataformas sociales | [Composición multiplataforma de Video Composer](PIXELFORGE-VIDEO-COMPOSER-COMPOSITION.md) | Perfiles 16:9, 9:16, 4:5 y 1:1, contain/cover, zonas seguras y reglas de no deformación. |
 | Alta resolución, almacenamiento y sincronización incremental PixelForge | [Arquitectura de alta resolución y sincronización](PIXELFORGE-HIGH-RESOLUTION-STORAGE-AND-INCREMENTAL-SYNC.md) | Límites verificados, cels por tiles, almacenamiento privado, parches con revisiones y migración segura. |
 | Dibujo raster tradicional y migración integral de PixelForge | [Migración raster tradicional](PIXELFORGE-TRADITIONAL-RASTER-MIGRATION.md) | Contrato de compatibilidad para lienzo, herramientas, capas, animación, ZIP, importador/exportador, Headless, CodeLab y vídeo. |
 | Comprender el formato PixelForge | [Paquete de proyecto PixelForge](PIXELFORGE-PROJECT-PACKAGE.md) | Estructura editable, frames, capas, cels y Reference Center. |
