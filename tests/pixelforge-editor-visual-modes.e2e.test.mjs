@@ -10,6 +10,7 @@ import { chromium as playwrightChromium } from 'playwright-core';
 import { importPixelForgeCodeLabPackage } from '../public/pixelforge/src/codelab-package.js';
 import { TiledRasterProjectDocument } from '../public/pixelforge/src/raster-tiled-adapter.mjs';
 import { TiledAnimationDocument } from '../public/pixelforge/src/animation-tiled-adapter.mjs';
+import { readStoredZip } from '../public/pixelforge/src/video-composer-core.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const artifactDir = process.env.PIXELFORGE_VISUAL_ARTIFACT_DIR
@@ -707,6 +708,40 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await page.locator('.animation-frame').nth(0).click();
   await page.waitForTimeout(80);
   await assertVisibleColor(incrementalPoint, '#f0c674', 'tiled/incremental-patch/reloaded-pixel');
+
+  // The ordinary layer sprite-sheet action must work for tiled documents too.
+  // Its row-strip reader must preserve pixels without constructing a dense layer.
+  const [tiledSpriteSheetDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('#export-sprite-sheet').click(),
+  ]);
+  const tiledSpriteSheetPath = path.join(artifactDir, tiledSpriteSheetDownload.suggestedFilename());
+  await tiledSpriteSheetDownload.saveAs(tiledSpriteSheetPath);
+  const tiledSpriteSheetZip = await readStoredZip(new Blob([await fs.promises.readFile(tiledSpriteSheetPath)]));
+  const spriteManifestEntry = tiledSpriteSheetZip.get('spritesheet-manifest.json');
+  const spritePngEntry = [...tiledSpriteSheetZip.values()].find(entry => entry.name.endsWith('-spritesheet.png'));
+  assert.ok(spriteManifestEntry && spritePngEntry, 'tiled sprite-sheet ZIP must contain PNG and manifest');
+  const spriteManifest = JSON.parse(await spriteManifestEntry.blob.text());
+  assert.equal(spriteManifest.storageMode, 'tiled');
+  assert.equal(spriteManifest.frameSize.width, 1024);
+  assert.equal(spriteManifest.frameSize.height, 1024);
+  assert.equal(spriteManifest.frames.length, 1);
+  assert.equal(spriteManifest.frames[0].authoringMode, 'pixel-art');
+  const spritePngBase64 = Buffer.from(await spritePngEntry.blob.arrayBuffer()).toString('base64');
+  const spritePixel = await page.evaluate(async base64 => {
+    const binary = atob(base64), bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    const canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height;
+    const context = canvas.getContext('2d'); context.drawImage(bitmap, 0, 0);
+    const pixel = [...context.getImageData(2, 2, 1, 1).data];
+    return { width: bitmap.width, height: bitmap.height, pixel };
+  }, spritePngBase64);
+  assert.deepEqual(spritePixel, { width: 1026, height: 1026, pixel: [240, 198, 116, 255] },
+    'tiled sprite-sheet export must preserve exact source pixels and one-pixel padding');
+  await fs.promises.writeFile(path.join(artifactDir, 'tiled-spritesheet-evidence.json'), JSON.stringify({
+    storageMode: spriteManifest.storageMode, frameCount: spriteManifest.frames.length,
+    sheet: spriteManifest.sheet, sourcePixel: spritePixel.pixel,
+  }, null, 2));
 
   // Export the actual high-resolution tiled editor document through the normal
   // project ZIP action, then validate the native package and import it back
