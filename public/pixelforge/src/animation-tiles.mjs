@@ -339,6 +339,7 @@ export class SparseTileCelStore {
       throw new RangeError('Tiled cel contains more tiles than its canvas can hold.');
     }
     const tiles = new Map();
+    const rgbaPayloads = new Map();
     const pending = [];
     for (const tile of document.tiles) {
       if (!tile || !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
@@ -362,6 +363,7 @@ export class SparseTileCelStore {
       for (const byte of bytes) if (byte !== 0) { hasAnyByte = true; break; }
       if (!hasAnyByte) throw new TypeError('Sparse tiled cel must not store an empty tile.');
       tiles.set(key, { x: tile.x, y: tile.y, width: tileWidth, height: tileHeight, hash: tile.sha256 });
+      rgbaPayloads.set(key, bytes);
       pending.push({ hash: tile.sha256, rgba: tile.rgba, byteLength: bytes.byteLength });
     }
     const ownershipTiles = new Map();
@@ -377,6 +379,12 @@ export class SparseTileCelStore {
       let nonzero = false;
       for (const owner of owners) { if (owner > 2) throw new TypeError('Unsupported pixel owner value.'); if (owner) nonzero = true; }
       if (!nonzero) throw new TypeError('Sparse ownership tiles cannot be empty.');
+      const rgba = rgbaPayloads.get(key);
+      for (let index = 0; index < owners.length; index++) {
+        if (owners[index] !== 0 && (!rgba || rgba[index * 4 + 3] === 0)) {
+          throw new TypeError('Owned pixels must have non-transparent RGBA data in the matching tile.');
+        }
+      }
       ownershipTiles.set(key, { x: tile.x, y: tile.y, width: tileWidth, height: tileHeight, owners });
     }
     const celId = globalThis.crypto?.randomUUID?.();
@@ -499,7 +507,13 @@ export class SparseTileCelStore {
   async writeOwnershipRegion(celId, region, owners) {
     const source = this.#cel(celId), rect = this.#assertRegion(source, region);
     if (!(owners instanceof Uint8Array) || owners.byteLength !== rect.width * rect.height) throw new TypeError('Ownership data must match the region.');
-    for (const owner of owners) if (owner > 2) throw new TypeError('Pixel owner must be 0, 1, or 2.');
+    const rgba = this.readRegion(celId, rect);
+    for (let index = 0; index < owners.length; index++) {
+      if (owners[index] > 2) throw new TypeError('Pixel owner must be 0, 1, or 2.');
+      if (owners[index] !== 0 && rgba[index * 4 + 3] === 0) {
+        throw new TypeError('Transparent pixels cannot retain style ownership.');
+      }
+    }
     const nextId = this.cloneCel(celId); let changedTiles = 0;
     try {
       const sx = Math.floor(rect.x / source.tileSize) * source.tileSize, sy = Math.floor(rect.y / source.tileSize) * source.tileSize;

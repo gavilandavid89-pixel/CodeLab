@@ -343,9 +343,9 @@ Argumentos principales:
 | `animation.set_fps` | requiere `fps` entre 1 y 60. |
 | `animation.set_loop` | requiere `loop` boolean. |
 | `animation.set_playback_speed` | requiere `speed` dentro del rango que valida `assertPlaybackSpeed`. |
-| `animation.frame.get_cel` | opcional `index`; requiere `layerId`. Devuelve píxeles RGBA Base64. |
-| `animation.frame.get_context` | opcional `index, layerId`. |
-| `animation.frame.set_cel` | requiere `layerId, pixels` Base64 RGBA; opcional `index`. |
+| `animation.frame.get_cel` | opcional `index`; requiere `layerId`. Devuelve píxeles RGBA Base64, `authoringMode` y `ownershipTiles` (0 = libre/legacy, 1 = Illustration, 2 = Pixel Art). |
+| `animation.frame.get_context` | opcional `index, layerId`; devuelve el modo y el mapa de propiedad de la capa junto al contexto visual. |
+| `animation.frame.set_cel` | requiere `layerId, pixels` Base64 RGBA; opcionales `index, authoringMode`. Si se omite el modo, Headless usa el modo activo del proyecto. Filtra los píxeles del otro estilo, asigna propiedad a los píxeles realmente modificados y devuelve `blockedPixels`/`changedPixels`. |
 | `animation.frame.get_onion_skin` | opcionales `previous` (por defecto 1), `next` (por defecto 0). |
 | `animation.frame.get_composite` | opcional `index`; devuelve compuesto RGBA Base64. |
 

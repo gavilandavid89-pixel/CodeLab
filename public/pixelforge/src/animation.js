@@ -114,7 +114,6 @@ function createModel(timeline, document) {
 function frameContext(model, document, index, layerId) {
   const safeIndex = Math.max(0, Math.min(model.frameCount - 1, Number.isInteger(index) ? index : model.activeFrameIndex));
   const frame = model.getFrame(safeIndex);
-  const frameMetadata = model.getLayerMetadata(safeIndex, layerId ?? document.activeLayerId ?? model.layerIds[0]);
   const layerIds = [...model.layerIds];
   const selectedLayerId = layerId ?? document.activeLayerId ?? layerIds[0];
   if (!layerIds.includes(selectedLayerId)) throw new Error('Animation context layer was not found.');

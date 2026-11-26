@@ -236,3 +236,30 @@ test('reads and copy-on-write edits bounded regions across tile boundaries', asy
   for (const id of [sourceId, edited.celId, erased.celId]) store.releaseCel(id);
   assert.equal(store.stats.resourceCount, 0);
 });
+
+
+test('sparse cel rejects owner metadata for transparent or missing RGBA pixels', async () => {
+  const width = 64, height = 64;
+  const pixels = makePixels(width, height);
+  pixels.set([20, 40, 60, 255], 0);
+  const cel = await encodeSparseTiles(pixels, { width, height });
+  const owners = new Uint8Array(width * height);
+  owners[1] = 1;
+  cel.ownershipTiles = [{
+    x: 0, y: 0, width, height,
+    sha256: await crypto.subtle.digest('SHA-256', owners).then(bytes => [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('')),
+    owners: Buffer.from(owners).toString('base64'),
+  }];
+  const store = new SparseTileCelStore();
+  await assert.rejects(() => store.createCel(cel), /non-transparent RGBA/);
+});
+
+test('sparse cel ownership region writes reject transparent pixel claims', async () => {
+  const store = new SparseTileCelStore();
+  const celId = store.createBlankCel({ width: 64, height: 64 });
+  await assert.rejects(
+    () => store.writeOwnershipRegion(celId, { x: 0, y: 0, width: 1, height: 1 }, new Uint8Array([2])),
+    /Transparent pixels/
+  );
+  store.releaseCel(celId);
+});

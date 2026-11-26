@@ -155,6 +155,42 @@ function validateSceneWorkspace(workspace, label) {
         if (typeof cel.pixels !== 'string' || bytesFromBase64(cel.pixels).length !== expectedBytes) {
           throw new TypeError(label + ' workspace frame ' + index + ' contains invalid RGBA8 cel data.');
         }
+        const metadata = cel.metadata || frame.layerMetadata?.find(item => item?.id === cel.layerId) || {};
+        if (metadata.authoringMode !== undefined && !['illustration', 'pixel-art'].includes(metadata.authoringMode)) {
+          throw new TypeError(label + ' workspace frame ' + index + ' contains an invalid cel authoringMode.');
+        }
+        const ownerTiles = metadata.ownershipTiles;
+        if (ownerTiles !== undefined && !Array.isArray(ownerTiles)) {
+          throw new TypeError(label + ' workspace frame ' + index + ' contains invalid ownershipTiles.');
+        }
+        const seenOwnerTiles = new Set();
+        const rgba = bytesFromBase64(cel.pixels, expectedBytes);
+        for (const tile of ownerTiles || []) {
+          if (!tile || !Number.isInteger(tile.tileX) || !Number.isInteger(tile.tileY) ||
+              tile.tileX < 0 || tile.tileY < 0 || tile.tileX * 64 >= width || tile.tileY * 64 >= height) {
+            throw new TypeError(label + ' workspace frame ' + index + ' contains an invalid ownership tile coordinate.');
+          }
+          const key = tile.tileX + ':' + tile.tileY;
+          if (seenOwnerTiles.has(key)) throw new TypeError(label + ' workspace frame ' + index + ' contains duplicate ownership tiles.');
+          seenOwnerTiles.add(key);
+          const tileWidth = Math.min(64, width - tile.tileX * 64);
+          const tileHeight = Math.min(64, height - tile.tileY * 64);
+          const owners = bytesFromBase64(tile.owners, tileWidth * tileHeight);
+          if (base64FromBytes(owners) !== tile.owners) throw new TypeError(label + ' workspace frame ' + index + ' contains non-canonical ownership data.');
+          let nonzero = false;
+          for (let pixel = 0; pixel < owners.length; pixel++) {
+            if (owners[pixel] > 2) throw new TypeError(label + ' workspace frame ' + index + ' contains an unsupported pixel owner.');
+            if (owners[pixel] !== 0) {
+              nonzero = true;
+              const x = tile.tileX * 64 + pixel % tileWidth;
+              const y = tile.tileY * 64 + Math.floor(pixel / tileWidth);
+              if (rgba[(y * width + x) * 4 + 3] === 0) {
+                throw new TypeError(label + ' workspace frame ' + index + ' assigns ownership to a transparent pixel.');
+              }
+            }
+          }
+          if (!nonzero) throw new TypeError(label + ' workspace frame ' + index + ' contains an empty ownership tile.');
+        }
       }
     }
   }
