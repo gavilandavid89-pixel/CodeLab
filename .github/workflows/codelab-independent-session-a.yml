@@ -21,7 +21,7 @@ on:
       project_id:
         description: 'ADMIN PixelForge project to pin for this session'
         required: false
-        default: 'abd33d81-5480-49a7-90e8-6818d2190460'
+        default: '6f9cdb50-55a3-4d78-bd34-9cc95b54a5be'
         type: string
   issue_comment:
     types: [created]
@@ -54,7 +54,7 @@ jobs:
           CODELAB_SESSION_ISSUE: ${{ inputs.issue_number || '492' }}
           CODELAB_SESSION_ID: ${{ inputs.session_id || '' }}
           CODELAB_SESSION_MINUTES: ${{ inputs.minutes || '360' }}
-          CODELAB_PROJECT_ID: ${{ inputs.project_id || 'abd33d81-5480-49a7-90e8-6818d2190460' }}
+          CODELAB_PROJECT_ID: ${{ inputs.project_id || '6f9cdb50-55a3-4d78-bd34-9cc95b54a5be' }}
           CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
           CODELAB_AGENT_BRIDGE_CONTROL_SECRET: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
         run: node scripts/codelab-ab-session-host.mjs 2>&1 | tee codelab-session-a.log
