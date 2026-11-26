@@ -124,3 +124,21 @@ eliminar rama temporal
 ~~~
 
 La existencia de ramas antiguas en GitHub no modifica esta política.
+
+## Excepción activa y acotada: prueba de animación Illustration
+
+La rama `test/pixelforge-illustration-impact-animation` es la **única rama de trabajo activa** para la prueba de animación basada en la imagen aportada por el usuario.
+
+Su propósito es validar una secuencia de acción en **modo Illustration exclusivamente**: preparación de poses, golpe, desplazamiento del personaje golpeado por el aire, caída y pose final en el suelo. La prueba debe realizarse dentro del flujo real de CodeLab/PixelForge y conservar un proyecto editable con sus frames y capas; un vídeo renderizado fuera del editor no demuestra la integración.
+
+Reglas específicas:
+
+- Esta rama nace del `main` vigente y es la única rama temporal autorizada mientras dure esta prueba.
+- No se debe crear otra rama para separar implementación, generación, pruebas E2E o documentación.
+- Todo el código, los assets de prueba permitidos, las pruebas y la documentación de esta tarea se mantienen en esta misma rama.
+- El modo de autoría de todos los frames/capas usados en esta prueba debe ser explícitamente `illustration` (o el identificador canónico que establezca el contrato vigente); no se debe convertir a Pixel ni inferir el modo por índice.
+- La documentación de la rama y la documentación vigente en `main` deben reconciliarse antes del merge: ningún contrato, comportamiento, límite o instrucción puede quedar contradictorio. Si esta prueba descubre una diferencia, se actualiza la documentación necesaria en esta rama y se verifica de nuevo.
+- Antes de declarar éxito, ejecutar y revisar las pruebas relevantes en el SHA exacto, inspeccionar la reproducción y validar la exportación sin deformación.
+- Al finalizar, integrar mediante el flujo de revisión/merge acordado y eliminar esta rama temporal. No convertirla en una rama permanente de pruebas.
+
+Esta excepción no cambia la política general: **solo una rama temporal activa a la vez**. Para esta tarea, la rama única activa es `test/pixelforge-illustration-impact-animation`; una vez cerrada, la siguiente tarea debe crear su propia rama desde el `main` actualizado.
