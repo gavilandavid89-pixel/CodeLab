@@ -726,7 +726,7 @@ export class SparseTileCelStore {
       .map(tile => ({ type: 'ownership.remove', x: tile.x, y: tile.y }));
     return {
       format: 'pixelforge-cel-patch',
-      version: 1,
+      version: 2,
       projectId, baseRevision, operationId, frameId, layerId,
       canvas: { width: next.width, height: next.height, tileSize: next.tileSize },
       operations: [...put, ...remove, ...ownershipPut, ...ownershipRemove],
