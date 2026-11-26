@@ -307,7 +307,10 @@ export class PixelForgeAnimation {
     return this.getLayerMetadata(frameIndex, layerId);
   }
   getLayerOwnershipTiles(frameIndex, layerId) {
+    const frame = this.#frameAt(frameIndex);
     const metadata = this.getLayerMetadata(frameIndex, layerId);
+    const pixels = frame.cels.get(layerId);
+    if (!pixels) throw new Error('Unknown animation layer ID.');
     const output = new Map();
     for (const tile of metadata.ownershipTiles || []) {
       if (!Number.isInteger(tile.tileX) || !Number.isInteger(tile.tileY) || tile.tileX < 0 || tile.tileY < 0) throw new TypeError('Animation ownership tile coordinate is invalid.');
@@ -315,7 +318,6 @@ export class PixelForgeAnimation {
       if (width < 1 || height < 1) throw new TypeError('Animation ownership tile is outside the canvas.');
       const owners = decodeBase64(tile.owners, width * height);
       if (owners.some(owner => owner > 2) || !owners.some(owner => owner !== 0)) throw new TypeError('Animation ownership tile contains invalid owner data.');
-      const pixels = this.getLayerPixels(frameIndex, layerId);
       for (let index = 0; index < owners.length; index++) {
         if (owners[index] !== 0) {
           const x = tile.tileX * 64 + index % width;
