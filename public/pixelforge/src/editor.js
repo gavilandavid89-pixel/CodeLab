@@ -3007,7 +3007,6 @@ $('#save').addEventListener('click', async () => {
   catch (error) { status(`Save failed: ${error.message}`, 'error'); }
 });
 $('#export-project').addEventListener('click', async () => {
-  if (doc.isTiled) { status('Sparse tiled projects are saved to your account; ZIP package export is being migrated.', 'warning'); return; }
   try {
     await settleActiveInput();
     stopAnimationPlayback();
