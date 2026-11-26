@@ -198,6 +198,14 @@ async function main() {
     executeAgentAction({ name: 'animation.frame.capture_document', frameName: 'Agent pose 1', durationMs: 120 });
     executeAgentAction({ name: 'canvas.draw_line', x0: 6, y0: 16, x1: 21, y1: 16, color: '#55BFA3', size: 1 });
     executeAgentAction({ name: 'animation.frame.capture_document', frameName: 'Agent pose 2', durationMs: 140 });
+    const [illustrationLayer, pixelLayer] = runtime.sandbox.layers;
+    for (const frameIndex of [0, 1]) {
+      executeAgentAction({ name: 'animation.frame.set_active', index: frameIndex });
+      executeAgentAction({ name: 'layer.select', layerId: illustrationLayer.id });
+      executeAgentAction({ name: 'drawing.mode.set', mode: 'illustration' });
+      executeAgentAction({ name: 'layer.select', layerId: pixelLayer.id });
+      executeAgentAction({ name: 'drawing.mode.set', mode: 'pixel-art' });
+    }
     runtime.createProposal('Artifact Headless mixed-style animation');
     assert.equal(runtime.acceptProposal().status, 'applied', 'agent-created work must be accepted before serialization');
     const agentProject = runtime.toJSON();
