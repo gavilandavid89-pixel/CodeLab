@@ -69,17 +69,17 @@ const frames=[
  {duration:90,dx:0,dy:20,rotate:90},
  {duration:400,dx:10,dy:50,rotate:90}
 ];
-for(const layerId of [bg,attacker,opponent]){const layer=rt.sandbox.layers.find(item=>item.id===layerId);run({name:"animation.frame.set_cel",layerId,index:0,pixels:Buffer.from(layer.pixels).toString("base64"),authoringMode:MODE});}
+for(const layerId of [bg,attacker,opponent]){const layer=rt.sandbox.layers.find(item=>item.id===layerId);run({name:"animation.frame.set_cel",layerId,index:0,pixels:Buffer.from(layer.pixels).toString("base64"),authoringMode:M});}
 run({name:"animation.set_fps",fps:12});run({name:"animation.set_loop",loop:false});
 let bounds={x:35,y:130,width:150,height:280};
 for(let index=0;index<frames.length;index++){
  if(index>0)run({name:"animation.frame.duplicate",index:index-1});
  const frame=frames[index];
  if(index>0){
-  const transformed=run({name:"canvas.transform_region",...bounds,dx:frame.dx,dy:frame.dy,rotate:frame.rotate,scaleX:frame.scaleX??1,scaleY:frame.scaleY??1,interpolation:"bilinear",authoringMode:MODE});
+  const transformed=run({name:"canvas.transform_region",...bounds,dx:frame.dx,dy:frame.dy,rotate:frame.rotate,scaleX:frame.scaleX??1,scaleY:frame.scaleY??1,interpolation:"bilinear",authoringMode:M});
   if(transformed.bounds)bounds={x:transformed.bounds.x,y:transformed.bounds.y,width:transformed.bounds.width,height:transformed.bounds.height};
   const layer=rt.sandbox.layers.find(item=>item.id===opponent);
-  const cel=run({name:"animation.frame.set_cel",layerId:opponent,index,pixels:Buffer.from(layer.pixels).toString("base64"),authoringMode:MODE});
+  const cel=run({name:"animation.frame.set_cel",layerId:opponent,index,pixels:Buffer.from(layer.pixels).toString("base64"),authoringMode:M});
   if(cel.blockedPixels)throw new Error("Blocked incompatible Illustration pixels: "+cel.blockedPixels);
  }
  run({name:"animation.frame.set_duration",index,durationMs:frame.duration});
