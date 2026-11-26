@@ -12,7 +12,13 @@ function applyPixelForgeCelPatch(project,patch){
  for(const op of patch.operations){if(!op||!Number.isInteger(op.x)||!Number.isInteger(op.y)||op.x<0||op.y<0||op.x>=width||op.y>=height||op.x%tileSize||op.y%tileSize)fail('invalid_pixelforge_patch');const key=op.x+':'+op.y,plane=op.type.startsWith('ownership.')?'ownership':'rgba',seenKey=plane+':'+key;if(seen.has(seenKey))fail('invalid_pixelforge_patch');seen.add(seenKey);const w=Math.min(tileSize,width-op.x),h=Math.min(tileSize,height-op.y);
   if(op.type==='tile.remove')rgba.delete(key);else if(op.type==='ownership.remove')owners.delete(key);else if(op.type==='tile.put'||op.type==='ownership.put'){if(op.width!==w||op.height!==h)fail('invalid_pixelforge_patch');const isOwner=op.type==='ownership.put',bytes=decode(isOwner?op.owners:op.rgba,w*h*(isOwner?1:4),op.sha256);if(bytes.every(v=>v===0)||(isOwner&&bytes.some(v=>v>2)))fail('invalid_pixelforge_patch');(isOwner?owners:rgba).set(key,isOwner?{x:op.x,y:op.y,width:w,height:h,sha256:op.sha256,owners:op.owners}:{x:op.x,y:op.y,width:w,height:h,sha256:op.sha256,rgba:op.rgba});}else fail('invalid_pixelforge_patch');
  }
- target.tiles=[...rgba.values()].sort((x,y)=>x.y-y.y||x.x-y.x);target.ownershipTiles=[...owners.values()].sort((x,y)=>x.y-y.y||x.x-y.x);if(!target.ownershipTiles.length)delete target.ownershipTiles;next.revision=(Number.isInteger(next.revision)?next.revision:0)+1;return next;
+ target.tiles=[...rgba.values()].sort((x,y)=>x.y-y.y||x.x-y.x);target.ownershipTiles=[...owners.values()].sort((x,y)=>x.y-y.y||x.x-y.x);if(!target.ownershipTiles.length)delete target.ownershipTiles;
+ // The top-level raster layers are the editable view of the active animation frame.
+ // Keep that compatibility view in lockstep when the patched cel is active; otherwise
+ // a subsequent full snapshot could resurrect stale pixels from layers[].cel.
+ const frameIndex=a.frames.findIndex(f=>f.id===patch.frameId);
+ if(frameIndex===a.activeFrameIndex){const baseLayer=next.layers?.find(layer=>layer.id===patch.layerId);if(!baseLayer||!baseLayer.cel)fail('pixelforge_patch_target_not_found',404);baseLayer.cel=structuredClone(target);}
+ next.revision=(Number.isInteger(next.revision)?next.revision:0)+1;return next;
 }
 async function ensureSchema(pool){await pool.query(`CREATE TABLE IF NOT EXISTS codelab_pixelforge_patch_operations(workspace_id TEXT NOT NULL,project_id TEXT NOT NULL,operation_id TEXT NOT NULL,base_revision BIGINT NOT NULL,applied_revision BIGINT NOT NULL,patch_sha256 TEXT NOT NULL,receipt JSONB NOT NULL,created_at BIGINT NOT NULL,PRIMARY KEY(workspace_id,project_id,operation_id))`);}
 async function applyPatchToDatabase(pool,workspaceId,projectId,patch,{validateProject,maxProjectBytes=96*1024*1024,maxAccountBytes=512*1024*1024}={}){
