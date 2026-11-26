@@ -49,6 +49,20 @@ export function coverSourceRect(sourceWidth, sourceHeight, targetWidth, targetHe
   return { x: 0, y: (sourceHeight - height) / 2, width: sourceWidth, height };
 }
 
+export function coverSourceRectAtFocalPoint(sourceWidth, sourceHeight, targetWidth, targetHeight, focalPoint = { x: 0.5, y: 0.5 }) {
+  const centered = coverSourceRect(sourceWidth, sourceHeight, targetWidth, targetHeight);
+  const fx = Math.max(0, Math.min(1, Number(focalPoint?.x ?? 0.5)));
+  const fy = Math.max(0, Math.min(1, Number(focalPoint?.y ?? 0.5)));
+  const desiredX = fx * sourceWidth - centered.width / 2;
+  const desiredY = fy * sourceHeight - centered.height / 2;
+  return {
+    x: Math.max(0, Math.min(sourceWidth - centered.width, desiredX)),
+    y: Math.max(0, Math.min(sourceHeight - centered.height, desiredY)),
+    width: centered.width,
+    height: centered.height,
+  };
+}
+
 export function getPlatformCompositionGuide(sourceWidth, sourceHeight, profileId) {
   const profile = getVideoCompositionProfile(profileId);
   if (!profile) throw new RangeError('Unknown video composition profile: ' + profileId);
@@ -112,7 +126,7 @@ export function drawFrameToCanvas(context, bitmap, width, height, options = {}) 
   }
   const fitMode = options.fitMode === 'cover' ? 'cover' : 'contain';
   const rect = fitMode === 'cover'
-    ? coverSourceRect(bitmap.width, bitmap.height, width, height)
+    ? coverSourceRectAtFocalPoint(bitmap.width, bitmap.height, width, height, options.focalPoint)
     : containRect(bitmap.width, bitmap.height, 0, 0, width, height);
   const scalingMode = options.scalingMode === 'pixelated' ? 'pixelated' : 'smooth';
   context.save();
@@ -140,7 +154,7 @@ export function drawLayeredFrameToCanvas(context, layers, sourceWidth, sourceHei
   const fitMode = options.fitMode === 'cover' ? 'cover' : 'contain';
   let scale, cropX = 0, cropY = 0, offsetX = 0, offsetY = 0;
   if (fitMode === 'cover') {
-    const crop = coverSourceRect(sourceWidth, sourceHeight, width, height);
+    const crop = coverSourceRectAtFocalPoint(sourceWidth, sourceHeight, width, height, options.focalPoint);
     cropX = crop.x; cropY = crop.y;
     scale = width / crop.width;
   } else {
