@@ -130,3 +130,11 @@ The native layered composition path resolves each layer/cel's authoring mode and
 ## Acceptance rule
 
 Do not call the Illustration/tiled integration complete until the high-resolution editor path can create, edit with the supported and required tool families, animate, save/reopen, export/import a native editable package, and compose video without changing source pixels, ownership, dimensions or timing. Every unavailable tool must either be implemented or explicitly approved as a product limitation.
+
+## Tiled layer sprite-sheet export — 2026-11-26
+
+The editor's **Export sprite sheet** action now supports sparse tiled projects. It reads each layer through `TiledRasterProjectDocument.readRegion()` in bounded 16-row strips and writes those strips directly into the PNG sheet. It does not call `layer.pixels`, `composite()`, or allocate a full-canvas RGBA buffer per layer. The export ZIP retains the existing `spritesheet-manifest.json` structure and adds `storageMode: "tiled"` plus each layer's `authoringMode` metadata. Dense projects keep their existing export path.
+
+The browser E2E now downloads and inspects the tiled sprite-sheet ZIP, checks manifest geometry/mode, decodes the PNG, and verifies an exact source pixel at its original layer coordinate. The shared export-surface guard is 16 megapixels / 16384 px per side; larger sheets fail with a clear error rather than risking an uncontrolled canvas allocation.
+
+This closes the basic tiled *layer* sprite-sheet export gap. It does not claim that every other layer operation (copy/cut/paste, transforms, magic selection, color replacement, outline generation) has tiled parity.

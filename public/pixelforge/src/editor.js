@@ -3018,20 +3018,35 @@ $('#export-project').addEventListener('click', async () => {
   } catch (error) { status(`Project export failed: ${error.message}`, 'error'); }
 });
 $('#export-sprite-sheet').addEventListener('click', async () => {
-  if (doc.isTiled) { status('Sprite-sheet export is not yet available for sparse tiled projects.', 'warning'); return; }
   try {
     await settleActiveInput();
-    const layout = createSpriteSheetLayout(doc.layers.length, doc.width, doc.height, { columns: Math.ceil(Math.sqrt(doc.layers.length)), padding: 1 });
+    const layers = doc.layers;
+    const layout = createSpriteSheetLayout(layers.length, doc.width, doc.height, { columns: Math.ceil(Math.sqrt(layers.length)), padding: 1 });
+    if (layout.width > 16384 || layout.height > 16384 || layout.width * layout.height > 16_777_216) {
+      throw new RangeError('Sprite sheet exceeds the 16-megapixel / 16384-pixel export surface limit.');
+    }
     const sheet = document.createElement('canvas'); sheet.width = layout.width; sheet.height = layout.height;
     const context = sheet.getContext('2d', { alpha: true });
     if (!context) throw new Error('Could not create the sprite sheet export surface.');
     context.clearRect(0, 0, sheet.width, sheet.height);
     const frames = layout.frames.map((frame, index) => {
-      const layer = doc.layers[index];
-      context.putImageData(new ImageData(new Uint8ClampedArray(layer.pixels), doc.width, doc.height), frame.x, frame.y);
-      return { ...frame, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked };
+      const layer = layers[index];
+      if (doc.isTiled) {
+        // Read sparse layer pixels in bounded strips; never materialize a full-canvas RGBA buffer.
+        for (let row = 0; row < doc.height; row += 16) {
+          const rows = Math.min(16, doc.height - row);
+          const pixels = doc.readRegion(layer.id, { x: 0, y: row, width: doc.width, height: rows });
+          context.putImageData(new ImageData(pixels, doc.width, rows), frame.x, frame.y + row);
+        }
+      } else {
+        context.putImageData(new ImageData(new Uint8ClampedArray(layer.pixels), doc.width, doc.height), frame.x, frame.y);
+      }
+      return { ...frame, name: layer.name, visible: layer.visible, opacity: layer.opacity, locked: layer.locked,
+        authoringMode: layer.authoringMode || doc.getDrawingConfiguration?.().activeMode || null };
     });
-    const manifest = { format: 'pixelforge-sprite-sheet', version: 1, document: doc.name, sheet: { width: layout.width, height: layout.height, columns: layout.columns, rows: layout.rows, padding: layout.padding }, frameSize: { width: doc.width, height: doc.height }, pivot: 'center', frames };
+    const manifest = { format: 'pixelforge-sprite-sheet', version: 1, document: doc.name, storageMode: doc.isTiled ? 'tiled' : 'dense',
+      sheet: { width: layout.width, height: layout.height, columns: layout.columns, rows: layout.rows, padding: layout.padding },
+      frameSize: { width: doc.width, height: doc.height }, pivot: 'center', frames };
     const png = await new Promise((resolve, reject) => sheet.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG encoder returned no data.')), 'image/png'));
     const archive = await createZipBlob([
       { name: safeName(doc.name) + '-spritesheet.png', data: png },
