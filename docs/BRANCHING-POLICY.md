@@ -1,82 +1,84 @@
 # CodeLab — Branching Policy
 
-## Regla única: solo se trabaja en main
+## Regla única: una sola rama de trabajo derivada de main
 
-**CodeLab tiene una única rama de desarrollo y pruebas: main.**
+**CodeLab mantiene una sola rama principal: main, y permite una sola rama de trabajo activa a la vez, creada desde main.**
 
-Todo trabajo nuevo, incluyendo implementación, pruebas, regresiones, experimentos, documentación y correcciones, se realiza directamente sobre main.
+El trabajo nuevo no se desarrolla directamente sobre main. Se crea una única rama temporal de trabajo a partir del último main, y allí se implementa, documenta y prueba la tarea completa.
 
-No se crean ni se mantienen ramas paralelas de trabajo para features, fixes, tests, regresiones, integration, experimentos, documentación, PixelForge, Illustration, Pixel, Animation, Video Composer, Headless, Agent, importación o exportación.
+No deben existir varias ramas de trabajo activas en paralelo. Esto aplica a features, fixes, tests, regresiones, experimentos, documentación, PixelForge, Illustration, Pixel, Animation, Video Composer, Headless, Agent, importación y exportación.
 
-### Flujo obligatorio
+La rama de trabajo es temporal: se integra en main cuando cumple los controles y luego se elimina. No se convierte en una rama permanente.
+
+## Flujo obligatorio
 
 ~~~text
-main
-  ↓
-cambio
-  ↓
-verificación local / CI / Actions
-  ↓
-corrección si hace falta
-  ↓
-verificación nuevamente
-  ↓
-main
+main actualizado
+    ↓
+crear UNA rama de trabajo desde main
+    ↓
+implementar + documentar + probar en esa rama
+    ↓
+revisar diferencias de código Y documentación contra main
+    ↓
+reconciliar cualquier diferencia o contradicción
+    ↓
+ejecutar CI / Actions y verificar resultados
+    ↓
+merge a main
+    ↓
+eliminar la rama temporal
+    ↓
+siguiente tarea: nueva rama desde el main actualizado
 ~~~
 
-Si una tarea necesita varias etapas, todas las etapas continúan sobre main. Si una prueba necesita repetirse, se repite sobre el estado actual de main.
+**Solo puede haber una rama de trabajo activa a la vez.** No se inicia otra tarea en una segunda rama mientras la rama de trabajo actual siga abierta o pendiente de integrar/cerrar.
 
-**Una prueba no justifica crear otra rama.**
-
-## Antes de cualquier trabajo
+## Antes de empezar una tarea
 
 Todo agente debe:
 
-1. Consultar el estado actual de main.
-2. Confirmar el SHA actual de main.
-3. Trabajar únicamente sobre main.
-4. Ejecutar las verificaciones correspondientes.
-5. Volver a comprobar main después de las verificaciones.
-6. Documentar los cambios importantes.
+1. Consultar el estado actual de main y confirmar su SHA.
+2. Comprobar que no haya otra rama de trabajo activa para otra tarea.
+3. Crear una sola rama temporal desde el último main.
+4. Hacer todo el trabajo de esa tarea en esa rama, incluidos tests y documentación.
+5. No crear ramas adicionales para dividir la tarea ni para ejecutar pruebas.
+6. Mantener la rama actualizada con main si main cambia durante el trabajo y reconciliar los cambios antes de integrar.
 
-origin/main es la fuente de verdad del estado vigente de CodeLab.
+## Documentación: requisito obligatorio antes del merge
 
-## Documentación: no puede haber dos verdades
+**Antes de fusionar, la documentación de la rama de trabajo y la documentación existente en main deben estar reconciliadas y no deben diferir de forma contradictoria, incompleta o desactualizada.**
 
-**Antes de fusionar, integrar o considerar terminado cualquier cambio, la documentación relacionada de ambos lados debe coincidir.**
+La comparación no significa que ambos árboles deban tener archivos idénticos: significa que todos los documentos relacionados, en ambos lados, deben describir el mismo comportamiento, contratos, nombres, límites, formatos y flujos que tendrá el código después del merge.
 
-No se debe aceptar una integración mientras una parte diga una cosa y la otra otra.
+Antes de aprobar el merge hay que:
 
-Antes de dar por listo un cambio hay que:
+- revisar los documentos relevantes existentes en main y los cambios documentales de la rama;
+- integrar en la rama cualquier actualización documental necesaria;
+- resolver duplicados, contradicciones y descripciones obsoletas;
+- confirmar que la documentación refleja la implementación final y no una etapa intermedia;
+- comprobar que ningún documento de main que siga vigente contradiga la nueva documentación;
+- repetir la revisión después de resolver conflictos o actualizar la rama con main.
 
-- comparar la documentación relevante con main;
-- actualizar la documentación necesaria;
-- comprobar que nombres, contratos, comportamiento, límites y flujos descritos coincidan con la implementación real;
-- comprobar que no queden instrucciones contradictorias;
-- verificar nuevamente después de integrar.
+**No se fusiona mientras la documentación de ambas partes no esté reconciliada.** La documentación es parte del cambio, no una tarea opcional posterior al merge.
 
-**Código y documentación deben representar el mismo estado del sistema.**
+## Pruebas y verificación
 
-No se debe fusionar una implementación que deje documentación vieja, incompleta o contradictoria con el código.
+Las pruebas se ejecutan en la única rama de trabajo activa, que debe partir del main vigente.
 
-## Cómo se hacen las pruebas
+1. Registrar el SHA base de main.
+2. Implementar y ejecutar las pruebas necesarias en la rama de trabajo.
+3. Corregir fallos en esa misma rama.
+4. Ejecutar nuevamente las pruebas afectadas y las regresiones relevantes.
+5. Verificar los Actions/checks del SHA exacto que se pretende fusionar.
+6. Revisar el diff final de código y documentación contra main.
+7. Solo entonces fusionar.
 
-Las pruebas deben ejecutarse sobre el main vigente.
-
-Cuando una prueba sea experimental o de diagnóstico:
-
-1. se parte del main actual;
-2. se ejecuta la prueba sobre ese estado;
-3. se registra el resultado;
-4. si hay un problema, se corrige sobre main;
-5. se vuelve a ejecutar la prueba;
-6. se documenta el resultado.
-
-No se conserva una rama paralela únicamente para guardar el resultado de una prueba.
+No se crea una rama separada para tests, para resultados de CI, para experimentos ni para una segunda etapa de la misma tarea.
 
 ## Ramas antiguas: clasificación para eliminación
 
-Las siguientes ramas fueron identificadas durante la limpieza y **no forman parte del flujo de desarrollo actual**. Se consideran candidatas a eliminación porque están obsoletas, divergidas de main o corresponden a trabajo ya integrado/cerrado:
+Las siguientes ramas fueron identificadas durante la limpieza y **no forman parte del flujo vigente**. Son candidatas a eliminación por estar obsoletas, divergidas de main o corresponder a trabajos ya integrados/cerrados:
 
 - feat/pixelforge-tiled-package-export
 - test/pixelforge-raster-tools-e2e
@@ -87,41 +89,38 @@ Las siguientes ramas fueron identificadas durante la limpieza y **no forman part
 - feature/pixelforge-raster-regression-tests
 - integration/reconcile-main-2026-11-03
 
-La rama feat/pixelforge-tiled-spritesheet-export ya fue integrada en main. Si todavía existe como referencia remota, debe tratarse como histórica y eliminarse cuando las herramientas de repositorio lo permitan.
+La rama feat/pixelforge-tiled-spritesheet-export ya fue integrada en main. Si aún existe como referencia remota, es histórica y también debe eliminarse.
 
-### Qué hacer con una rama antigua
+Antes de borrar una rama antigua, comprobar si contiene commits o cambios exclusivos que aún sean necesarios. Rescatar únicamente lo necesario, aplicarlo a la rama de trabajo única creada desde main, verificarlo y después eliminar la rama histórica. Nunca reanudar el desarrollo sobre una rama obsoleta.
 
-Si un agente encuentra una de estas ramas:
+## Qué hacer si main cambia mientras se trabaja
 
-- **no debe continuar desarrollándola**;
-- no debe tomarla como fuente de verdad;
-- debe comparar cualquier trabajo exclusivo contra main;
-- solo debe rescatar cambios que todavía sean necesarios;
-- esos cambios deben aplicarse y verificarse sobre main;
-- la rama debe quedar como histórica hasta poder eliminarla.
+Si otro cambio se integra en main mientras la rama temporal está activa:
 
-Las ramas antiguas no son una alternativa de desarrollo ni una segunda versión de CodeLab.
+- detener cualquier intento de abrir una segunda rama;
+- actualizar/rebasar la única rama de trabajo desde main según el flujo seguro del repositorio;
+- resolver conflictos;
+- volver a revisar código, tests y documentación;
+- repetir los checks requeridos antes del merge.
 
 ## Regla estricta para futuros agentes
 
-Un agente **no debe crear otra rama** porque la tarea sea grande, tenga muchas etapas, necesite pruebas, sea experimental, requiera una regresión o pueda tardar varios días.
+Un agente no debe crear ramas paralelas porque la tarea sea grande, tenga varias etapas, necesite pruebas, sea experimental o tarde varios días.
 
-Todo eso se hace sobre main, con verificaciones intermedias y documentación.
-
-### Principio final
+**Una sola rama temporal de trabajo a la vez. Una sola rama principal: main.** Cada tarea se termina, verifica, documenta, fusiona y limpia antes de iniciar la siguiente rama de trabajo.
 
 ~~~text
-UNA RAMA DE DESARROLLO
-        ↓
-      main
-        ↓
-UNA FUENTE DE VERDAD
-        ↓
-código + documentación coherentes
+main
+  ↓
+UNA ÚNICA RAMA TEMPORAL
+  ↓
+código + documentación + pruebas
+  ↓
+reconciliación y verificación
+  ↓
+merge a main
+  ↓
+eliminar rama temporal
 ~~~
-
-**CodeLab se desarrolla y se prueba en una sola línea: main.**
-
-**Antes de integrar cualquier cambio, la documentación de las partes involucradas debe coincidir con la implementación real.**
 
 La existencia de ramas antiguas en GitHub no modifica esta política.
