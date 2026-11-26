@@ -64,6 +64,32 @@ function validateCel(cel, width, height, state) {
       return false;
     }
   }
+
+  if (cel.ownershipTiles !== undefined && !Array.isArray(cel.ownershipTiles)) return false;
+  const ownershipSeen = new Set();
+  for (const tile of cel.ownershipTiles || []) {
+    if (!tile || typeof tile !== 'object' || Array.isArray(tile) ||
+        !Number.isInteger(tile.x) || !Number.isInteger(tile.y) ||
+        tile.x < 0 || tile.y < 0 || tile.x >= width || tile.y >= height ||
+        tile.x % cel.tileSize !== 0 || tile.y % cel.tileSize !== 0) return false;
+    const expectedWidth = Math.min(cel.tileSize, width - tile.x);
+    const expectedHeight = Math.min(cel.tileSize, height - tile.y);
+    if (tile.width !== expectedWidth || tile.height !== expectedHeight) return false;
+    const key = tile.x + ':' + tile.y;
+    if (ownershipSeen.has(key)) return false;
+    ownershipSeen.add(key);
+    const owners = validBase64(tile.owners, expectedWidth * expectedHeight);
+    if (!owners || typeof tile.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(tile.sha256)) return false;
+    const hash = crypto.createHash('sha256').update(owners).digest('hex');
+    if (hash !== tile.sha256) return false;
+    let hasOwner = false;
+    for (const owner of owners) {
+      if (owner > 2) return false;
+      if (owner !== 0) hasOwner = true;
+    }
+    // Ownership is sparse too: all-zero owner tiles are omitted.
+    if (!hasOwner) return false;
+  }
   return true;
 }
 
