@@ -122,6 +122,10 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
     name: 'canvas.draw_line', x0: 4, y0: 12, x1: 16, y1: 12, color: '#342D52', size: 1
   }).ok, true);
   assert.equal(runtime.execute({
+    name: 'vector.object.create',
+    object: { type: 'ellipse', x: 20, y: 4, width: 8, height: 8, fill: '#55BFA3', stroke: 'none' }
+  }).ok, true);
+  assert.equal(runtime.execute({
     name: 'animation.frame.capture_document', frameName: 'Pose 1', durationMs: 120
   }).ok, true);
   assert.equal(runtime.execute({
