@@ -2671,7 +2671,7 @@ const server = http.createServer(async (req, res) => {
         // POST is the canonical agent operation. GET is intentionally supported
         // as a transport fallback for agent runtimes that cannot set headers;
         // the token is still required and the response is never cached.
-        const queryToken = url.searchParams.get('token') || '';
+        const queryToken = searchParams.get('token') || '';
         const supplied = String(req.headers['x-codelab-agent-bridge-token'] || queryToken);
         if (!AGENT_BRIDGE_CONTROL_SECRET || !safeTokenEqual(supplied, AGENT_BRIDGE_CONTROL_SECRET)) {
           return sendJson(res, 401, { error: 'agent_bridge_unauthorized' });
