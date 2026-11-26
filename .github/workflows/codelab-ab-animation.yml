@@ -17,7 +17,7 @@ on:
       project_id:
         description: 'Persisted ADMIN PixelForge project'
         required: false
-        default: 'soldier-walk-60f-20261124'
+        default: 'abd33d81-5480-49a7-90e8-6818d2190460'
         type: string
 
 permissions:
@@ -43,7 +43,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           SESSION_MINUTES: ${{ inputs.session_minutes || '30' }}
-          PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
+          PROJECT_ID: ${{ inputs.project_id || 'abd33d81-5480-49a7-90e8-6818d2190460' }}
         run: |
           set -euo pipefail
           session_id="ab-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -51,6 +51,7 @@ jobs:
           echo "CODELAB_A_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           gh workflow run ".github/workflows/codelab-independent-session-a.yml" \
             --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME" \
             -f issue_number=492 \
             -f session_id="$session_id" \
             -f minutes="$SESSION_MINUTES" \
@@ -89,6 +90,7 @@ jobs:
           CODELAB_A_READY_SINCE: ${{ env.CODELAB_A_READY_SINCE }}
           CODELAB_SESSION_TIMEOUT_MS: "1200000"
           CODELAB_AB_OUTPUT_DIR: ${{ runner.temp }}/codelab-ab-video
+          CODELAB_REQUESTED_PROJECT_ID: ${{ inputs.project_id || 'abd33d81-5480-49a7-90e8-6818d2190460' }}
         run: node scripts/codelab-ab-session-request.mjs
       - name: Verify A remains alive after B has finished
         if: always()
