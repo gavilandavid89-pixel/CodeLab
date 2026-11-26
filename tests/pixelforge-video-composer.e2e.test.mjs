@@ -140,7 +140,7 @@ test('Video Composer imports a PixelForge ZIP, previews frames and fits a mobile
   const nativePageErrors = [];
   page.on('pageerror', error => nativePageErrors.push(error.message));
   await page.locator('#vc-file').setInputFiles({
-    name: 'mixed-style.codelab-pixelforge.zip',
+    name: 'mixed-style.zip',
     mimeType: 'application/zip',
     buffer: nativePackage.bytes,
   });
