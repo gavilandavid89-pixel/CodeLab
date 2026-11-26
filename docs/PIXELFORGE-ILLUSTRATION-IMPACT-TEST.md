@@ -29,6 +29,7 @@ La prueba usa una capa aplanada para validar el flujo de animación primero. No 
 2. Se creó el timeline a través de las acciones del runtime Headless.
 3. Se asignó `authoringMode: illustration` explícitamente a cada operación `animation.frame.set_cel`.
 4. Se verificaron los 16 contextos de frame y capa: todos devuelven `illustration`.
+5. También se verificó el modo de autoría de la capa base del proyecto y de las 16 entradas de capa del paquete: todos son `illustration`.
 5. Se verificó que las operaciones no bloquearon píxeles (`blockedPixels: 0`).
 6. Se creó y aceptó la propuesta Headless antes de serializar el proyecto.
 7. Se generó el paquete nativo y se comprobó la integridad ZIP: 43 entradas, sin errores de compresión.
