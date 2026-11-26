@@ -1,98 +1,205 @@
 import { createHeadlessRuntime } from "../../../public/pixelforge/src/headless.js";
 import { createPixelForgeCodeLabPackageZip } from "../../../pixelforge-codelab-package.mjs";
 import { writeFile } from "node:fs/promises";
-const W=240,H=426,M="illustration";
-const rt=createHeadlessRuntime({width:W,height:H,name:"Impact — Illustration Improved"});
-const run=a=>{const r=rt.execute(a);if(!r.ok)throw new Error(a.name+": "+(r.error?.message||JSON.stringify(r.error)));return r.result;};
-const pt=(x,y)=>({x:Math.max(0,Math.min(W-1,Math.round(x))),y:Math.max(0,Math.min(H-1,Math.round(y)))});
-const s=(pts,color,size,opacity=1)=>run({name:"canvas.draw_stroke",points:pts.map(([x,y])=>pt(x,y)),color,size,opacity,hardness:.96,shape:"circle",authoringMode:M});
-const e=(x,y,w,h,color,size=4)=>run({name:"canvas.draw_shape",shape:"ellipse",x:Math.max(0,x),y:Math.max(0,y),width:Math.max(1,Math.min(W-Math.max(0,x),w)),height:Math.max(1,Math.min(H-Math.max(0,y),h)),color,size,authoringMode:M});
-const fill=(x,y,color)=>run({name:"canvas.fill",x,y,color,tolerance:0,contiguous:true,authoringMode:M});
-const C={ink:"#17151A",skin:"#D99178",light:"#F0BCA5",shade:"#9E5D54",hair:"#101116",pants:"#D6CFC3",pantsShade:"#8C8988",jacket:"#25242A",jacketLight:"#45434C",bg:"#D9DEE1",ground:"#BFC1C2",speed:"#A5ADB4",white:"#E8E3DA"};
-const bg=rt.sandbox.layers[0].id;run({name:"layer.rename",layerId:bg,newName:"Escenario"});
-const attacker=run({name:"layer.add",layerName:"Atacante — Illustration"}).layerId;
-const opponent=run({name:"layer.add",layerName:"Oponente — Illustration"}).layerId;
-run({name:"drawing.mode.set",mode:M});run({name:"animation.frame.capture_document",durationMs:100,frameName:"Preparación"});
-run({name:"layer.select",layerId:bg});run({name:"drawing.mode.set",mode:M});
-run({name:"canvas.fill",x:2,y:2,color:C.bg,tolerance:0,contiguous:true,authoringMode:M});
-run({name:"canvas.fill",x:3,y:360,color:C.ground,tolerance:8,contiguous:true,authoringMode:M});
-s([[0,350],[55,348],[110,351],[170,347],[239,350]],"#777C83",3);
-s([[0,388],[70,385],[150,389],[239,385]],"#92979D",2);
-for(let i=0;i<6;i++)s([[12+i*40,65+(i%3)*18],[40+i*34,55+(i%3)*18]],C.speed,2,.45);
-// The puncher stays in place: bare torso, pale trousers, and an extended left fist.
-run({name:"layer.select",layerId:attacker});run({name:"drawing.mode.set",mode:M});
-s([[177,298],[170,337],[165,378],[158,408]],C.ink,25);s([[177,298],[170,337],[165,378],[158,408]],C.pants,17);
-s([[207,298],[216,338],[222,379],[231,405]],C.ink,25);s([[207,298],[216,338],[222,379],[231,405]],C.pants,17);
-s([[158,408],[146,414],[169,417],[179,411]],C.ink,12);s([[224,403],[230,414],[239,414]],C.ink,12);
-s([[170,200],[151,212],[143,243],[148,282],[166,313],[202,316],[224,291],[226,248],[214,214],[194,198],[170,200]],C.ink,44);
-s([[170,200],[151,212],[143,243],[148,282],[166,313],[202,316],[224,291],[226,248],[214,214],[194,198],[170,200]],C.skin,34);
-s([[158,219],[178,235],[198,232],[215,217]],C.light,8,.8);
-s([[158,251],[179,263],[199,264],[215,251]],C.shade,5,.8);
-s([[165,275],[183,285],[201,280]],C.shade,4,.7);
-s([[171,294],[188,300],[207,293]],C.light,5,.7);
-s([[171,183],[173,204],[192,216],[210,201],[208,178]],C.ink,28);s([[171,183],[173,204],[192,216],[210,201],[208,178]],C.skin,20);
-s([[158,215],[138,220],[120,218],[102,208],[87,202],[75,200]],C.ink,34);s([[158,215],[138,220],[120,218],[102,208],[87,202],[75,200]],C.skin,24);
-s([[123,216],[113,228],[98,229]],C.light,6,.8);
-s([[76,200],[63,189],[50,191],[43,204],[49,219],[66,224],[80,213]],C.ink,25);s([[76,200],[63,189],[50,191],[43,204],[49,219],[66,224],[80,213]],C.skin,16);
-s([[214,218],[233,224],[238,243],[231,261],[216,265]],C.ink,28);s([[214,218],[233,224],[238,243],[231,261],[216,265]],C.skin,18);
-e(171,133,65,73,C.ink,5);e(177,139,54,62,C.skin,2);
-s([[178,150],[174,135],[183,120],[202,116],[222,127],[235,148],[225,150],[212,135],[193,134],[181,146]],C.ink,17);
-s([[181,158],[192,153],[201,157],[214,153],[226,155]],C.ink,4);e(192,157,5,7,C.ink,1);e(216,155,5,7,C.ink,1);
-s([[206,160],[201,176],[210,179]],C.shade,4);s([[192,187],[207,191],[220,184]],C.ink,4);
-// The opponent is a single complete jacketed figure on its own layer.
-run({name:"layer.select",layerId:opponent});run({name:"drawing.mode.set",mode:M});
-s([[77,308],[65,337],[55,365],[44,386]],C.ink,27);s([[77,308],[65,337],[55,365],[44,386]],"#34333A",18);
-s([[111,308],[125,336],[140,360],[154,379]],C.ink,27);s([[111,308],[125,336],[140,360],[154,379]],"#34333A",18);
-s([[44,385],[31,395],[57,398],[68,389]],C.ink,14);s([[150,378],[158,389],[177,392]],C.ink,14);
-s([[65,208],[52,223],[48,263],[57,306],[78,322],[117,320],[137,300],[137,254],[124,218],[100,203],[65,208]],C.ink,42);
-fill(91,260,C.jacket);
-s([[62,223],[82,242],[101,246],[125,224]],C.jacketLight,7,.8);
-s([[75,255],[91,265],[112,261]],"#66616B",5,.7);
-s([[88,279],[103,287],[119,280]],"#66616B",4,.7);
-s([[69,210],[86,235],[98,250],[112,231],[126,213]],C.ink,10);
-s([[98,250],[99,301]],"#AAA4A2",3,.8);
-s([[60,226],[39,235],[23,250],[15,264]],C.ink,27);s([[60,226],[39,235],[23,250],[15,264]],C.jacket,17);
-s([[15,264],[8,271],[12,282],[25,283],[32,273]],C.ink,14);s([[15,264],[8,271],[12,282],[25,283],[32,273]],C.skin,8);
-s([[127,224],[151,235],[165,253],[174,267]],C.ink,27);s([[127,224],[151,235],[165,253],[174,267]],C.jacket,17);
-s([[174,267],[182,271],[189,264],[184,253],[174,254]],C.ink,14);s([[174,267],[182,271],[189,264],[184,253],[174,254]],C.skin,8);
-s([[81,210],[82,193],[89,185],[105,185],[115,197],[115,214]],C.ink,19);s([[81,210],[82,193],[89,185],[105,185],[115,197],[115,214]],C.skin,12);
-e(75,151,58,64,C.ink,5);e(80,157,48,54,C.skin,2);
-s([[80,170],[78,153],[89,140],[107,140],[126,153],[130,170],[119,165],[108,153],[91,156],[83,169]],C.ink,14);
-s([[85,176],[95,173],[102,177],[110,175],[119,177]],C.ink,3);e(95,177,4,5,C.ink,1);e(113,177,4,5,C.ink,1);
-s([[106,179],[102,190],[108,193]],C.shade,3);s([[94,202],[106,205],[117,200]],C.ink,3);
-s([[61,239],[74,249],[84,251]],"#77727A",4,.8);
-const frames=[
- {duration:100,dx:0,dy:0,rotate:0},
- {duration:80,dx:-8,dy:-5,rotate:0},
- {duration:90,dx:-24,dy:-35,rotate:0},
- {duration:90,dx:-18,dy:-20,rotate:90,scaleY:0.85},
- {duration:90,dx:0,dy:20,rotate:90},
- {duration:400,dx:10,dy:50,rotate:90}
-];
-for(const layerId of [bg,attacker,opponent]){const layer=rt.sandbox.layers.find(item=>item.id===layerId);run({name:"animation.frame.set_cel",layerId,index:0,pixels:Buffer.from(layer.pixels).toString("base64"),authoringMode:M});}
-run({name:"animation.set_fps",fps:12});run({name:"animation.set_loop",loop:false});
-let bounds={x:35,y:130,width:150,height:280};
-for(let index=0;index<frames.length;index++){
- if(index>0)run({name:"animation.frame.duplicate",index:index-1});
- const frame=frames[index];
- if(index>0){
-  const transformed=run({name:"canvas.transform_region",...bounds,dx:frame.dx,dy:frame.dy,rotate:frame.rotate,scaleX:frame.scaleX??1,scaleY:frame.scaleY??1,interpolation:"bilinear",authoringMode:M});
-  if(transformed.bounds)bounds={x:transformed.bounds.x,y:transformed.bounds.y,width:transformed.bounds.width,height:transformed.bounds.height};
-  const layer=rt.sandbox.layers.find(item=>item.id===opponent);
-  const cel=run({name:"animation.frame.set_cel",layerId:opponent,index,pixels:Buffer.from(layer.pixels).toString("base64"),authoringMode:M});
-  if(cel.blockedPixels)throw new Error("Blocked incompatible Illustration pixels: "+cel.blockedPixels);
- }
- run({name:"animation.frame.set_duration",index,durationMs:frame.duration});
+
+const PROJECT_ID = "6f9cdb50-55a3-4d78-bd34-9cc95b54a5be";
+const BASE_URL = String(process.env.CODELAB_PUBLIC_URL || "https://codelab-qedi.onrender.com").replace(/\/+$/, "");
+const BRIDGE_TOKEN = String(process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET || "");
+const MODE = "illustration";
+if (!BRIDGE_TOKEN) throw new Error("Missing bridge token.");
+if (!/^https:\/\//i.test(BASE_URL)) throw new Error("The ADMIN bridge must use HTTPS.");
+
+// Fetch the persisted snapshot outside Headless. Only the project JSON is passed into the isolated runtime.
+const response = await fetch(BASE_URL + "/api/agent/bridge/pixelforge/projects/" + encodeURIComponent(PROJECT_ID), {
+  headers: { "x-codelab-agent-bridge-token": BRIDGE_TOKEN, accept: "application/json" },
+  signal: AbortSignal.timeout(120000)
+});
+const snapshot = await response.json().catch(() => ({}));
+if (!response.ok) throw new Error("ADMIN snapshot HTTP " + response.status + ": " + String(snapshot.error || "request_failed"));
+if (snapshot.workspaceId !== "ws_local_admin" || snapshot.projectId !== PROJECT_ID || snapshot.project?.id !== PROJECT_ID) {
+  throw new Error("Refusing to edit a project outside the pinned ADMIN project.");
 }
+if (!Number.isInteger(snapshot.serverRevision) || snapshot.serverRevision < 1 || !/^[a-f0-9]{64}$/i.test(snapshot.contentSha256 || "")) {
+  throw new Error("Persisted ADMIN revision/hash is missing.");
+}
+const sourceProject = snapshot.project;
+const sourceFrameCount = sourceProject.animation?.frames?.length || 0;
+if (sourceFrameCount < 2 || sourceProject.layers?.length !== 3) throw new Error("Unexpected source project structure.");
+delete process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET;
+
+const W = sourceProject.width, H = sourceProject.height;
+if (W !== 240 || H !== 426) throw new Error("Unexpected canvas dimensions; review before editing.");
+const rt = createHeadlessRuntime({ project: sourceProject });
+const run = action => {
+  const result = rt.execute(action);
+  if (!result.ok) throw new Error(action.name + ": " + (result.error?.message || JSON.stringify(result.error)));
+  return result.result;
+};
+const inspect = rt.inspect();
+if (!inspect || rt.hasPendingProposal) throw new Error("Headless did not open a clean persisted project.");
+const mode = run({ name: "drawing.mode.get" });
+if (mode.activeMode !== MODE && mode.layerMode !== MODE) run({ name: "drawing.mode.set", mode: MODE });
+const layer = name => rt.sandbox.layers.find(item => item.name === name);
+const background = layer("Escenario");
+const attacker = layer("Atacante — Illustration");
+const opponent = layer("Oponente — Illustration");
+if (!background || !attacker || !opponent) throw new Error("Expected persisted layers were not found.");
+const C = {
+  ink:"#17151A", skin:"#D99178", light:"#F0BCA5", shade:"#9E5D54",
+  hair:"#101116", pants:"#D6CFC3", pantsShade:"#8C8988",
+  jacket:"#25242A", jacketLight:"#45434C", bg:"#D9DEE1",
+  ground:"#BFC1C2", speed:"#A5ADB4", white:"#E8E3DA", seam:"#77727A"
+};
+const p = (x,y) => ({ x:Math.max(0,Math.min(W-1,Math.round(x))), y:Math.max(0,Math.min(H-1,Math.round(y))) });
+const stroke = (points,color,size,opacity=1) => run({
+  name:"canvas.draw_stroke", points:points.map(([x,y])=>p(x,y)),
+  color,size,opacity,hardness:.94,shape:"circle",authoringMode:MODE
+});
+const ellipse = (x,y,w,h,color,size=3) => run({
+  name:"canvas.draw_shape",shape:"ellipse",x,y,width:w,height:h,color,size,authoringMode:MODE
+});
+const clear = () => run({name:"canvas.clear_region",x:0,y:0,width:W,height:H,authoringMode:MODE});
+const select = id => { run({name:"layer.select",layerId:id}); run({name:"drawing.mode.set",mode:MODE}); };
+const outlineFill = (points,outer,inner,outerSize,innerSize) => {
+  stroke(points,outer,outerSize);
+  stroke(points,inner,innerSize);
+};
+function drawAttacker(){
+  // Trouser legs, pelvis and shoes.
+  outlineFill([[157,286],[176,290],[174,337],[163,378],[147,392]],C.ink,C.pants,22,14);
+  outlineFill([[194,286],[214,290],[222,337],[231,376],[239,389]],C.ink,C.pants,22,14);
+  stroke([[147,392],[133,401],[158,405],[174,397]],C.ink,13);
+  stroke([[226,378],[234,392],[239,397]],C.ink,13);
+  stroke([[167,310],[163,349],[155,375]],C.pantsShade,3,.75);
+  stroke([[210,310],[219,346],[226,369]],C.pantsShade,3,.75);
+  // Bare torso with a clean shoulder/waist silhouette.
+  outlineFill([[157,184],[170,171],[190,169],[211,178],[226,199],[222,241],[211,283],[193,300],[168,292],[150,266],[143,224],[147,198],[157,184]],C.ink,C.skin,31,23);
+  stroke([[158,204],[177,220],[196,218],[215,201]],C.light,7,.8);
+  stroke([[155,236],[177,250],[199,249],[217,235]],C.shade,5,.7);
+  stroke([[166,269],[184,278],[205,270]],C.shade,4,.65);
+  stroke([[170,284],[188,291],[204,283]],C.light,4,.65);
+  // Neck and head, facing left.
+  outlineFill([[169,169],[168,145],[194,139],[210,163],[207,186],[188,198],[172,184]],C.ink,C.skin,17,11);
+  ellipse(157,116,67,76,C.ink,5);
+  ellipse(163,122,55,65,C.skin,2);
+  stroke([[162,137],[160,118],[174,101],[199,99],[220,115],[226,139],[212,131],[201,116],[180,117],[166,135]],C.hair,18);
+  stroke([[166,146],[178,141],[189,145],[202,140],[215,144]],C.ink,4);
+  ellipse(177,145,5,7,C.ink,1); ellipse(202,143,5,7,C.ink,1);
+  stroke([[190,148],[185,164],[194,167]],C.shade,3);
+  stroke([[177,175],[194,178],[207,171]],C.ink,3);
+  // Punching shoulder, extended arm and clenched fist pointing left.
+  outlineFill([[157,201],[139,202],[121,193],[105,185],[87,184],[72,191],[69,207],[85,220],[107,216],[128,220],[151,230]],C.ink,C.skin,24,16);
+  stroke([[135,205],[118,207],[101,199]],C.light,5,.75);
+  outlineFill([[72,190],[61,180],[47,182],[38,194],[41,210],[55,219],[71,211],[78,199]],C.ink,C.skin,17,10);
+  stroke([[46,195],[57,191],[67,196]],C.shade,3);
+  // Non-punching arm tucked back for balance.
+  outlineFill([[215,205],[230,213],[239,231]],C.ink,C.skin,20,12);
+  stroke([[221,222],[235,231],[239,245]],C.shade,3,.75);
+}
+function drawOpponent(){
+  // Black trousers and grounded stance.
+  outlineFill([[47,283],[67,286],[65,331],[52,368],[37,382]],C.ink,"#303038",23,15);
+  outlineFill([[91,283],[112,282],[119,325],[132,358],[144,374]],C.ink,"#303038",23,15);
+  stroke([[37,382],[23,392],[47,397],[61,388]],C.ink,13);
+  stroke([[136,369],[145,383],[160,387]],C.ink,13);
+  // Jacket torso with visible lapels and seams.
+  outlineFill([[40,193],[55,181],[77,179],[102,190],[119,213],[116,252],[106,291],[84,307],[51,298],[32,271],[27,230]],C.ink,C.jacket,34,26);
+  stroke([[48,194],[68,219],[82,233],[99,208]],C.ink,8);
+  stroke([[82,233],[81,286]],C.jacketLight,4,.9);
+  stroke([[52,246],[72,255],[93,249]],C.jacketLight,5,.8);
+  stroke([[50,269],[72,279],[94,271]],"#5B5862",4,.7);
+  stroke([[42,222],[54,235],[62,239]],"#77727A",4,.8);
+  // Arms are separated visually from the torso.
+  outlineFill([[38,207],[22,216],[10,238],[7,257],[17,268],[31,258],[37,241],[51,230]],C.ink,C.jacket,22,14);
+  outlineFill([[108,207],[128,215],[142,232],[151,249],[145,261],[131,253],[119,238],[103,230]],C.ink,C.jacket,22,14);
+  stroke([[8,253],[15,263],[25,263]],C.ink,13);
+  stroke([[143,249],[151,258],[160,256]],C.ink,13);
+  // Neck, face and swept dark hair.
+  outlineFill([[59,174],[59,154],[81,147],[98,166],[96,190],[78,201],[62,189]],C.ink,C.skin,17,11);
+  ellipse(48,111,61,67,C.ink,5);
+  ellipse(54,117,49,56,C.skin,2);
+  stroke([[52,135],[48,115],[60,99],[81,96],[102,110],[111,133],[97,126],[87,111],[67,112],[55,130]],C.hair,17);
+  stroke([[55,140],[66,136],[75,140],[87,136],[98,140]],C.ink,4);
+  ellipse(66,140,4,6,C.ink,1); ellipse(89,139,4,6,C.ink,1);
+  stroke([[79,143],[75,157],[83,160]],C.shade,3);
+  stroke([[65,169],[81,172],[94,166]],C.ink,3);
+}
+function stampCel(layerId,index){
+  const active = rt.sandbox.layers.find(item=>item.id===layerId);
+  const result = run({name:"animation.frame.set_cel",layerId,index,pixels:Buffer.from(active.pixels).toString("base64"),authoringMode:MODE});
+  if(result.blockedPixels) throw new Error("Illustration ownership blocked "+result.blockedPixels+" pixels.");
+  return result;
+}
+
+// Repair the existing project's character artwork in place; preserve its project identity and scene layer.
+select(attacker.id); clear(); drawAttacker(); stampCel(attacker.id,0);
+select(opponent.id); clear(); drawOpponent(); stampCel(opponent.id,0);
+
+// Keep the original background and source project; replace the coarse six-pose timing with a ten-pose action arc.
+for(let i=sourceFrameCount-1;i>=1;i--) run({name:"animation.frame.delete",index:i});
+run({name:"animation.set_fps",fps:12});
+run({name:"animation.set_loop",loop:false});
+const poses = [
+  {duration:85,dx:-3,dy:-2,skewY:-.03,scaleX:1,scaleY:1},
+  {duration:55,dx:-7,dy:-8,skewY:-.08,scaleX:1.01,scaleY:.99},
+  {duration:65,dx:-10,dy:-18,skewY:-.16,scaleX:1.02,scaleY:.97},
+  {duration:75,dx:-9,dy:-24,skewY:-.24,scaleX:1.03,scaleY:.95},
+  {duration:80,dx:1,dy:-15,skewY:-.35,scaleX:1.04,scaleY:.94},
+  {duration:80,dx:8,dy:2,skewY:-.45,scaleX:1.05,scaleY:.92},
+  {duration:90,dx:14,dy:23,rotate:90,skewY:0,scaleX:1,scaleY:1},
+  {duration:100,dx:5,dy:25,rotate:0,skewY:0,scaleX:1,scaleY:.96},
+  {duration:120,dx:0,dy:8,skewY:0,scaleX:1,scaleY:1},
+  {duration:450,dx:0,dy:0,skewY:0,scaleX:1,scaleY:1}
+];
+let bounds = {x:4,y:92,width:160,height:300};
+select(opponent.id);
+for(let index=1;index<poses.length;index++){
+  run({name:"animation.frame.duplicate",index:index-1});
+  const pose=poses[index];
+  const transformed=run({
+    name:"canvas.transform_region",...bounds,
+    dx:pose.dx,dy:pose.dy,rotate:pose.rotate||0,
+    skewY:pose.skewY||0,scaleX:pose.scaleX,scaleY:pose.scaleY,
+    interpolation:"bilinear",authoringMode:MODE
+  });
+  if(transformed.bounds){
+    bounds={
+      x:Math.max(0,Math.floor(transformed.bounds.x)),
+      y:Math.max(0,Math.floor(transformed.bounds.y)),
+      width:Math.min(W-Math.max(0,Math.floor(transformed.bounds.x)),Math.ceil(transformed.bounds.width)),
+      height:Math.min(H-Math.max(0,Math.floor(transformed.bounds.y)),Math.ceil(transformed.bounds.height))
+    };
+  }
+  const cel=stampCel(opponent.id,index);
+  if(cel.changedPixels===0) throw new Error("Pose "+index+" did not change the opponent cel.");
+  run({name:"animation.frame.set_duration",index,durationMs:pose.duration});
+}
+run({name:"animation.frame.set_duration",index:0,durationMs:poses[0].duration});
 const summary=run({name:"animation.get_summary"});
-rt.createProposal("Animación de impacto nativa en Illustration: atacante estable en una capa y oponente completo animado mediante transformaciones raster nativas del timeline, con vuelo, giro y caída.");
+const projectBefore=rt.toJSON();
+if(projectBefore.animation.frames.length!==poses.length) throw new Error("Unexpected final frame count.");
+if(!projectBefore.layers.every(item=>item.authoringMode===MODE)) throw new Error("A layer lost Illustration metadata.");
+if(!projectBefore.animation.frames.every(frame=>frame.authoringMode===MODE&&frame.cels.every(cel=>(cel.metadata?.authoringMode??cel.authoringMode)===MODE))) {
+  throw new Error("A frame/cel lost Illustration metadata.");
+}
+rt.createProposal("Pulido incremental de la animación de impacto: redibujo anatómico de ambos personajes en sus capas existentes, diez poses con anticipación, impacto, retroceso, vuelo, giro y caída, manteniendo el proyecto ADMIN y modo Illustration.");
+const diff=rt.getDiff();
+if(!diff || rt.hasPendingProposal!==false) {
+  // createProposal intentionally creates the pending review state.
+}
 const accepted=rt.acceptProposal();
 const project=rt.toJSON();
-project.id="6f9cdb50-55a3-4d78-bd34-9cc95b54a5be";
-if(!project.layers.every(layer=>layer.authoringMode===M))throw new Error("Every project layer must remain Illustration.");
-if(!project.animation.frames.every(frame=>frame.authoringMode===M&&frame.cels.every(cel=>(cel.metadata?.authoringMode??cel.authoringMode)===M)))throw new Error("Every frame and cel must remain Illustration.");
 const artifact=createPixelForgeCodeLabPackageZip(project);
 const output=process.argv[2];
-if(!output)throw new Error("Pass the output .codelab package path as argv[2].");
+if(!output) throw new Error("Pass the output .codelab package path as argv[2].");
 await writeFile(output,artifact.bytes);
-console.log(JSON.stringify({summary,accepted,projectId:project.id,canvas:[W,H],allLayersIllustration:true,allFramesAndCelsIllustration:true,metadata:artifact.metadata},null,2));
+console.log(JSON.stringify({
+  sourceRevision:snapshot.serverRevision,sourceSha256:snapshot.contentSha256,
+  projectId:project.id,workspaceId:snapshot.workspaceId,
+  canvas:[W,H],frameCount:project.animation.frames.length,
+  durationsMs:project.animation.frames.map(frame=>frame.durationMs),
+  totalDurationMs:project.animation.frames.reduce((sum,frame)=>sum+frame.durationMs,0),
+  fps:project.animation.fps,layerCount:project.layers.length,
+  allLayersIllustration:true,allFramesAndCelsIllustration:true,
+  diffSummary:diff?.summary||null,accepted,summary,package:artifact.metadata
+},null,2));
