@@ -154,6 +154,7 @@ function validatePixelForgeTiledProjectPayload(project, serializedInput = null, 
       if (!frame || typeof frame !== 'object' || Array.isArray(frame) ||
           typeof frame.id !== 'string' || !frame.id.trim() || frame.id.length > 180 || frameIds.has(frame.id) ||
           !Number.isFinite(frame.durationMs) || frame.durationMs < 1 || frame.durationMs > 10000 ||
+          !['illustration', 'pixel-art'].includes(frame.authoringMode) ||
           !Array.isArray(frame.cels) || frame.cels.length !== animation.layerIds.length) return failure('invalid_pixelforge_animation');
       frameIds.add(frame.id);
       const celLayerIds = new Set();
