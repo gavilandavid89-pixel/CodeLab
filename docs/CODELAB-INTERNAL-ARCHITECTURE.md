@@ -168,8 +168,9 @@ Después de editar:
 | Historia tiled | Historia transaccional de trazos y operaciones de metadatos de capa; timeline conserva un historial independiente por frame | No implica que todos los comandos densos tengan equivalente tiled |
 | Animación tiled | Timeline integrada en el editor: frame switching por referencias compartidas, add/duplicate/delete/reorder, FPS/duración, onion skin regional, thumbnails sparse, playback, autosave y export por lotes | Mantener explícitas las limitaciones de herramientas tiled y no convertir cels a buffers RGBA completos |
 | Ownership Illustration/Pixel Art | Plano sparse por píxel separado de RGBA; guardas en rutas raster dense/tiled y snapshots de historia/frame | No asumir cobertura de cada caller directo, patch remoto ni export RGBA legacy |
-| Video nativo mixto | Compositor/exportador por capa conserva modo y sampling | Paquetes legacy aplanados no pueden recuperar metadatos por capa ausentes |
+| Video nativo mixto | Video Composer acepta CodeLab v2 `.codelab-pixelforge`; compone cels densos y `pixelforge-tiled-cel` v2 desde tiles sparse, conserva modo/sampling por capa y exporta WebM | Paquetes legacy RGBA/PNG aplanados no pueden recuperar ownership ni metadatos por capa ausentes |
 | Persistencia tiled | Snapshots completos más patch incremental de un cel de animación cuando el cambio es elegible; endpoint PostgreSQL con revisión/CAS e idempotencia | Cambios estructurales o múltiples cels usan snapshot; el patch no sustituye todos los caminos de guardado |
+| Paquete nativo tiled | El botón Export Project genera CodeLab v2 ZIP con manifiestos sparse de proyecto/animación; Video Composer puede importar el mismo ZIP y componer tiles por capa | Scene Workspaces y Reference Center aún no forman parte del paquete tiled; sprite-sheet general tiled sigue pendiente |
 
 Este cuadro es una fotografía técnica y debe actualizarse con código y pruebas antes de cada gran hito.
 
@@ -200,6 +201,7 @@ El modo activo y la propiedad del contenido son conceptos distintos. El modo act
 ## 7. Documentación canónica por dominio
 
 - [Auditoría post-merge PixelForge (26-11-2026)](PIXELFORGE-POST-MERGE-AUDIT-2026-11-26.md) — estado actual, evidencia CI y brechas concretas de paridad tiled.
+- [Contrato del paquete PixelForge](PIXELFORGE-PROJECT-PACKAGE.md) — CodeLab v2, importación tiled en Video Composer y límites explícitos de los paquetes.
 
 - [Índice operativo de documentación](README.md)
 - [Política del agente y bridge](agent-ai-bridge-policy.md)
