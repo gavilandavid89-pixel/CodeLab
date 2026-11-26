@@ -642,3 +642,52 @@ Si una capacidad cambia en el código, actualizar en el mismo cambio este docume
 - `docs/ANIMATION-AUTONOMOUS-WORKFLOW.md` — flujo de animación, inspección y reparación incremental.
 - `docs/VIDEO-PROCESSING-AB.md` — generación, inspección y entrega de vídeo final.
 - `docs/inline-artifact-bridge.md` — transporte del proyecto editable fuera de Headless.
+
+---
+
+## Modos Illustration y Pixel Art en Headless
+
+El runtime expone el contrato explícito de modo de dibujo. No debe inferirse el estilo a partir del nombre de la capa, del frame ni de la configuración inicial del proyecto.
+
+### Acciones
+
+- `drawing.mode.get`: devuelve `configuration`, `activeMode`, `layerMode`, `frameMode` y `celMode` del contexto activo.
+- `drawing.mode.set`: cambia el modo activo. `mode` debe ser `illustration` o `pixel-art`, y debe estar habilitado en `drawingConfiguration.availableModes`.
+- Las acciones raster admiten opcionalmente `authoringMode` para seleccionar explícitamente el modo de esa operación; si se omite, se utiliza `drawingConfiguration.activeMode`.
+
+Ejemplo de secuencia:
+
+```js
+runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' });
+runtime.execute({
+  name: 'canvas.draw_stroke',
+  points: [{ x: 12, y: 18 }, { x: 24, y: 22 }],
+  color: '#D47B62',
+  size: 5
+});
+runtime.execute({ name: 'drawing.mode.set', mode: 'pixel-art' });
+runtime.execute({
+  name: 'canvas.draw_line',
+  x0: 12, y0: 28, x1: 24, y1: 28,
+  color: '#342D52',
+  size: 1
+});
+```
+
+### Orden obligatorio de ejecución
+
+El modo se aplica a la capa activa **antes** de ejecutar la mutación raster. Esto es necesario porque el motor de raster consulta el modo de la capa durante el trazo, relleno o borrado para aplicar la protección de propiedad. Etiquetar la capa después de dibujar es incorrecto: puede escribir píxeles con el propietario del estilo anterior.
+
+Después de una operación aceptada, Headless sincroniza las etiquetas del layer, frame y cel activos. La propiedad de píxeles (ownership) es la autoridad para permitir o bloquear escrituras; las etiquetas de modo no sustituyen esa protección.
+
+### Propiedad mixta
+
+Los valores de propiedad raster son:
+
+- `0`: sin propietario / contenido legado.
+- `1`: Illustration.
+- `2`: Pixel Art.
+
+Una operación de dibujo solo puede escribir píxeles sin propietario o del mismo modo. El borrado solo puede borrar píxeles del modo actual. El relleno, gradiente y las transformaciones deben respetar la misma frontera. Cambiar el modo no convierte ni reescribe píxeles ya creados.
+
+**Importante:** este contrato describe las acciones raster del documento Headless. No implica que los cels de la timeline o todos los formatos de intercambio ya serialicen mapas de propiedad por píxel. Esa persistencia debe verificarse por separado antes de declarar completo un round-trip de animación mixta.
