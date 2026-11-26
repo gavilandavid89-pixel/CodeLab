@@ -487,14 +487,25 @@ async function composeNativeFrame(project, frame) {
   // separate render layer so the encoder can sample raster layers by mode.
   if (project.vectorModel?.objects?.length) {
     const svg = vectorModelToSVG(project.vectorModel);
-    const vectorBitmap = await createImageBitmap(new Blob([svg], { type: 'image/svg+xml' }));
+    const vectorUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const vectorImage = new Image();
+    vectorImage.decoding = 'async';
+    try {
+      vectorImage.src = vectorUrl;
+      if (typeof vectorImage.decode === 'function') await vectorImage.decode();
+      else await new Promise((resolve, reject) => {
+        vectorImage.onload = resolve;
+        vectorImage.onerror = () => reject(new Error('No se pudo decodificar el overlay vectorial.'));
+      });
+    } finally {
+      URL.revokeObjectURL(vectorUrl);
+    }
     const vectorCanvas = document.createElement('canvas');
     vectorCanvas.width = width; vectorCanvas.height = height;
     const vectorContext = vectorCanvas.getContext('2d', { alpha: true });
     vectorContext.imageSmoothingEnabled = true;
     vectorContext.imageSmoothingQuality = 'high';
-    vectorContext.drawImage(vectorBitmap, 0, 0, width, height);
-    vectorBitmap.close?.();
+    vectorContext.drawImage(vectorImage, 0, 0, width, height);
     const vectorBlob = await new Promise((resolve, reject) => vectorCanvas.toBlob(value =>
       value ? resolve(value) : reject(new Error('No se pudo preparar la capa vectorial.')), 'image/png'));
     renderLayers.push({
