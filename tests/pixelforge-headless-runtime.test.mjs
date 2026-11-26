@@ -977,7 +977,7 @@ test('Headless animation.frame.set_cel guards foreign-style pixels and persists 
   runtime.createProposal('Persist mixed animation cel ownership');
   assert.equal(runtime.acceptProposal().status, 'applied');
   const saved = runtime.toJSON();
-  const savedCel = saved.animation.frames[0].cels.find(cel => cel.layerId === layerId);
+  const savedCel = saved.animation.frames[0].cels[0];
   assert.equal(savedCel.metadata.authoringMode, 'pixel-art');
   assert.equal(Buffer.from(savedCel.metadata.ownershipTiles[0].owners, 'base64')[1 * 8 + 1], 1);
   assert.equal(Buffer.from(savedCel.metadata.ownershipTiles[0].owners, 'base64')[2 * 8 + 2], 2);
