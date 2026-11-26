@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createCelPatch } from '../public/pixelforge/src/cel-patch-diff.mjs';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
 
@@ -683,56 +682,8 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await drawAt(incrementalPoint);
   await assertVisibleColor(incrementalPoint, '#f0c674', 'tiled/incremental-patch/local-draw');
   await page.waitForTimeout(1800);
-  const fullSaveFallback = fullSnapshotSaveCount > fullSaveCountBeforeIncrementalDraw;
-  const debugBefore = savedProjectSnapshots.at(-2), debugAfter = savedProjectSnapshots.at(-1);
-  const stableDebug = value => JSON.stringify(value, (_key, item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
-    return Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]]));
-  });
-  const metadataView = project => {
-    const view = { ...project };
-    delete view.revision; delete view.saveVersion; delete view.serverRevision; delete view.dirty;
-    view.layers = (project.layers || []).map(layer => { const item = { ...layer }; delete item.cel; return item; });
-    view.animation = project.animation ? { ...project.animation, frames: (project.animation.frames || []).map(frame => ({
-      ...frame, cels: (frame.cels || []).map(entry => { const item = { ...entry }; delete item.cel; return item; })
-    })) } : project.animation;
-    return view;
-  };
-  const changedMetadataKeys = debugBefore && debugAfter
-    ? [...new Set([...Object.keys(metadataView(debugBefore)), ...Object.keys(metadataView(debugAfter))])]
-      .filter(key => stableDebug(metadataView(debugBefore)[key]) !== stableDebug(metadataView(debugAfter)[key]))
-    : [];
-  const frameMetadataChanges = [];
-  const celContentChanges = [];
-  for (let i = 0; i < (debugAfter?.animation?.frames || []).length; i++) {
-    const beforeFrame = debugBefore?.animation?.frames?.[i], afterFrame = debugAfter.animation.frames[i];
-    if (!beforeFrame || stableDebug({ ...beforeFrame, cels: undefined }) !== stableDebug({ ...afterFrame, cels: undefined })) frameMetadataChanges.push(afterFrame.id);
-    for (let j = 0; j < (afterFrame.cels || []).length; j++) {
-      const beforeCel = beforeFrame?.cels?.[j], afterCel = afterFrame.cels[j];
-      if (!beforeCel || stableDebug(beforeCel.metadata) !== stableDebug(afterCel.metadata)) frameMetadataChanges.push(afterFrame.id + ':' + afterCel.layerId + ':celMetadata');
-      if (!beforeCel || stableDebug(beforeCel.cel) !== stableDebug(afterCel.cel)) celContentChanges.push(afterFrame.id + ':' + afterCel.layerId);
-    }
-  }
-  const capturedPatch = fullSaveFallback && debugBefore && debugAfter
-    ? createCelPatch(debugBefore, debugAfter, { operationId: 'diagnostic-op' })
-    : null;
   assert.ok(receivedCelPatches.length > patchCountBeforeIncrementalDraw,
-    'a one-cel drawing edit must reach POST /projects/:id/patches through editor autosave ' +
-    JSON.stringify({ patchesBefore: patchCountBeforeIncrementalDraw, patchesAfter: receivedCelPatches.length,
-      fullPutsBefore: fullSaveCountBeforeIncrementalDraw, fullPutsAfter: fullSnapshotSaveCount,
-      capturedSnapshotWouldPatch: Boolean(capturedPatch),
-      changedMetadataKeys, frameMetadataChanges, celContentChanges,
-      previousServerRevision: debugBefore?.serverRevision,
-      latestServerRevision: debugAfter?.serverRevision,
-      previousDrawingConfiguration: debugBefore?.drawingConfiguration,
-      latestDrawingConfiguration: debugAfter?.drawingConfiguration,
-      previousLayerMode: debugBefore?.layers?.[0]?.authoringMode,
-      latestLayerMode: debugAfter?.layers?.[0]?.authoringMode,
-      previousLayer: debugBefore?.layers?.[0] ? Object.fromEntries(Object.entries(debugBefore.layers[0]).filter(([key]) => key !== 'cel')) : null,
-      latestLayer: debugAfter?.layers?.[0] ? Object.fromEntries(Object.entries(debugAfter.layers[0]).filter(([key]) => key !== 'cel')) : null,
-      previousCelMetadata: debugBefore?.animation?.frames?.[0]?.cels?.[0]?.metadata,
-      latestCelMetadata: debugAfter?.animation?.frames?.[0]?.cels?.[0]?.metadata,
-      status: await page.locator('#status').textContent().catch(() => 'status-unavailable') }));
+    'a one-cel drawing edit must reach POST /projects/:id/patches through editor autosave');
   assert.equal(fullSnapshotSaveCount, fullSaveCountBeforeIncrementalDraw,
     'an eligible single-cel edit must not fall back to a full-project PUT');
   const incrementalPatch = receivedCelPatches.at(-1);
