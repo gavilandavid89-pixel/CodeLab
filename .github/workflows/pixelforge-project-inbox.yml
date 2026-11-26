@@ -65,6 +65,15 @@ jobs:
             cat "$RUNNER_TEMP/project-slugs/list"
           fi
 
+      - name: Ensure ADMIN native bridge is awake
+        shell: bash
+        env:
+          BRIDGE_TOKEN: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$BRIDGE_TOKEN" || { echo "::error::Missing bridge control secret"; exit 1; }
+          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/ensure" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data '{}' > "$RUNNER_TEMP/bridge-ensure.json"
+          jq '{ok,operation,message,bridge}' "$RUNNER_TEMP/bridge-ensure.json"
       - name: Import each project into PixelForge ADMIN
         if: steps.projects.outputs.has_projects == 'true'
         shell: bash
