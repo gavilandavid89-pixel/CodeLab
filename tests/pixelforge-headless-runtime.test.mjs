@@ -32,7 +32,6 @@ test('headless runtime preserves project drawing modes through edits and seriali
 
 test('Headless switches drawing mode before raster writes and enforces mixed-style pixel ownership', () => {
   const runtime = new HeadlessEditorRuntime({ width: 16, height: 16, name: 'Mixed style agent fixture' });
-  const layerId = runtime.sandbox.activeLayerId;
 
   assert.equal(runtime.execute({ name: 'drawing.mode.set', mode: 'illustration' }).ok, true);
   assert.equal(runtime.execute({
@@ -60,7 +59,7 @@ test('Headless switches drawing mode before raster writes and enforces mixed-sty
   runtime.createProposal('Verify mixed Illustration and Pixel Art ownership in Headless');
   assert.equal(runtime.acceptProposal().status, 'applied');
   const saved = runtime.toJSON();
-  const layer = saved.layers.find(item => item.id === layerId);
+  const layer = saved.layers[0];
   const pixels = Buffer.from(layer.pixels, 'base64');
   const tile = layer.ownershipTiles.find(item => item.x === 0 && item.y === 0);
   assert.ok(tile, 'ownership tile must be serialized with the raster layer');
