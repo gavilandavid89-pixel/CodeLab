@@ -1,6 +1,20 @@
+export const VIDEO_COMPOSITION_PROFILES = Object.freeze({
+  'youtube-landscape': Object.freeze({ id: 'youtube-landscape', platform: 'YouTube', aspect: '16:9', width1080: 1920, height1080: 1080 }),
+  'tiktok-vertical': Object.freeze({ id: 'tiktok-vertical', platform: 'TikTok', aspect: '9:16', width1080: 1080, height1080: 1920 }),
+  'shorts-vertical': Object.freeze({ id: 'shorts-vertical', platform: 'YouTube Shorts', aspect: '9:16', width1080: 1080, height1080: 1920 }),
+  'instagram-feed': Object.freeze({ id: 'instagram-feed', platform: 'Instagram', aspect: '4:5', width1080: 1080, height1080: 1350 }),
+  'instagram-square': Object.freeze({ id: 'instagram-square', platform: 'Instagram', aspect: '1:1', width1080: 1080, height1080: 1080 }),
+  'facebook-landscape': Object.freeze({ id: 'facebook-landscape', platform: 'Facebook', aspect: '16:9', width1080: 1920, height1080: 1080 }),
+});
+
+export function getVideoCompositionProfile(profileId) {
+  return VIDEO_COMPOSITION_PROFILES[profileId] || null;
+}
+
 export function getCaptureDimensions(resolution, aspect, sourceWidth, sourceHeight) {
   const base = Number(resolution) === 720 ? 720 : 1080;
-  const ratio = aspect === '9:16' ? 9 / 16 : aspect === '1:1' ? 1 : aspect === 'auto'
+  const profile = Object.values(VIDEO_COMPOSITION_PROFILES).find(item => item.aspect === aspect);
+  const ratio = profile ? profile.width1080 / profile.height1080 : aspect === 'auto'
     ? Math.max(1 / 3, Math.min(3, sourceWidth / sourceHeight)) : 16 / 9;
   let width;
   let height;
@@ -33,6 +47,14 @@ export function coverSourceRect(sourceWidth, sourceHeight, targetWidth, targetHe
   }
   const height = sourceWidth / targetRatio;
   return { x: 0, y: (sourceHeight - height) / 2, width: sourceWidth, height };
+}
+
+export function getPlatformCompositionGuide(sourceWidth, sourceHeight, profileId) {
+  const profile = getVideoCompositionProfile(profileId);
+  if (!profile) throw new RangeError('Unknown video composition profile: ' + profileId);
+  const resolution = profile.width1080 === 1080 && profile.height1080 === 1920 ? '1080' : '1080';
+  const target = getCaptureDimensions(resolution, profile.aspect, sourceWidth, sourceHeight);
+  return { profile, ...getCompositionGuide(sourceWidth, sourceHeight, target.width, target.height) };
 }
 
 export function getCompositionGuide(sourceWidth, sourceHeight, targetWidth, targetHeight) {
