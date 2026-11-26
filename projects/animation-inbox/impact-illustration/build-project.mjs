@@ -125,7 +125,36 @@ function drawOpponent(){
   ellipse(66,140,4,6,C.ink,1); ellipse(89,139,4,6,C.ink,1);
   stroke([[79,143],[75,157],[83,160]],C.shade,3);
   stroke([[65,169],[81,172],[94,166]],C.ink,3);
+} 
+function drawOpponentHorizontal(offsetY){
+  const y=offsetY;
+  // Head leads the fall; the jacketed torso and legs stay on the ground plane.
+  outlineFill([[8,y+19],[19,y+6],[39,y+4],[54,y+16],[53,y+37],[38,y+49],[17,y+43],[5,y+31]],C.ink,C.skin,16,10);
+  ellipse(4,y-2,49,47,C.ink,4);
+  ellipse(9,y+3,39,37,C.skin,1);
+  stroke([[7,y+21],[8,y+4],[23,y-6],[42,y-1],[53,y+16],[42,y+11],[31,y+3],[16,y+9]],C.hair,12);
+  stroke([[15,y+21],[23,y+18],[29,y+21],[38,y+18]],C.ink,2);
+  ellipse(22,y+22,3,4,C.ink,1); ellipse(37,y+21,3,4,C.ink,1);
+  stroke([[30,y+23],[28,y+31],[34,y+32]],C.shade,2);
+  stroke([[21,y+39],[33,y+40],[40,y+36]],C.ink,2);
+  // Shoulder, jacket and lapel detail.
+  outlineFill([[42,y+17],[58,y+5],[86,y+4],[112,y+18],[119,y+38],[105,y+57],[74,y+60],[49,y+47],[36,y+31]],C.ink,C.jacket,28,21);
+  stroke([[52,y+12],[72,y+29],[86,y+37],[101,y+18]],C.ink,6);
+  stroke([[86,y+36],[83,y+53]],C.jacketLight,3,.85);
+  stroke([[56,y+39],[77,y+47],[99,y+41]],"#5B5862",3,.8);
+  // One arm is braced in front of the face; the other is tucked beneath the torso.
+  outlineFill([[48,y+23],[31,y+28],[19,y+42],[7,y+45],[1,y+39],[13,y+26],[32,y+14]],C.ink,C.jacket,18,11);
+  outlineFill([[91,y+18],[108,y+8],[125,y+13],[136,y+27],[130,y+37],[115,y+30],[101,y+34]],C.ink,C.jacket,18,11);
+  // Legs trail behind to the right, with separate shoes.
+  outlineFill([[103,y+44],[119,y+42],[139,y+54],[153,y+66]],C.ink,"#303038",18,12);
+  outlineFill([[100,y+50],[115,y+58],[129,y+77],[143,y+84]],C.ink,"#303038",18,12);
+  stroke([[151,y+64],[164,y+70],[157,y+76],[145,y+72]],C.ink,10);
+  stroke([[141,y+82],[151,y+89],[139,y+91],[130,y+84]],C.ink,10);
+  // Small dust and impact strokes keep the landing readable.
+  stroke([[0,y+55],[15,y+57],[25,y+54]],C.speed,2,.7);
+  stroke([[3,y+66],[20,y+68],[29,y+65]],C.speed,2,.7);
 }
+
 function stampCel(layerId,index){
   const active = rt.sandbox.layers.find(item=>item.id===layerId);
   const result = run({name:"animation.frame.set_cel",layerId,index,pixels:Buffer.from(active.pixels).toString("base64"),authoringMode:MODE});
@@ -142,35 +171,42 @@ for(let i=sourceFrameCount-1;i>=1;i--) run({name:"animation.frame.delete",index:
 run({name:"animation.set_fps",fps:12});
 run({name:"animation.set_loop",loop:false});
 const poses = [
-  {duration:85,dx:-3,dy:-2,skewY:-.03,scaleX:1,scaleY:1},
-  {duration:55,dx:-7,dy:-8,skewY:-.08,scaleX:1.01,scaleY:.99},
-  {duration:65,dx:-10,dy:-18,skewY:-.16,scaleX:1.02,scaleY:.97},
-  {duration:75,dx:-9,dy:-24,skewY:-.24,scaleX:1.03,scaleY:.95},
-  {duration:80,dx:1,dy:-15,skewY:-.35,scaleX:1.04,scaleY:.94},
-  {duration:80,dx:8,dy:2,skewY:-.45,scaleX:1.05,scaleY:.92},
-  {duration:90,dx:-5,dy:70,rotate:90,skewY:0,scaleX:.6,scaleY:.6},
-  {duration:100,dx:0,dy:30,rotate:90,skewY:0,scaleX:1,scaleY:1},
-  {duration:120,dx:0,dy:5,rotate:90,skewY:0,scaleX:1,scaleY:1},
-  {duration:450,dx:0,dy:0,rotate:90,skewY:0,scaleX:1,scaleY:1}
+  {duration:75,dx:0,dy:0,skewY:0,scaleX:1,scaleY:1},
+  {duration:55,dx:-3,dy:-2,skewY:-.03,scaleX:1,scaleY:1},
+  {duration:65,dx:-8,dy:-8,skewY:-.08,scaleX:1.01,scaleY:.99},
+  {duration:75,dx:-12,dy:-16,skewY:-.16,scaleX:1.02,scaleY:.97},
+  {duration:80,dx:-10,dy:-22,skewY:-.25,scaleX:1.03,scaleY:.95},
+  {duration:90,dx:-5,dy:-15,skewY:-.35,scaleX:1.04,scaleY:.94},
+  {duration:90,horizontalY:275},
+  {duration:100,horizontalY:300},
+  {duration:120,horizontalY:310},
+  {duration:450,horizontalY:310}
 ];
 let bounds = {x:0,y:90,width:170,height:320};
 select(opponent.id);
 for(let index=1;index<poses.length;index++){
   run({name:"animation.frame.duplicate",index:index-1});
   const pose=poses[index];
-  const transformed=run({
-    name:"canvas.transform_region",...bounds,
-    dx:pose.dx,dy:pose.dy,rotate:pose.rotate||0,
-    skewY:pose.skewY||0,scaleX:pose.scaleX,scaleY:pose.scaleY,
-    interpolation:"bilinear",authoringMode:MODE
-  });
-  if(transformed.bounds){
-    bounds={
-      x:Math.max(0,Math.floor(transformed.bounds.x)),
-      y:Math.max(0,Math.floor(transformed.bounds.y)),
-      width:Math.min(W-Math.max(0,Math.floor(transformed.bounds.x)),Math.ceil(transformed.bounds.width)),
-      height:Math.min(H-Math.max(0,Math.floor(transformed.bounds.y)),Math.ceil(transformed.bounds.height))
-    };
+  if(Number.isInteger(pose.horizontalY)){
+    run({name:"animation.frame.set_active",index});
+    select(opponent.id);
+    clear();
+    drawOpponentHorizontal(pose.horizontalY);
+  }else{
+    const transformed=run({
+      name:"canvas.transform_region",...bounds,
+      dx:pose.dx,dy:pose.dy,rotate:0,
+      skewY:pose.skewY||0,scaleX:pose.scaleX,scaleY:pose.scaleY,
+      interpolation:"bilinear",authoringMode:MODE
+    });
+    if(transformed.bounds){
+      bounds={
+        x:Math.max(0,Math.floor(transformed.bounds.x)),
+        y:Math.max(0,Math.floor(transformed.bounds.y)),
+        width:Math.min(W-Math.max(0,Math.floor(transformed.bounds.x)),Math.ceil(transformed.bounds.width)),
+        height:Math.min(H-Math.max(0,Math.floor(transformed.bounds.y)),Math.ceil(transformed.bounds.height))
+      };
+    }
   }
   const cel=stampCel(opponent.id,index);
   if(cel.changedPixels===0) throw new Error("Pose "+index+" did not change the opponent cel.");
