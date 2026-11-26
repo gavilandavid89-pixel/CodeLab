@@ -1,6 +1,6 @@
 # PixelForge post-merge audit — 2026-11-26
 
-**Audited revision:** `f8f85467849eec25dc3dba50c1bbd126f3c90777` (merge of PR #523).  
+**Audited baseline revision:** `f8f85467849eec25dc3dba50c1bbd126f3c90777` (merge of PR #523). This document also records the follow-up implementation and verification from PR #526.  
 **Scope:** editor modes, mixed-style ownership, tiled raster/animation, Headless, persistence, package interchange and Video Composer.  
 **Status:** post-merge source and CI audit. This is not a production deployment or a claim of exhaustive manual QA.
 
@@ -81,7 +81,6 @@ The following operations remain explicitly unavailable or blocked in the tiled e
 - AI vision snapshots;
 - scene workspaces;
 - sprite-sheet export;
-- ZIP project export from the editor UI.
 
 These are concrete parity gaps, not merely documentation caveats. In particular, the editor's `#export-project` handler returns early for tiled documents even though the structured package modules and package tests cover tiled manifests. This blocks the normal editor-to-ZIP handoff for high-resolution tiled projects.
 
@@ -114,17 +113,19 @@ The post-merge PostgreSQL integration and full-system validation workflows passe
 
 The native layered composition path resolves each layer/cel's authoring mode and uses smooth sampling for Illustration and nearest-neighbor for Pixel Art. `drawLayeredFrameToCanvas()` applies one uniform global scale for contain/cover; contain adds free space, cover crops, and neither stretches the source non-uniformly. Source project geometry and timing remain unchanged.
 
-The remaining integration blocker is upstream: the editor UI currently refuses ZIP export for tiled documents, preventing the normal high-resolution tiled-project handoff to the Video Composer. Fixing that handoff needs a real browser round-trip test from a tiled editor project through package export/import and final video output.
+**Follow-up completed in PR #526:** the editor now exposes its existing structured CodeLab v2 package exporter for tiled projects. The Video Composer native-package path now reconstructs `pixelforge-tiled-cel` manifests by drawing sparse RGBA tiles into each layer surface rather than expecting a dense `cel.pixels` buffer. A Chromium E2E test creates a 1024×1024 tiled animation, exports it from the editor UI, imports it back and verifies mode/ownership/pixel persistence, then imports the same package into the real Video Composer UI, checks the rendered source pixel and Pixel Art sampling, and exports a WebM VP8 video. Workflow `45774472214` passed (1 test, 0 failures); the artifact includes the round-trip evidence and final WebM.
+
+**Remaining package scope:** tiled CodeLab packages preserve sparse project/animation manifests and declared resources, but the current tiled package branch does not include the five scene-workspace manifests or Reference Center data. Those workspaces are not yet available in the tiled editor, so the package exporter reports zero scene sections and references for tiled projects rather than silently flattening them.
 
 ## Next implementation order
 
-1. Restore native structured ZIP export from tiled editor projects; add browser round-trip coverage.
+1. Implement tiled sprite-sheet export using bounded row/tile batches; general tiled project sprite-sheet export remains disabled.
 2. Implement tiled clipboard copy/cut/paste with ownership-preserving atomic history.
 3. Implement tiled flip and color replacement through guarded write boundaries.
 4. Implement tiled magic-wand/color selection and transform operations, or keep their UI explicitly disabled until parity is complete.
-5. Implement tiled sprite-sheet export using bounded row/tile batches.
-6. Decide and document whether scene workspaces and AI vision snapshots will support tiled projects; do not silently imply parity.
-7. Add one integrated acceptance workflow that creates a high-resolution mixed-style animation, switches modes mid-project, exercises supported tools, saves/reloads, exports a native package, imports it into Video Composer and verifies non-distorted output.
+5. Decide and document whether scene workspaces and AI vision snapshots will support tiled projects; do not silently imply parity.
+6. Extend the passing package → Video Composer → WebM browser acceptance workflow to exercise a larger sparse canvas and both Illustration and Pixel Art layers in the same output.
+7. Continue parity work for remaining tiled tools before calling the full Illustration/tiled integration complete.
 
 ## Acceptance rule
 
