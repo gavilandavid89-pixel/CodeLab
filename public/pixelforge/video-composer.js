@@ -1,6 +1,6 @@
 import { parsePixelForgeVideoPackage, readStoredZip, buildConstantFrameRateSequence } from './src/video-composer-core.mjs';
 import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
-import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, drawContentComposition } from './src/video-capture-layout.mjs';
+import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, getVideoCompositionProfile, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
 import { getVideoScalingMode, resolveDrawingMode } from './src/drawing-mode-config.mjs';
 import { vectorModelToSVG } from './src/vector-studio.js';
@@ -101,8 +101,15 @@ function buildAgentCompositionGuide() {
     output: {
       platform: $('#vc-aspect').value === '16:9' ? 'youtube-landscape' :
         $('#vc-aspect').value === '9:16' ? 'shorts-or-tiktok' :
+        $('#vc-aspect').value === '4:5' ? 'instagram-feed' :
         $('#vc-aspect').value === '1:1' ? 'square-social' : 'original-aspect',
       aspect: $('#vc-aspect').value,
+      profile: getVideoCompositionProfile(
+        $('#vc-aspect').value === '16:9' ? 'youtube-landscape' :
+        $('#vc-aspect').value === '9:16' ? 'shorts-or-tiktok' :
+        $('#vc-aspect').value === '4:5' ? 'instagram-feed' :
+        $('#vc-aspect').value === '1:1' ? 'square-social' : null
+      ),
       dimensions: guide.target,
       fitMode: $('#vc-fit-mode').value,
       safeArea: guide.safeArea,
@@ -114,7 +121,7 @@ function buildAgentCompositionGuide() {
       'Do not modify source canvas dimensions, source pixels, animation timing, layers or cels.',
       'Keep each layer authoring mode exactly as listed in layerModesByFrame; modes may be mixed in the same frame.',
       'Use high-quality smoothing for illustration layers and nearest-neighbor sampling for pixel-art layers.',
-      'The Video Composer applies the output aspect ratio only during preview and export.',
+      'The Video Composer applies the output aspect ratio only during preview and export. Platform profiles are output presets; they never mutate the source project.',
       $('#vc-fit-mode').value === 'cover'
         ? 'Pixels outside output.safeArea will be cropped from the final video.'
         : 'The full source artwork is preserved; any aspect-ratio mismatch is padded, never stretched.',
