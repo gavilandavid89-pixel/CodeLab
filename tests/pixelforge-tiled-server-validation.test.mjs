@@ -28,7 +28,6 @@ const manifest = (width = 4096, height = 4096, tiles = [tile(0, 0)]) => ({
     id: 'layer-1', name: 'Layer 1', visible: true, opacity: 1, locked: false,
     cel: { format: 'pixelforge-tiled-cel', version: 2, width, height, tileSize: 64, tiles },
     }],
-  ],
 });
 
 test('server accepts a sparse 4096px canvas without allocating a dense full-canvas cel', () => {
