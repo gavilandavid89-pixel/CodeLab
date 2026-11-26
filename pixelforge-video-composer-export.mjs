@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { deflateSync } from 'node:zlib';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
-import { createPixelForgeProjectZip } from './pixelforge-agent-zip.mjs';
+import { createPixelForgeCodeLabPackageZip } from './pixelforge-codelab-package.mjs';
 
 function crc32(buffer) {
   let crc = 0xffffffff;
@@ -162,45 +162,11 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
   const ownsContext = !deps.context;
   let packagePath = path.join(tempDir, safeVideoName(project.name) + '.pixelforge-video.zip');
   try {
-    const vectorZip = project.vectorModel?.objects?.length && payload.include_vector_overlay !== false
-      ? await createPixelForgeProjectZip(project)
-      : null;
-    const frameEntries = [];
-    let totalDurationMs = 0;
-    for (let index = 0; index < frames.length; index++) {
-      const frame = frames[index];
-      totalDurationMs += Math.max(1, Number(frame.durationMs || Math.round(1000 / fps)));
-      if (!vectorZip) {
-        const rgba = compositeFrame(project, frame);
-        const png = rgbaToPng(rgba, Number(project.width), Number(project.height));
-        const filename = 'frames/frame-' + String(index + 1).padStart(4, '0') + '.png';
-        frameEntries.push({ name: filename, data: png });
-      }
-    }
-    const manifest = {
-      format: 'pixelforge-video-package',
-      version: 1,
-      width: Number(project.width),
-      height: Number(project.height),
-      fps,
-      loop: animation.loop !== false,
-      frameCount: frames.length,
-      totalDurationMs,
-      projectFile: 'project.json',
-      frames: frameEntries.map((entry, index) => ({
-        index,
-        file: entry.name,
-        durationMs: Math.max(1, Number(frames[index].durationMs || Math.round(1000 / fps)))
-      }))
-    };
-    const entries = [
-      { name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8') },
-      // project.json is optional for Video Composer import. Omitting the huge
-      // base64-heavy project snapshot keeps 120-frame exports within the
-      // browser/Render memory budget; the manifest + PNG frames are authoritative.
-      ...frameEntries
-    ];
-    const zipBytes = vectorZip ? vectorZip.bytes : makeStoredZip(entries);
+    const nativePackage = createPixelForgeCodeLabPackageZip(project);
+    const zipBytes = nativePackage.bytes;
+    packagePath = path.join(tempDir, safeVideoName(project.name) + '.codelab-pixelforge.zip');
+    const totalDurationMs = frames.reduce((sum, frame) =>
+      sum + Math.max(1, Number(frame.durationMs || Math.round(1000 / fps))), 0);
     fs.writeFileSync(packagePath, zipBytes);
 
     chromium.setGraphicsMode = false;
@@ -323,7 +289,7 @@ async function exportPixelForgeAnimationVideo(payload, deps = {}) {
         enabled: true,
         method: 'CodeLab Video Composer',
         composerUrl,
-        package: { format: 'pixelforge-video-package', frameCount: frames.length, fps, width: Number(project.width), height: Number(project.height), sizeBytes: zipBytes.length, vectorOverlayIncluded: Boolean(vectorZip) },
+        package: { format: 'codelab-pixelforge', frameCount: frames.length, fps, width: Number(project.width), height: Number(project.height), sizeBytes: zipBytes.length, vectorOverlayIncluded: Boolean(project.vectorModel?.objects?.length), perLayerDrawingModes: true },
         video: { format: 'webm', sizeBytes: videoBytes.length, suggestedFilename: download.suggestedFilename() },
         projectId: payload.project_id,
         serverRevision: loaded.serverRevision,
