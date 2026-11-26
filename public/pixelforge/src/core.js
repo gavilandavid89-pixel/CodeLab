@@ -218,6 +218,28 @@ export function screenToDocument(point, viewport, dimensions) {
 }
 
 function cloneOwnershipTiles(tiles = new Map()) { return new Map([...tiles].map(([key, bytes]) => [key, new Uint8Array(bytes)])); }
+function validateOwnershipTilesForPixels(tiles, pixels, width, height) {
+  if (!(tiles instanceof Map)) throw new TypeError('Ownership snapshots must be a Map.');
+  for (const [key, owners] of tiles) {
+    const [tileX, tileY] = String(key).split(':').map(Number);
+    const x = tileX * TILE_SIZE, y = tileY * TILE_SIZE;
+    const tileWidth = Math.min(TILE_SIZE, width - x), tileHeight = Math.min(TILE_SIZE, height - y);
+    if (!Number.isInteger(tileX) || !Number.isInteger(tileY) || tileX < 0 || tileY < 0 ||
+        tileWidth < 1 || tileHeight < 1 || !(owners instanceof Uint8Array) ||
+        owners.byteLength !== tileWidth * tileHeight) {
+      throw new TypeError('Ownership snapshot tile geometry is invalid.');
+    }
+    for (let index = 0; index < owners.length; index++) {
+      if (owners[index] > 2) throw new TypeError('Ownership snapshot contains an unsupported owner value.');
+      if (owners[index] !== 0) {
+        const px = x + index % tileWidth, py = y + Math.floor(index / tileWidth);
+        if (pixels[(py * width + px) * 4 + 3] === 0) {
+          throw new TypeError('Transparent pixels cannot retain style ownership.');
+        }
+      }
+    }
+  }
+}
 function makeLayer(id, name, width, height) {
   return {
     id, name, visible: true, opacity: 1, locked: false,
@@ -885,6 +907,15 @@ export class RasterDocument {
       return { layer, pixels: item.pixels };
     });
 
+    if (restore) {
+      for (const { layer, pixels } of prepared) {
+        const hasSnapshot = ownershipByLayer instanceof Map && ownershipByLayer.has(layer.id);
+        if (layer.ownershipTiles.size && !hasSnapshot) {
+          throw new TypeError('Restoring a layer with owned pixels requires its exact ownership snapshot.');
+        }
+        if (hasSnapshot) validateOwnershipTilesForPixels(ownershipByLayer.get(layer.id), pixels, this.width, this.height);
+      }
+    }
     const changedLayers = [];
     let changedPixels = 0;
     for (const { layer, pixels } of prepared) {
@@ -1084,6 +1115,12 @@ export class RasterDocument {
     if (layer.locked) throw new Error('The target layer is locked.');
     if (!(pixels instanceof Uint8Array) && !(pixels instanceof Uint8ClampedArray)) throw new TypeError('Layer pixels must be a typed RGBA buffer.');
     if (pixels.length !== this.width * this.height * 4) throw new RangeError('Layer pixel data length does not match document dimensions.');
+    if (restore) {
+      if (layer.ownershipTiles.size && !(ownershipTiles instanceof Map)) {
+        throw new TypeError('Restoring a layer with owned pixels requires its exact ownership snapshot.');
+      }
+      if (ownershipTiles instanceof Map) validateOwnershipTilesForPixels(ownershipTiles, pixels, this.width, this.height);
+    }
     const styleOwner = layer.authoringMode === 'illustration' ? 1 : 2, tilesBefore = new Map();
     for (let y = 0; y < this.height; y += TILE_SIZE) for (let x = 0; x < this.width; x += TILE_SIZE) {
       const tileX = Math.floor(x / TILE_SIZE), tileY = Math.floor(y / TILE_SIZE), key = `${tileX}:${tileY}`;
@@ -1245,6 +1282,7 @@ export class RasterDocument {
         if (ownershipTiles.has(key)) throw new TypeError('Duplicate layer ownership tile.');
         ownershipTiles.set(key, owners);
       }
+      validateOwnershipTilesForPixels(ownershipTiles, pixels, data.width, data.height);
       const numeric = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
       const finiteOrState = (value, fallback) => ['inexistente', 'no_aplicable'].includes(value) ? value : numeric(value, fallback);
       return {

@@ -81,3 +81,27 @@ test('dense animation frame cloning and JSON retain each layer pixel ownership p
   doc.replaceLayerPixelsBatch([{ layerId: layer.id, pixels: framePixels }], { restore: true, ownershipByLayer: new Map([[layer.id, frameOwners]]) });
   assert.equal(doc.activeLayer.ownershipTiles.get('0:0')[9], 1);
 });
+
+
+test('dense restore APIs require exact owner snapshots and reject transparent owner metadata on load', () => {
+  const doc = new RasterDocument(8, 8);
+  const layer = doc.activeLayer;
+  layer.authoringMode = 'illustration';
+  const stroke = doc.beginStroke({ color: '#123456', size: 1 });
+  doc.strokeTo(stroke, 2, 2); doc.endStroke(stroke);
+  const blank = new Uint8ClampedArray(8 * 8 * 4);
+  assert.throws(
+    () => doc.setLayerPixels(layer.id, blank, { restore: true }),
+    /exact ownership snapshot/
+  );
+  assert.throws(
+    () => doc.replaceLayerPixelsBatch([{ layerId: layer.id, pixels: blank }], { restore: true }),
+    /exact ownership snapshot/
+  );
+  assert.deepEqual([...layer.pixels.slice((2 * 8 + 2) * 4, (2 * 8 + 2) * 4 + 4)], [18, 52, 86, 255]);
+  const serialized = doc.toJSON();
+  const pixels = Buffer.from(serialized.layers[0].pixels, 'base64');
+  pixels[(2 * 8 + 2) * 4 + 3] = 0;
+  serialized.layers[0].pixels = pixels.toString('base64');
+  assert.throws(() => RasterDocument.fromJSON(serialized), /Transparent pixels cannot retain style ownership/);
+});
