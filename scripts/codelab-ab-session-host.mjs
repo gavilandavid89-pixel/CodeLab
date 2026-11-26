@@ -41,13 +41,25 @@ async function postComment(body) {
   await gh(['api', '-X', 'POST', `repos/${repository}/issues/${issueNumber}/comments`, '-f', 'body=' + body]);
 }
 async function bridgeGet(pathname) {
-  const response = await fetch(baseUrl + pathname, {
-    headers: { 'x-codelab-agent-bridge-token': bridgeToken, accept: 'application/json' },
-    signal: AbortSignal.timeout(120000)
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error('ADMIN bridge HTTP ' + response.status + ': ' + String(body.error || 'request_failed'));
-  return body;
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const response = await fetch(baseUrl + pathname, {
+        headers: { 'x-codelab-agent-bridge-token': bridgeToken, accept: 'application/json' },
+        signal: AbortSignal.timeout(120000)
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok) return body;
+      const error = new Error('ADMIN bridge HTTP ' + response.status + ': ' + String(body.error || 'request_failed'));
+      if (![502, 503, 504].includes(response.status) || attempt === 4) throw error;
+      lastError = error;
+    } catch (error) {
+      if (attempt === 4 || !/fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|aborted/i.test(String(error.message || error))) throw error;
+      lastError = error;
+    }
+    await new Promise(resolve => setTimeout(resolve, Math.min(8000, 1000 * (2 ** attempt))));
+  }
+  throw lastError || new Error('ADMIN bridge request failed after retries.');
 }
 async function bridgePost(pathname, payload = {}) {
   const response = await fetch(baseUrl + pathname, {
