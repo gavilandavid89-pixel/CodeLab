@@ -71,10 +71,13 @@ test('native CodeLab project drawing mode selects the matching Video Composer sc
 });
 
 test('HD capture presets preserve aspect ratio and fit the full artwork without cropping', async () => {
-  const { getCaptureDimensions, containRect, getSourceQualityAssessment, drawFrameToCanvas } = await import('../public/pixelforge/src/video-capture-layout.mjs');
+  const { getCaptureDimensions, getVideoCompositionProfile, containRect, getSourceQualityAssessment, drawFrameToCanvas } = await import('../public/pixelforge/src/video-capture-layout.mjs');
   assert.deepEqual(getCaptureDimensions('1080', '16:9', 128, 128), { width: 1920, height: 1080 });
   assert.deepEqual(getCaptureDimensions('720', '9:16', 128, 160), { width: 720, height: 1280 });
   assert.deepEqual(getCaptureDimensions('1080', '1:1', 128, 128), { width: 1080, height: 1080 });
+  assert.deepEqual(getCaptureDimensions('1080', '4:5', 1920, 1080), { width: 1080, height: 1350 });
+  assert.equal(getVideoCompositionProfile('instagram-feed').aspect, '4:5');
+  assert.equal(getVideoCompositionProfile('instagram-feed').platform, 'Instagram');
   const rect = containRect(128, 160, 0, 0, 1000, 500);
   assert.equal(rect.width / rect.height, 128 / 160);
   assert.ok(rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= 1000 && rect.y + rect.height <= 500);
@@ -259,6 +262,8 @@ test('Video Composer exposes an agent-readable composition guide and routes fit 
   assert.match(html, /value="cover" selected/);
   assert.match(html, /id="vc-copy-agent-guide"/);
   assert.match(js, /getCompositionGuide/);
+  assert.match(js, /instagram-feed/);
+  assert.match(js, /Platform profiles are output presets/);
   assert.match(js, /normalizedSafeArea/);
   assert.match(js, /drawingModesPresent/);
   assert.match(js, /layerModesByFrame/);
