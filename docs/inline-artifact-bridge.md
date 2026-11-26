@@ -206,6 +206,20 @@ El informe consolidado de las correcciones y de las dos importaciones reales est
 
 La variable de autoprueba debe permanecer desactivada en operación normal. No dejar activo el secreto temporal de test una vez concluida la verificación.
 
+### 6.3 E2E del artefacto Headless aislado — 26-11-2026
+
+La prueba PostgreSQL del workflow [Validate CodeLab, ejecución 45748300915](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45748300915) ahora consume el artefacto descargado, no el Headless del checkout:
+
+1. El job empaqueta `public/pixelforge/src` y `pixelforge-codelab-package.mjs` manteniendo sus rutas relativas.
+2. El test importa `createHeadlessRuntime` desde el directorio extraído y crea una animación de dos fotogramas con modos Illustration/Pixel Art, ownership mixto y un objeto vectorial.
+3. El builder que viene dentro del mismo artefacto produce el ZIP nativo `.codelab-pixelforge`.
+4. El test envía manifiesto, chunks binarios y commit a `/api/agent/bridge/artifacts`; inicia/verifica el worker mediante `/api/agent/bridge/ensure`.
+5. Espera el estado terminal `succeeded` de `codelab_project_import` y consulta de nuevo el proyecto en PostgreSQL.
+
+**Resultado del job PixelForge PostgreSQL integration: success.** La lectura de vuelta comprueba dos fotogramas, `ownershipTiles` por cel y el modelo vectorial persistido. La prueba encontró además un error real en `/api/agent/bridge/ensure` (`url is not defined`); se corrigió para leer el `searchParams` del request y la siguiente ejecución superó el recorrido.
+
+Esta prueba valida el paquete Headless que recibe el agente, el empaquetador distribuido, el transporte HTTPS, el worker y la persistencia PostgreSQL. No sustituye las pruebas de interfaz/inspección visual del editor.
+
 ## 7. Cuándo usarlo
 
 Usar inline cuando:
