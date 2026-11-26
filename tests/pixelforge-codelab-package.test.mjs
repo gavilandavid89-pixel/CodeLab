@@ -112,7 +112,7 @@ test('exports a CodeLab v2 PixelForge package with declared frames, editable ref
   const mixedOwners = new Uint8Array(project.width * project.height);
   mixedOwners[5 * project.width + 4] = 1;
   mixedOwners[5 * project.width + 5] = 2;
-  const ownershipTiles = [{ x: 0, y: 0, width: Math.min(64, project.width), height: Math.min(64, project.height), owners: Buffer.from(mixedOwners.subarray(0, Math.min(64, project.width) * Math.min(64, project.height))).toString('base64') }];
+  const ownershipTiles = [{ tileX: 0, tileY: 0, owners: Buffer.from(mixedOwners.subarray(0, Math.min(64, project.width) * Math.min(64, project.height))).toString('base64') }];
   project.animation.frames[0].layerMetadata[0] = { ...(project.animation.frames[0].layerMetadata[0] || {}), authoringMode: 'pixel-art', modeOverrides: { illustration: { brushSize: 7 } }, ownershipTiles };
   project.animation.frames[0].cels[0].metadata = { ...(project.animation.frames[0].cels[0].metadata || {}), ownershipTiles };
   if (project.animation.frames[1]) {
