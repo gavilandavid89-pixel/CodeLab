@@ -10,7 +10,7 @@
     "postinstall": "node scripts/install-playwright-ffmpeg.mjs",
     "test:heavy-visual": "node --test --test-concurrency=1 tests/heavy-visual-evidence.e2e.test.mjs",
     "test:pixelforge-illustration": "node --test tests/pixelforge-illustration-scene.test.mjs tests/pixelforge-drawing-workflow.test.mjs tests/pixelforge-vector-studio.test.mjs tests/pixelforge-agent-precision-tools.test.mjs",
-    "test:pixelforge-tiled-server": "node --test tests/pixelforge-tiled-server-validation.test.mjs",
+    "test:pixelforge-tiled-server": "node --test tests/pixelforge-tiled-server-validation.test.mjs tests/pixelforge-patch-store.test.mjs",
     "test:pixelforge-visual": "node --test tests/pixelforge-editor-visual-modes.e2e.test.mjs",
     "test:pixelforge-validation": "node --test tests/pixelforge-validation.test.mjs",
     "test:pixelforge-scene-workspaces": "node --experimental-default-type=module --test tests/pixelforge-scene-workspaces.test.mjs",
