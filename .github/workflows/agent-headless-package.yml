@@ -2,7 +2,7 @@ name: Agent Headless Package
 
 on:
   push:
-    branches: [main]
+    branches: [main, test/pixelforge-illustration-impact-animation]
     paths:
       - "public/pixelforge/src/**"
       - "pixelforge-codelab-package.mjs"
