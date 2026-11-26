@@ -11,7 +11,7 @@ on:
       project_id:
         description: 'ADMIN PixelForge project B requests A to export (must match A session project_id)'
         required: false
-        default: 'soldier-walk-60f-20261124'
+        default: 'abd33d81-5480-49a7-90e8-6818d2190460'
         type: string
       timeout_minutes:
         description: 'Maximum time B waits for A and verifies the video'
@@ -95,7 +95,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           CODELAB_SESSION_ISSUE: "492"
           CODELAB_AB_OUTPUT_DIR: ${{ runner.temp }}/codelab-ab-video
-          CODELAB_REQUESTED_PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
+          CODELAB_REQUESTED_PROJECT_ID: ${{ inputs.project_id || 'abd33d81-5480-49a7-90e8-6818d2190460' }}
         run: node scripts/codelab-ab-session-request.mjs
       - name: Upload the video received and verified by B
         if: always()
