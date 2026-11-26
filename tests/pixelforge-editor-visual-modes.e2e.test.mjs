@@ -758,6 +758,47 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.ok(reimportedSnapshot.animation.frames[0].cels[0].cel.ownershipTiles.length > 0,
     'imported project persistence must retain ownership tiles');
 
+  // Hand the same structured tiled package to the actual Video Composer UI.
+  // Its native parser must read sparse cel tiles, render the source pixel and
+  // produce a final WebM without requiring a dense legacy RGBA cel.
+  const composerPage = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  const composerErrors = [];
+  composerPage.on('pageerror', error => composerErrors.push(String(error.stack || error.message)));
+  await composerPage.goto('http://127.0.0.1:' + server.address().port + '/pixelforge/video-composer.html', { waitUntil: 'domcontentloaded' });
+  await composerPage.locator('#vc-file').setInputFiles(tiledPackagePath);
+  await composerPage.waitForFunction(() => document.querySelector('#vc-export-note')?.textContent.includes('Paquete validado'), null, { timeout: 30000 });
+  assert.equal(await composerPage.locator('#vc-stat-size').textContent(), '1024 × 1024');
+  assert.equal(await composerPage.locator('#vc-stat-frames').textContent(), '2');
+  const composerPixel = await composerPage.locator('#vc-preview').evaluate(canvas =>
+    [...canvas.getContext('2d').getImageData(900, 900, 1, 1).data]);
+  assert.deepEqual(composerPixel, [240, 198, 116, 255],
+    'Video Composer must visibly reconstruct the sparse tiled cel pixel');
+  assert.equal(await composerPage.locator('#vc-scaling-mode').inputValue(), 'pixelated',
+    'Video Composer must retain Pixel Art sampling from the native project mode');
+  await composerPage.locator('#vc-resolution').selectOption('720');
+  await composerPage.locator('#vc-format').selectOption('webm-vp8');
+  await composerPage.waitForFunction(() => !document.querySelector('#vc-export').disabled, null, { timeout: 15000 });
+  const [videoDownload] = await Promise.all([
+    composerPage.waitForEvent('download', { timeout: 120000 }),
+    composerPage.locator('#vc-export').click(),
+  ]);
+  const videoPath = path.join(artifactDir, 'tiled-native-video-composer.webm');
+  await videoDownload.saveAs(videoPath);
+  await composerPage.waitForFunction(() => document.querySelector('#vc-export-note')?.textContent.includes('Vídeo exportado'), null, { timeout: 30000 });
+  const videoBytes = await fs.promises.readFile(videoPath);
+  assert.ok(videoBytes.length > 1000, 'Video Composer must emit a non-empty WebM video file');
+  assert.deepEqual([...videoBytes.subarray(0, 4)], [0x1a, 0x45, 0xdf, 0xa3],
+    'the final export must be a valid EBML/WebM container');
+  assert.deepEqual(composerErrors, [], 'Video Composer must not throw browser runtime errors while importing or exporting tiled cels');
+  await composerPage.screenshot({ path: path.join(artifactDir, 'tiled-video-composer-preview.png') });
+  await fs.promises.writeFile(path.join(artifactDir, 'tiled-video-composer-evidence.json'), JSON.stringify({
+    inputFormat: tiledPackage.project.format,
+    source: { width: 1024, height: 1024, frames: 2, pixel: composerPixel },
+    samplingMode: await composerPage.locator('#vc-scaling-mode').inputValue(),
+    output: { format: 'webm-vp8', resolution: '720p', bytes: videoBytes.length, durationMs: 208 },
+  }, null, 2));
+  await composerPage.close();
+
   await fs.promises.writeFile(path.join(artifactDir, 'tiled-package-roundtrip-evidence.json'), JSON.stringify({
     format: tiledPackage.project.format,
     width: tiledPackage.project.width,
