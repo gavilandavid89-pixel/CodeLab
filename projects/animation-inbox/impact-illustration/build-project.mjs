@@ -59,7 +59,7 @@ const stroke = (points,color,size,opacity=1) => run({
 const ellipse = (x,y,w,h,color,size=3) => run({
   name:"canvas.draw_shape",shape:"ellipse",x,y,width:w,height:h,color,size,authoringMode:MODE
 });
-const clear = () => run({name:"canvas.clear_region",x:0,y:0,width:W,height:H,authoringMode:MODE});
+const clear = () => run({name:"canvas.erase_region",x:0,y:0,width:W,height:H,authoringMode:MODE});
 const select = id => { run({name:"layer.select",layerId:id}); run({name:"drawing.mode.set",mode:MODE}); };
 const outlineFill = (points,outer,inner,outerSize,innerSize) => {
   stroke(points,outer,outerSize);
