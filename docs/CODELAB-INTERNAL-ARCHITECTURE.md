@@ -30,7 +30,7 @@ Separar siempre estas responsabilidades:
 | PixelForge editor | `public/pixelforge/src/editor.js` | Orquestar edición, herramientas, capas, documento activo, modos y UI del editor | Que toda ruta tiled tenga ya paridad con el modelo denso |
 | Modelo raster PixelForge | `public/pixelforge/src/core.js` | Documento raster y capas en el modelo denso heredado | Que el límite denso desaparezca por existir un adaptador sparse |
 | Animación PixelForge | `public/pixelforge/src/animation.mjs` y `animation-tiled-adapter.mjs` | Timeline densa heredada y timeline sparse para documentos tiled | Que el adaptador dense-to-tiled se use para iniciar nuevas animaciones tiled |
-| Almacenamiento sparse/tiled | `public/pixelforge/src/animation-tiles.mjs`, `raster-tiled-adapter.mjs`, `animation-tiled-adapter.mjs` y módulos relacionados | Recursos RGBA dispersos, referencias compartidas proyecto/animación, copy-on-write, lectura/escritura regional e historial por frame | Que el store en memoria sea almacenamiento durable remoto o que todas las herramientas densas estén migradas |
+| Almacenamiento sparse/tiled | `public/pixelforge/src/animation-tiles.mjs`, `raster-tiled-adapter.mjs`, `animation-tiled-adapter.mjs` y módulos relacionados | Recursos RGBA dispersos, ownership por píxel, referencias compartidas proyecto/animación, copy-on-write, lectura/escritura regional e historial por frame | Que el store en memoria sea almacenamiento durable remoto o que todas las herramientas densas estén migradas |
 | Runtime Headless de PixelForge | `public/pixelforge/src/headless.js` y artefacto del workflow correspondiente | Exponer operaciones de proyecto para automatización/edición fuera de la UI | Que sea el worker de CodeLab o que reciba credenciales internas |
 | Video Composer | `public/pixelforge/video-composer.js`, `src/video-capture-layout.mjs`, encoder y worker | Capturar/componer frames y codificar salida respetando geometría, sampling y timeline | Que cambiar FPS invente poses o que el formato de salida cambie el lienzo fuente |
 | Bridge/worker de órdenes | `agent-bridge-worker.mjs` y coordinación desde `server.js` | Reclamar y completar órdenes persistidas y autorizadas; guardar resultados | Que una notificación sea la orden durable o que el worker sea el agente IA |
@@ -167,10 +167,31 @@ Después de editar:
 | Herramientas tiled | Brush/eraser, fill y gradientes transaccionales, selecciones geométricas y contornos de línea/rectángulo/elipse | Magic wand y transforms requieren migración/paridad |
 | Historia tiled | Historia transaccional de trazos y operaciones de metadatos de capa; timeline conserva un historial independiente por frame | No implica que todos los comandos densos tengan equivalente tiled |
 | Animación tiled | Timeline integrada en el editor: frame switching por referencias compartidas, add/duplicate/delete/reorder, FPS/duración, onion skin regional, thumbnails sparse, playback, autosave y export por lotes | Mantener explícitas las limitaciones de herramientas tiled y no convertir cels a buffers RGBA completos |
+| Ownership Illustration/Pixel Art | Plano sparse por píxel separado de RGBA; guardas en rutas raster dense/tiled y snapshots de historia/frame | No asumir cobertura de cada caller directo, patch remoto ni export RGBA legacy |
 | Video nativo mixto | Compositor/exportador por capa conserva modo y sampling | Paquetes legacy aplanados no pueden recuperar metadatos por capa ausentes |
-| Almacenamiento remoto tiled | Diseño y piezas aisladas | No asumir persistencia privada de tiles ni sync incremental end-to-end |
+| Almacenamiento remoto tiled | Manifiestos/validación y generación de patch local | No existe todavía receptor durable server-side para aplicar `pixelforge-cel-patch`; no asumir sync incremental end-to-end |
 
 Este cuadro es una fotografía técnica y debe actualizarse con código y pruebas antes de cada gran hito.
+
+### 6.1 Ownership mixto por píxel (Illustration + Pixel Art)
+
+El modo activo y la propiedad del contenido son conceptos distintos. El modo activo selecciona el perfil de herramientas; **no** autoriza a modificar píxeles que pertenecen al otro estilo.
+
+- `raster-style-ownership.mjs` define los owners: `0` = unowned/legacy, `1` = Illustration y `2` = Pixel Art. El plano de ownership es metadata separada de RGBA: no es un canal de color ni debe alterar el aspecto exportado.
+- La propiedad es por píxel dentro del cel/frame, no solo por documento o capa. El modo de autoría/perfil por capa o frame recuerda preferencias de herramientas; no sustituye el ownership individual.
+- Dibujo, fill, gradiente y contorno pueden modificar píxeles unowned o del mismo owner. Un píxel del otro estilo se bloquea byte por byte: no se mezcla, suaviza, reemplaza ni borra.
+- Erase solo modifica píxeles del estilo activo. Si un píxel queda totalmente transparente, su owner vuelve a `0`. El primer write real sobre un píxel unowned reclama ese píxel para el modo activo.
+- Los writes normales deben pasar por una frontera protegida y confirmar RGBA + ownership de forma atómica. Undo/redo/cancel/restore son operaciones privilegiadas explícitas y deben restaurar ambos planos juntos.
+- Copy-on-write, duplicación de cel, cambio de frame, serialización de manifiestos, autosave/recovery e importación deben conservar el plano de ownership. Los proyectos legacy sin plano se leen como unowned; nunca inferir su estilo desde el modo global actual.
+- El export RGBA-only no contiene ownership. Reimportar ese archivo no puede reconstruir la propiedad original; usar formatos nativos/manifiestos versionados para round-trip mixto.
+
+**Implementación conocida en esta rama:** hay ownership sparse en el modelo raster denso y en cels tiled; las rutas brush/eraser, fill, gradient, shape outline, color replacement, paste/transform y batch writes tienen cobertura en distintos adaptadores, y la historia/animación conserva snapshots de ownership. Esto no elimina la obligación de auditar callers directos, AI/Headless/scripts y cada camino de persistencia antes de declarar cobertura total. Los detalles y la matriz de rutas están en [contrato de ownership](pixelforge-mixed-style-ownership.md) y [mapa de rollout](pixelforge-mixed-style-ownership-rollout.md).
+
+### 6.2 Límites de sync remoto y evidencia visual
+
+- El `pixelforge-cel-patch` generado localmente no implica que CodeLab tenga un endpoint que lo reciba, valide contra una revisión base y aplique sus deltas de forma durable. El validator de manifiestos no equivale a un receptor/aplicador de patches. Antes de implementar ese circuito, inspeccionar rutas, autorización, revisiones/CAS y backend de objetos existente.
+- El workflow verde de unit/integration/validation no sustituye una prueba browser que demuestre playback visible. Para playback, la evidencia debe comparar frames realmente renderizados durante el reloj de animación y verificar que el timeline/fixture tiene al menos dos poses visualmente distintas. No reducir el requisito a un click ni desactivar la aserción si falla.
+- En el corte verificado para el commit `4f5738ae97419640258dffec0327eefc72871bf0`, los ocho workflows PR asociados terminaron en success; sin embargo, no se identificó una ejecución independiente de CodeLab E2E / PixelForge visual evidence asociada a ese SHA. Por tanto, ese resultado no certifica por sí solo el playback visible. Volver a consultar Actions y el artefacto E2E en el SHA actual antes de cambiar este estado.
 
 ## 7. Documentación canónica por dominio
 
@@ -182,6 +203,8 @@ Este cuadro es una fotografía técnica y debe actualizarse con código y prueba
 - [Protocolo Headless nativo](native-headless-protocol.md)
 - [Paquete de proyecto PixelForge](PIXELFORGE-PROJECT-PACKAGE.md)
 - [Migración raster tradicional](PIXELFORGE-TRADITIONAL-RASTER-MIGRATION.md)
+- [Ownership mixto Illustration/Pixel Art](pixelforge-mixed-style-ownership.md)
+- [Rollout de ownership mixto](pixelforge-mixed-style-ownership-rollout.md)
 - [Almacenamiento sparse y sync incremental](PIXELFORGE-HIGH-RESOLUTION-STORAGE-AND-INCREMENTAL-SYNC.md)
 - [Procesamiento y composición de vídeo](VIDEO-PROCESSING-AB.md)
 - [Catálogo de comandos PixelForge](CODELAB-PIXELFORGE-COMMAND-CATALOG.md)
