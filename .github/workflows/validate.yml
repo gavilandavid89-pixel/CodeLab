@@ -295,6 +295,7 @@ jobs:
           export CODELAB_DATABASE_SSL=disable
           export CODELAB_AGENT_BRIDGE_ENABLED=1
           export CODELAB_AGENT_BRIDGE_CONTROL_SECRET="test-only-agent-bridge-secret"
+          export ADMIN_BOOTSTRAP_PASSWORD="test-only-admin-bootstrap-password"
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/2026-11-15-codelab-core-postgres.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/2026-11-24-codelab-project-import-storage.sql
           export CODELAB_E2E_BASE_URL="http://127.0.0.1:3191"
