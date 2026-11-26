@@ -200,6 +200,23 @@ export async function saveProject(project) {
   if (result.project && Number.isInteger(result.project.serverRevision)) project.serverRevision = result.project.serverRevision;
   return result.project;
 }
+export async function applyCelPatch(project, patch) {
+  if (!project || typeof project.id !== 'string' || !patch || patch.projectId !== project.id) {
+    throw new TypeError('A matching PixelForge project and cel patch are required.');
+  }
+  if (!Number.isInteger(project.serverRevision) || patch.baseRevision !== project.serverRevision) {
+    const error = new Error('El proyecto cambió en el servidor. Recarga la versión más reciente antes de aplicar el parche.');
+    error.code = 'pixelforge_revision_conflict';
+    throw error;
+  }
+  const result = await request(API + '/' + encodeURIComponent(project.id) + '/patches', {
+    method: 'POST', body: JSON.stringify(patch)
+  });
+  if (result.project && Number.isInteger(result.project.serverRevision)) {
+    project.serverRevision = result.project.serverRevision;
+  }
+  return result;
+}
 export async function listSavedProjects() {
   const result = await request(API);
   return Array.isArray(result.projects) ? result.projects : [];
