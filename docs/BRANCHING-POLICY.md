@@ -1,88 +1,127 @@
 # CodeLab — Branching Policy
 
-## Regla única
+## Regla única: solo se trabaja en main
 
-**CodeLab se desarrolla siempre directamente sobre una única rama de trabajo: `main`.**
+**CodeLab tiene una única rama de desarrollo y pruebas: main.**
 
-No se debe crear una rama permanente de feature, fix, test, integration o experimentación para continuar el desarrollo del producto.
+Todo trabajo nuevo, incluyendo implementación, pruebas, regresiones, experimentos, documentación y correcciones, se realiza directamente sobre main.
 
-Esto aplica independientemente del tamaño o tipo de trabajo:
-
-- PixelForge / Illustration / Pixel.
-- Editor y herramientas.
-- Animation y Video Composer.
-- Headless / Agent.
-- Importación y exportación.
-- Tests y regresiones.
-- Documentación.
-- Refactors.
-- Correcciones urgentes.
+No se crean ni se mantienen ramas paralelas de trabajo para features, fixes, tests, regresiones, integration, experimentos, documentación, PixelForge, Illustration, Pixel, Animation, Video Composer, Headless, Agent, importación o exportación.
 
 ### Flujo obligatorio
 
-```text
+~~~text
 main
   ↓
 cambio
   ↓
-verificación local/CI
+verificación local / CI / Actions
+  ↓
+corrección si hace falta
+  ↓
+verificación nuevamente
   ↓
 main
-```
+~~~
 
-Cuando se necesite probar algo experimental, la prueba debe ejecutarse sobre el estado actual de `main` y sus resultados deben quedar registrados. No se crea otra rama permanente para conservar ese trabajo.
+Si una tarea necesita varias etapas, todas las etapas continúan sobre main. Si una prueba necesita repetirse, se repite sobre el estado actual de main.
 
-## Por qué
+**Una prueba no justifica crear otra rama.**
 
-Mantener múltiples ramas de trabajo activas provocó divergencias de historial y ramas que quedaron cientos o miles de commits detrás de `main`. Eso dificulta saber qué código representa realmente el estado vigente de CodeLab y permite que agentes futuros trabajen accidentalmente sobre snapshots obsoletos.
+## Antes de cualquier trabajo
 
-**La fuente de verdad del código es `main`.**
+Todo agente debe:
 
-Una rama antigua no debe tratarse como una versión alternativa válida de CodeLab solo porque todavía exista en GitHub.
+1. Consultar el estado actual de main.
+2. Confirmar el SHA actual de main.
+3. Trabajar únicamente sobre main.
+4. Ejecutar las verificaciones correspondientes.
+5. Volver a comprobar main después de las verificaciones.
+6. Documentar los cambios importantes.
 
-## Política para agentes
+origin/main es la fuente de verdad del estado vigente de CodeLab.
 
-Antes de modificar CodeLab:
+## Documentación: no puede haber dos verdades
 
-1. Consultar `main`.
-2. Confirmar el SHA actual de `main`.
-3. Trabajar únicamente sobre `main`.
-4. Verificar los cambios con los tests/workflows correspondientes.
-5. Comprobar nuevamente el estado de `main` después de la verificación.
-6. Documentar cualquier comportamiento importante que haya cambiado.
+**Antes de fusionar, integrar o considerar terminado cualquier cambio, la documentación relacionada de ambos lados debe coincidir.**
 
-Si se encuentra una rama antigua:
+No se debe aceptar una integración mientras una parte diga una cosa y la otra otra.
 
-- no continuar desarrollando sobre ella;
-- comparar su trabajo exclusivo contra `main`;
-- rescatar únicamente los cambios que sigan siendo necesarios;
-- aplicar esos cambios sobre `main`;
-- dejar la rama marcada como histórica/obsoleta y eliminarla cuando las herramientas de repositorio lo permitan.
+Antes de dar por listo un cambio hay que:
 
-## Ramas históricas
+- comparar la documentación relevante con main;
+- actualizar la documentación necesaria;
+- comprobar que nombres, contratos, comportamiento, límites y flujos descritos coincidan con la implementación real;
+- comprobar que no queden instrucciones contradictorias;
+- verificar nuevamente después de integrar.
 
-Las ramas que ya existen y están divergidas no representan el flujo futuro de trabajo. Pueden conservarse temporalmente únicamente para recuperar commits o revisar historial.
+**Código y documentación deben representar el mismo estado del sistema.**
 
-En particular, las ramas antiguas de pruebas de PixelForge detectadas durante la limpieza de noviembre de 2026 quedan consideradas **históricas**, no ramas de desarrollo activas.
+No se debe fusionar una implementación que deje documentación vieja, incompleta o contradictoria con el código.
 
-Esto incluye las antiguas ramas de pruebas raster/browser y ramas auxiliares de tiled que ya fueron integradas o cuyo trabajo debe evaluarse directamente contra `main`.
+## Cómo se hacen las pruebas
 
-## Regla para futuras tareas
+Las pruebas deben ejecutarse sobre el main vigente.
 
-Un agente **no debe crear otra rama porque el trabajo sea grande, porque necesite varios pasos o porque sea una prueba**.
+Cuando una prueba sea experimental o de diagnóstico:
 
-Si el trabajo necesita varias etapas, esas etapas se realizan consecutivamente sobre `main`, verificando cada una antes de continuar.
+1. se parte del main actual;
+2. se ejecuta la prueba sobre ese estado;
+3. se registra el resultado;
+4. si hay un problema, se corrige sobre main;
+5. se vuelve a ejecutar la prueba;
+6. se documenta el resultado.
 
-Si una prueba falla, se corrige sobre `main` y se vuelve a verificar. No se crea una rama paralela para ocultar la divergencia.
+No se conserva una rama paralela únicamente para guardar el resultado de una prueba.
 
-## Estado de referencia
+## Ramas antiguas: clasificación para eliminación
 
-La referencia vigente debe ser siempre:
+Las siguientes ramas fueron identificadas durante la limpieza y **no forman parte del flujo de desarrollo actual**. Se consideran candidatas a eliminación porque están obsoletas, divergidas de main o corresponden a trabajo ya integrado/cerrado:
 
-```
-origin/main
-```
+- feat/pixelforge-tiled-package-export
+- test/pixelforge-raster-tools-e2e
+- test/pixelforge-animation-browser-e2e
+- test/video-composer-actions-worker
+- feat/pixelforge-ui-tools-e2e
+- feature/pixelforge-core-tool-regressions
+- feature/pixelforge-raster-regression-tests
+- integration/reconcile-main-2026-11-03
 
-La existencia de otras ramas en GitHub no cambia esta regla.
+La rama feat/pixelforge-tiled-spritesheet-export ya fue integrada en main. Si todavía existe como referencia remota, debe tratarse como histórica y eliminarse cuando las herramientas de repositorio lo permitan.
 
-**Una sola línea de desarrollo. Una sola fuente de verdad. `main`.**
+### Qué hacer con una rama antigua
+
+Si un agente encuentra una de estas ramas:
+
+- **no debe continuar desarrollándola**;
+- no debe tomarla como fuente de verdad;
+- debe comparar cualquier trabajo exclusivo contra main;
+- solo debe rescatar cambios que todavía sean necesarios;
+- esos cambios deben aplicarse y verificarse sobre main;
+- la rama debe quedar como histórica hasta poder eliminarla.
+
+Las ramas antiguas no son una alternativa de desarrollo ni una segunda versión de CodeLab.
+
+## Regla estricta para futuros agentes
+
+Un agente **no debe crear otra rama** porque la tarea sea grande, tenga muchas etapas, necesite pruebas, sea experimental, requiera una regresión o pueda tardar varios días.
+
+Todo eso se hace sobre main, con verificaciones intermedias y documentación.
+
+### Principio final
+
+~~~text
+UNA RAMA DE DESARROLLO
+        ↓
+      main
+        ↓
+UNA FUENTE DE VERDAD
+        ↓
+código + documentación coherentes
+~~~
+
+**CodeLab se desarrolla y se prueba en una sola línea: main.**
+
+**Antes de integrar cualquier cambio, la documentación de las partes involucradas debe coincidir con la implementación real.**
+
+La existencia de ramas antiguas en GitHub no modifica esta política.
