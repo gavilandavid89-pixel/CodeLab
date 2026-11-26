@@ -106,9 +106,13 @@ El sistema actual separa correctamente:
 4. Render de salida — composición temporal.
 5. Codificación — WebM mediante el encoder existente.
 
-La siguiente evolución prevista es Smart Reframe. Debe ser una capa adicional sobre esta arquitectura, no reemplazarla.
+La evolución Smart Reframe ya tiene una primera implementación. Debe seguir siendo una capa adicional sobre esta arquitectura, no reemplazarla.
 
-Smart Reframe deberá poder recibir un punto de interés o una trayectoria de interés y calcular un encuadre temporalmente estable. No debe mover el lienzo maestro ni modificar las capas. El objetivo es evitar el problema de hacer simplemente un crop centrado cuando el sujeto importante está desplazado.
+La primitiva coverSourceRectAtFocalPoint(sourceWidth, sourceHeight, targetWidth, targetHeight, focalPoint) calcula un recorte con escala uniforme alrededor de un punto normalizado. El punto se limita a 0..1 y el recorte se desplaza hasta no salir de los límites del lienzo.
+
+El Video Composer expone actualmente cinco preferencias simples de reencuadre: centro, arriba, abajo, izquierda y derecha. Estas preferencias se convierten en puntos normalizados y se aplican tanto a la captura como al encoder/worker. El lienzo maestro y sus capas no cambian.
+
+Esta primera versión es deliberadamente determinista: no pretende detectar personajes mediante IA todavía. El siguiente paso es sustituir el punto fijo por una trayectoria de interés por fotograma y suavizar esa trayectoria temporalmente, evitando saltos de cámara.
 
 ## Regla de no deformación
 
@@ -127,6 +131,7 @@ La cobertura del Video Composer verifica:
 - ausencia de estiramiento;
 - muestreo independiente de Illustration/Pixel Art;
 - propagación de fitMode hasta el encoder/worker;
-- guía legible por agentes.
+- guía legible por agentes;
+- desplazamiento del crop hacia un punto de interés sin cambiar su tamaño ni deformar el origen.
 
 Cuando se agregue Smart Reframe, deberá existir una prueba independiente que compruebe que el encuadre puede desplazarse sin cambiar las dimensiones del proyecto fuente y que el movimiento del encuadre es estable entre fotogramas.
