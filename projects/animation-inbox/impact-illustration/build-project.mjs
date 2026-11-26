@@ -178,9 +178,9 @@ const poses = [
   {duration:80,dx:-10,dy:-22,skewY:-.25,scaleX:1.03,scaleY:.95},
   {duration:90,dx:-5,dy:-15,skewY:-.35,scaleX:1.04,scaleY:.94},
   {duration:90,horizontalY:275},
-  {duration:100,horizontalY:300},
-  {duration:120,horizontalY:310},
-  {duration:450,horizontalY:310}
+  {duration:100,dx:0,dy:25,skewY:0,scaleX:1,scaleY:1},
+  {duration:120,dx:0,dy:10,skewY:0,scaleX:1,scaleY:1},
+  {duration:450,hold:true}
 ];
 let bounds = {x:0,y:90,width:170,height:320};
 select(opponent.id);
