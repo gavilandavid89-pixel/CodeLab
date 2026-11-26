@@ -215,6 +215,11 @@ export class PixelForgeAnimation {
       throw new RangeError('Active animation frame index is outside the timeline.');
     }
     this.#activeFrameIndex = activeFrameIndex;
+    // Validate imported dense ownership metadata eagerly, not only when a
+    // later drawing operation happens to query the owner plane.
+    for (let frameIndex = 0; frameIndex < this.#frames.length; frameIndex++) {
+      for (const layerId of this.#layerIds) this.getLayerOwnershipTiles(frameIndex, layerId);
+    }
     this.#assertMemoryBudget();
   }
 
@@ -310,6 +315,16 @@ export class PixelForgeAnimation {
       if (width < 1 || height < 1) throw new TypeError('Animation ownership tile is outside the canvas.');
       const owners = decodeBase64(tile.owners, width * height);
       if (owners.some(owner => owner > 2) || !owners.some(owner => owner !== 0)) throw new TypeError('Animation ownership tile contains invalid owner data.');
+      const pixels = frame.cels.get(layerId);
+      for (let index = 0; index < owners.length; index++) {
+        if (owners[index] !== 0) {
+          const x = tile.tileX * 64 + index % width;
+          const y = tile.tileY * 64 + Math.floor(index / width);
+          if (pixels[(y * this.#width + x) * 4 + 3] === 0) {
+            throw new TypeError('Animation transparent pixels cannot retain style ownership.');
+          }
+        }
+      }
       const key = `${tile.tileX}:${tile.tileY}`;
       if (output.has(key)) throw new TypeError('Animation contains duplicate ownership tiles.');
       output.set(key, owners);

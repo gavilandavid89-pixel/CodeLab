@@ -463,3 +463,22 @@ test('drawing mode is persisted independently on each dense animation frame and 
   assert.equal(restored.getLayerMetadata(2, 'ink').authoringMode, 'illustration', 'blank cels inherit the newly selected frame mode');
   assert.equal(restored.getLayerMetadata(2, 'color').authoringMode, 'illustration');
 });
+
+
+test('dense animation rejects ownership metadata attached to transparent pixels on load', () => {
+  const animation = new PixelForgeAnimation({ width: 64, height: 64, layerIds: ['ink'] });
+  const pixels = new Uint8ClampedArray(64 * 64 * 4);
+  pixels.set([20, 40, 60, 255], 0);
+  animation.setLayerPixels(0, 'ink', pixels);
+  const owners = new Uint8Array(64 * 64);
+  owners[0] = 1;
+  animation.setLayerMetadata(0, 'ink', {
+    authoringMode: 'illustration',
+    ownershipTiles: [{ tileX: 0, tileY: 0, owners: Buffer.from(owners).toString('base64') }],
+  });
+  const serialized = animation.toJSON();
+  const celPixels = Buffer.from(serialized.frames[0].cels[0].pixels, 'base64');
+  celPixels[3] = 0;
+  serialized.frames[0].cels[0].pixels = celPixels.toString('base64');
+  assert.throws(() => PixelForgeAnimation.fromJSON(serialized), /transparent pixels cannot retain style ownership/);
+});
