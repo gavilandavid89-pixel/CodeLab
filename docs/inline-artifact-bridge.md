@@ -208,7 +208,7 @@ La variable de autoprueba debe permanecer desactivada en operación normal. No d
 
 ### 6.3 E2E del artefacto Headless aislado — 26-11-2026
 
-La prueba PostgreSQL del workflow [Validate CodeLab, ejecución 45748300915](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45748300915) ahora consume el artefacto descargado, no el Headless del checkout:
+La prueba PostgreSQL del workflow [Validate CodeLab, ejecución 45749179291](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45749179291) ahora consume el artefacto descargado, no el Headless del checkout:
 
 1. El job empaqueta `public/pixelforge/src` y `pixelforge-codelab-package.mjs` manteniendo sus rutas relativas.
 2. El test importa `createHeadlessRuntime` desde el directorio extraído y crea una animación de dos fotogramas con modos Illustration/Pixel Art, ownership mixto y un objeto vectorial.
