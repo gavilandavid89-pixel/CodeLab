@@ -16,6 +16,8 @@ on:
       - "tests/pixelforge-editor-visual-modes.e2e.test.mjs"
       - "pixelforge-tiled-project-validation.js"
       - "tests/pixelforge-tiled-server-validation.test.mjs"
+      - "pixelforge-patch-store.js"
+      - "tests/pixelforge-patch-store.test.mjs"
       - "server.js"
       - "tests/pixelforge-raster-tiled-adapter.test.mjs"
       - "public/pixelforge/src/animation-tiled-adapter.mjs"
@@ -48,6 +50,11 @@ on:
       - "server.js"
       - "public/pixelforge/src/core.js"
       - "public/pixelforge/src/persistence.js"
+      - "pixelforge-patch-store.js"
+      - "tests/pixelforge-patch-store.test.mjs"
+      - "pixelforge-tiled-project-validation.js"
+      - "tests/pixelforge-tiled-server-validation.test.mjs"
+      - "server.js"
       - "pixelforge-upload-store.js"
       - "tests/pixelforge-integration.test.js"
   pull_request:
@@ -90,10 +97,11 @@ jobs:
           node --input-type=module --check < public/pixelforge/src/editor.js
           node --input-type=module --check < public/pixelforge/src/persistence.js
           node --check pixelforge-upload-store.js
+          node --check pixelforge-patch-store.js
           node --check server.js
           node --check tests/pixelforge-integration.test.js
       - name: Test sparse tiled project server validation
-        run: node --test tests/pixelforge-tiled-server-validation.test.mjs
+        run: node --test tests/pixelforge-tiled-server-validation.test.mjs tests/pixelforge-patch-store.test.mjs
       - name: Test frame timeline model
         run: node --test tests/pixelforge-animation.test.mjs
       - name: Test tile-backed animation migration adapter
