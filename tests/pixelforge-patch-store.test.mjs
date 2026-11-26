@@ -19,6 +19,16 @@ test('applies RGBA tile patch and advances project revision without changing bas
  assert.equal(next.layers[0].cel.tiles[0].rgba, next.animation.frames[0].cels[0].cel.tiles[0].rgba, 'active raster layer must mirror the patched active animation cel');
  assert.equal(project.serverRevision,4);
 });
+test('patching a non-active frame does not replace the active raster layer',()=>{
+ const project=fixture();
+ project.animation.frames.push({...structuredClone(project.animation.frames[0]),id:'f2'});
+ project.animation.activeFrameIndex=1;
+ const activeCel=structuredClone(project.layers[0].cel);
+ const next=patchStore.applyPixelForgeCelPatch(project,patch());
+ assert.deepEqual(next.layers[0].cel,activeCel);
+ assert.notDeepEqual(next.animation.frames[0].cels[0].cel.tiles[0].rgba,activeCel.tiles[0].rgba);
+ assert.deepEqual(next.animation.frames[1].cels[0].cel,activeCel);
+});
 test('applies sparse ownership tiles and preserves style metadata',()=>{
  const project=fixture(),owners=Buffer.alloc(32*32);owners[0]=1;
  const p={...patch(),operations:[{type:'ownership.put',x:0,y:0,width:32,height:32,sha256:hash(owners),owners:owners.toString('base64')}]};
