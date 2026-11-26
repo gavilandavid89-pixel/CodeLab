@@ -117,6 +117,9 @@
       <div class="vc-form-group">
         <label for="vc-fit-mode">Ajuste del contenido · sin deformar</label>
         <select id="vc-fit-mode"><option value="cover" selected>Llenar el formato · recortar fuera de la guía</option><option value="contain">Conservar todo · añadir bandas si hace falta</option></select>
+        <label for="vc-reframe">Reencuadre inteligente</label>
+        <select id="vc-reframe"><option value="center" selected>Centro · comportamiento actual</option><option value="top">Priorizar parte superior</option><option value="bottom">Priorizar parte inferior</option><option value="left">Priorizar lado izquierdo</option><option value="right">Priorizar lado derecho</option></select>
+        <small>El reencuadre solo mueve el área visible de la salida; nunca modifica el lienzo maestro ni estira el dibujo.</small>
         <small>Ambas opciones conservan la proporción. Nunca se estira el dibujo. La guía marca exactamente lo que se conservará al recortar.</small>
       </div>
       <section class="vc-composition-guide" aria-live="polite">
