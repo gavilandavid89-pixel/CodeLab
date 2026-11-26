@@ -3,6 +3,7 @@ import { importPixelForgeCodeLabPackage } from './src/codelab-package.js';
 import { getCaptureDimensions, getSourceQualityAssessment, getCompositionGuide, drawContentComposition } from './src/video-capture-layout.mjs';
 import { encodeWebMFrames } from './src/video-webm-encoder.mjs';
 import { getVideoScalingMode, resolveDrawingMode } from './src/drawing-mode-config.mjs';
+import { vectorModelToSVG } from './src/vector-studio.js';
 
 const $ = selector => document.querySelector(selector);
 const ui = {
@@ -480,6 +481,31 @@ async function composeNativeFrame(project, frame) {
     context.rotate(rotation * Math.PI / 180);
     context.scale(Number.isFinite(sx) ? sx : 1, Number.isFinite(sy) ? sy : 1);
     context.drawImage(source, -width / 2, -height / 2);
+    context.restore();
+  }
+  // Vector objects are an Illustration-quality overlay. Keep them as a
+  // separate render layer so the encoder can sample raster layers by mode.
+  if (project.vectorModel?.objects?.length) {
+    const svg = vectorModelToSVG(project.vectorModel);
+    const vectorBitmap = await createImageBitmap(new Blob([svg], { type: 'image/svg+xml' }));
+    const vectorCanvas = document.createElement('canvas');
+    vectorCanvas.width = width; vectorCanvas.height = height;
+    const vectorContext = vectorCanvas.getContext('2d', { alpha: true });
+    vectorContext.imageSmoothingEnabled = true;
+    vectorContext.imageSmoothingQuality = 'high';
+    vectorContext.drawImage(vectorBitmap, 0, 0, width, height);
+    vectorBitmap.close?.();
+    const vectorBlob = await new Promise((resolve, reject) => vectorCanvas.toBlob(value =>
+      value ? resolve(value) : reject(new Error('No se pudo preparar la capa vectorial.')), 'image/png'));
+    renderLayers.push({
+      layerId: 'vector-overlay', layerName: 'Vector overlay',
+      blob: vectorBlob, authoringMode: 'illustration', x: 0, y: 0,
+      scaleX: 1, scaleY: 1, rotation: 0, opacity: 1, blendMode: 'source-over',
+    });
+    context.save();
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(vectorCanvas, 0, 0);
     context.restore();
   }
   const blob = await new Promise((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error('No se pudo codificar el fotograma compuesto como PNG.')), 'image/png'));
