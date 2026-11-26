@@ -278,7 +278,7 @@ test('Video Composer exposes an agent-readable composition guide and routes fit 
   assert.match(js, /Do not stretch or apply different horizontal and vertical scale factors/);
   assert.match(encoder, /fitMode:options\.fitMode/);
   assert.match(worker, /fitMode = 'contain'/);
-  assert.match(worker, /fitMode\s*$/m);
+  assert.match(worker, /fitMode\s*=\s*'contain'/);
 });
 
 
