@@ -1,139 +1,98 @@
 import { createHeadlessRuntime } from "../../../public/pixelforge/src/headless.js";
 import { createPixelForgeCodeLabPackageZip } from "../../../pixelforge-codelab-package.mjs";
 import { writeFile } from "node:fs/promises";
-
-const W = 160, H = 214, MODE = "illustration";
-const runtime = createHeadlessRuntime({ width: W, height: H, name: "Impact — Illustration" });
-const run = action => {
-  const response = runtime.execute(action);
-  if (!response.ok) throw new Error(action.name + ": " + (response.error?.message || JSON.stringify(response.error)));
-  return response.result;
-};
-const point = (x, y) => ({ x: Math.max(0, Math.min(W - 1, Math.round(x))), y: Math.max(0, Math.min(H - 1, Math.round(y))) });
-const stroke = (points, color, size, opacity = 1) => run({ name: "canvas.draw_stroke", points: points.map(([x, y]) => point(x, y)), color, size, opacity, hardness: 0.96, shape: "circle", authoringMode: MODE });
-const ellipse = (x, y, width, height, color, size = 2) => run({ name: "canvas.draw_shape", shape: "ellipse", x: Math.max(0, Math.min(W - 1, x)), y: Math.max(0, Math.min(H - 1, y)), width: Math.max(1, Math.min(W - Math.max(0, x), width)), height: Math.max(1, Math.min(H - Math.max(0, y), height)), color, size, authoringMode: MODE });
-const C = { ink: "#17151A", skin: "#D99178", light: "#F0BCA5", shade: "#9E5D54", pants: "#D6CFC3", jacket: "#25242A", jacketLight: "#45434C", bg: "#D9DEE1", ground: "#BFC1C2", speed: "#A5ADB4" };
-
-const background = runtime.sandbox.layers[0].id;
-run({ name: "layer.rename", layerId: background, newName: "Escenario" });
-const attacker = run({ name: "layer.add", layerName: "Atacante — Illustration" }).layerId;
-const opponent = run({ name: "layer.add", layerName: "Oponente — Illustration" }).layerId;
-run({ name: "drawing.mode.set", mode: MODE });
-run({ name: "animation.frame.capture_document", durationMs: 100, frameName: "Preparación" });
-
-run({ name: "layer.select", layerId: background });
-run({ name: "drawing.mode.set", mode: MODE });
-run({ name: "canvas.fill", x: 2, y: 2, color: C.bg, tolerance: 0, contiguous: true, authoringMode: MODE });
-run({ name: "canvas.fill", x: 3, y: 178, color: C.ground, tolerance: 10, contiguous: true, authoringMode: MODE });
-stroke([[0,165],[38,164],[82,166],[122,163],[159,165]], "#777C83", 2);
-stroke([[0,183],[55,181],[110,184],[159,181]], "#92979D", 1);
-for (let i = 0; i < 4; i++) stroke([[8+i*38,24+i*8],[27+i*35,18+i*7]], C.speed, 1, 0.5);
-
-// Static puncher: bare torso, pale trousers, swept dark hair and extended fist.
-run({ name: "layer.select", layerId: attacker });
-run({ name: "drawing.mode.set", mode: MODE });
-stroke([[111,126],[106,151],[101,181],[96,198]], C.ink, 15);
-stroke([[111,126],[106,151],[101,181],[96,198]], C.pants, 10);
-stroke([[128,126],[135,151],[140,180],[149,194]], C.ink, 15);
-stroke([[128,126],[135,151],[140,180],[149,194]], C.pants, 10);
-stroke([[95,197],[87,202],[103,204],[110,199]], C.ink, 7);
-stroke([[146,193],[149,201],[159,202]], C.ink, 7);
-stroke([[103,66],[91,72],[87,91],[91,112],[103,130],[126,132],[141,116],[143,92],[136,73],[121,65],[103,66]], C.ink, 23);
-stroke([[103,66],[91,72],[87,91],[91,112],[103,130],[126,132],[141,116],[143,92],[136,73],[121,65],[103,66]], C.skin, 17);
-stroke([[96,78],[108,86],[120,84],[133,76]], C.light, 4, 0.8);
-stroke([[97,93],[108,99],[120,100],[132,93]], C.shade, 3, 0.7);
-stroke([[100,106],[112,112],[124,108]], C.shade, 2, 0.7);
-stroke([[105,117],[116,121],[129,116]], C.light, 3, 0.7);
-stroke([[106,58],[107,70],[119,77],[130,68],[129,56]], C.ink, 12);
-stroke([[106,58],[107,70],[119,77],[130,68],[129,56]], C.skin, 8);
-stroke([[96,77],[84,81],[73,84],[61,82],[51,78]], C.ink, 17);
-stroke([[96,77],[84,81],[73,84],[61,82],[51,78]], C.skin, 11);
-stroke([[83,82],[76,88],[67,88]], C.light, 3, 0.8);
-stroke([[51,78],[43,72],[36,73],[32,80],[37,87],[47,88],[54,83]], C.ink, 11);
-stroke([[51,78],[43,72],[36,73],[32,80],[37,87],[47,88],[54,83]], C.skin, 7);
-stroke([[134,77],[146,78],[154,87],[151,98],[141,103]], C.ink, 13);
-stroke([[134,77],[146,78],[154,87],[151,98],[141,103]], C.skin, 8);
-ellipse(105,27,34,38,C.ink,3);
-ellipse(108,30,28,32,C.skin,1);
-stroke([[108,35],[106,26],[112,18],[124,16],[137,23],[141,33],[135,34],[128,27],[117,27],[111,34]], C.ink, 7);
-stroke([[110,39],[117,36],[122,38],[128,37],[135,34]], C.ink, 2);
-ellipse(117,38,2,3,C.ink,1);
-ellipse(130,37,2,3,C.ink,1);
-stroke([[125,39],[121,47],[126,49]], C.shade, 2);
-stroke([[117,54],[126,56],[133,52]], C.ink, 2);
-stroke([[108,47],[113,51],[117,49]], C.shade, 2);
-
-// Save the completed static cels on frame zero; duplicate carries them through the timeline.
-for (const layerId of [background, attacker]) {
-  const layer = runtime.sandbox.layers.find(item => item.id === layerId);
-  run({ name: "animation.frame.set_cel", layerId, index: 0, pixels: Buffer.from(layer.pixels).toString("base64"), authoringMode: MODE });
-}
-run({ name: "animation.set_fps", fps: 12 });
-run({ name: "animation.set_loop", loop: false });
-
-function drawOpponent(cx, cy, angle, pose, previous) {
-  run({ name: "layer.select", layerId: opponent });
-  run({ name: "drawing.mode.set", mode: MODE });
-  if (previous) run({ name: "canvas.erase_region", x: 0, y: 0, width: W, height: H, authoringMode: MODE });
-  const transform = (x, y) => point(cx + x * Math.cos(angle) - y * Math.sin(angle), cy + x * Math.sin(angle) + y * Math.cos(angle));
-  const draw = (points, color, size, opacity = 1) => run({ name: "canvas.draw_stroke", points: points.map(([x,y]) => transform(x,y)), color, size, opacity, hardness: 0.95, shape: "circle", authoringMode: MODE });
-  draw([[-12,-13],[-20,-4],[-18,13],[-10,21],[11,21],[20,10],[17,-9],[8,-16],[-12,-13]], C.ink, 20);
-  draw([[-11,-12],[-16,-3],[-14,10],[-8,16],[9,16],[14,8],[13,-7],[6,-13],[-11,-12]], C.jacket, 13);
-  draw([[-9,-16],[8,-14],[10,14],[-8,15]], C.jacket, 19);
-  const arms = pose === "impact" ? [[-14,-10],[-25,-4],[-33,-10],[-38,-17],[12,-10],[22,-1],[29,7]]
-    : pose === "air" ? [[-14,-10],[-25,-23],[-34,-27],[-40,-35],[12,-10],[24,-23],[34,-29]]
-    : pose === "fall" ? [[-14,-9],[-24,0],[-33,13],[-40,17],[12,-9],[24,2],[34,15]]
-    : pose === "land" ? [[-13,-7],[-23,2],[-34,7],[-41,7],[12,-7],[24,3],[37,8]]
-    : [[-14,-10],[-23,-3],[-32,0],[-39,0],[12,-10],[23,-3],[32,1]];
-  draw(arms.slice(0,4), C.ink, 10);
-  draw(arms.slice(0,4), C.jacketLight, 6);
-  draw(arms.slice(4), C.ink, 10);
-  draw(arms.slice(4), C.jacketLight, 6);
-  const legs = pose === "land" ? [[-7,18],[-20,27],[-32,28],[7,18],[22,25],[36,25]]
-    : pose === "fall" ? [[-7,18],[-18,28],[-26,39],[7,18],[22,29],[34,37]]
-    : pose === "air" ? [[-7,18],[-19,28],[-31,35],[7,18],[22,30],[34,42]]
-    : pose === "impact" ? [[-7,18],[-12,29],[-17,40],[7,18],[15,30],[20,41]]
-    : [[-7,18],[-14,30],[-20,41],[7,18],[16,30],[23,41]];
-  draw(legs.slice(0,3), C.ink, 10);
-  draw(legs.slice(0,3), C.jacketLight, 6);
-  draw(legs.slice(3), C.ink, 10);
-  draw(legs.slice(3), C.jacketLight, 6);
-  const head = transform(-1,-34);
-  ellipse(head.x, head.y, 20, 23, C.ink, 2);
-  ellipse(head.x+2, head.y+2, 16, 19, C.skin, 1);
-  draw([[-10,-40],[-8,-47],[1,-49],[9,-45],[11,-38]], C.ink, 6);
-  draw([[-7,-34],[-3,-33],[2,-34],[6,-33]], C.ink, 1);
-}
-
-const poses = [
-  {x:48,y:118,a:0,pose:"stand",duration:100},
-  {x:45,y:115,a:-0.2,pose:"impact",duration:80},
-  {x:31,y:92,a:-0.65,pose:"air",duration:80},
-  {x:17,y:75,a:-1.25,pose:"air",duration:80},
-  {x:22,y:111,a:-2.0,pose:"fall",duration:80},
-  {x:43,y:146,a:-2.65,pose:"fall",duration:90},
-  {x:68,y:161,a:-3.0,pose:"land",duration:150},
-  {x:70,y:161,a:-3.05,pose:"land",duration:400}
+const W=240,H=426,M="illustration";
+const rt=createHeadlessRuntime({width:W,height:H,name:"Impact — Illustration Improved"});
+const run=a=>{const r=rt.execute(a);if(!r.ok)throw new Error(a.name+": "+(r.error?.message||JSON.stringify(r.error)));return r.result;};
+const pt=(x,y)=>({x:Math.max(0,Math.min(W-1,Math.round(x))),y:Math.max(0,Math.min(H-1,Math.round(y)))});
+const s=(pts,color,size,opacity=1)=>run({name:"canvas.draw_stroke",points:pts.map(([x,y])=>pt(x,y)),color,size,opacity,hardness:.96,shape:"circle",authoringMode:M});
+const e=(x,y,w,h,color,size=4)=>run({name:"canvas.draw_shape",shape:"ellipse",x:Math.max(0,x),y:Math.max(0,y),width:Math.max(1,Math.min(W-Math.max(0,x),w)),height:Math.max(1,Math.min(H-Math.max(0,y),h)),color,size,authoringMode:M});
+const fill=(x,y,color)=>run({name:"canvas.fill",x,y,color,tolerance:0,contiguous:true,authoringMode:M});
+const C={ink:"#17151A",skin:"#D99178",light:"#F0BCA5",shade:"#9E5D54",hair:"#101116",pants:"#D6CFC3",pantsShade:"#8C8988",jacket:"#25242A",jacketLight:"#45434C",bg:"#D9DEE1",ground:"#BFC1C2",speed:"#A5ADB4",white:"#E8E3DA"};
+const bg=rt.sandbox.layers[0].id;run({name:"layer.rename",layerId:bg,newName:"Escenario"});
+const attacker=run({name:"layer.add",layerName:"Atacante — Illustration"}).layerId;
+const opponent=run({name:"layer.add",layerName:"Oponente — Illustration"}).layerId;
+run({name:"drawing.mode.set",mode:M});run({name:"animation.frame.capture_document",durationMs:100,frameName:"Preparación"});
+run({name:"layer.select",layerId:bg});run({name:"drawing.mode.set",mode:M});
+run({name:"canvas.fill",x:2,y:2,color:C.bg,tolerance:0,contiguous:true,authoringMode:M});
+run({name:"canvas.fill",x:3,y:360,color:C.ground,tolerance:8,contiguous:true,authoringMode:M});
+s([[0,350],[55,348],[110,351],[170,347],[239,350]],"#777C83",3);
+s([[0,388],[70,385],[150,389],[239,385]],"#92979D",2);
+for(let i=0;i<6;i++)s([[12+i*40,65+(i%3)*18],[40+i*34,55+(i%3)*18]],C.speed,2,.45);
+// The puncher stays in place: bare torso, pale trousers, and an extended left fist.
+run({name:"layer.select",layerId:attacker});run({name:"drawing.mode.set",mode:M});
+s([[177,298],[170,337],[165,378],[158,408]],C.ink,25);s([[177,298],[170,337],[165,378],[158,408]],C.pants,17);
+s([[207,298],[216,338],[222,379],[231,405]],C.ink,25);s([[207,298],[216,338],[222,379],[231,405]],C.pants,17);
+s([[158,408],[146,414],[169,417],[179,411]],C.ink,12);s([[224,403],[230,414],[239,414]],C.ink,12);
+s([[170,200],[151,212],[143,243],[148,282],[166,313],[202,316],[224,291],[226,248],[214,214],[194,198],[170,200]],C.ink,44);
+s([[170,200],[151,212],[143,243],[148,282],[166,313],[202,316],[224,291],[226,248],[214,214],[194,198],[170,200]],C.skin,34);
+s([[158,219],[178,235],[198,232],[215,217]],C.light,8,.8);
+s([[158,251],[179,263],[199,264],[215,251]],C.shade,5,.8);
+s([[165,275],[183,285],[201,280]],C.shade,4,.7);
+s([[171,294],[188,300],[207,293]],C.light,5,.7);
+s([[171,183],[173,204],[192,216],[210,201],[208,178]],C.ink,28);s([[171,183],[173,204],[192,216],[210,201],[208,178]],C.skin,20);
+s([[158,215],[138,220],[120,218],[102,208],[87,202],[75,200]],C.ink,34);s([[158,215],[138,220],[120,218],[102,208],[87,202],[75,200]],C.skin,24);
+s([[123,216],[113,228],[98,229]],C.light,6,.8);
+s([[76,200],[63,189],[50,191],[43,204],[49,219],[66,224],[80,213]],C.ink,25);s([[76,200],[63,189],[50,191],[43,204],[49,219],[66,224],[80,213]],C.skin,16);
+s([[214,218],[233,224],[238,243],[231,261],[216,265]],C.ink,28);s([[214,218],[233,224],[238,243],[231,261],[216,265]],C.skin,18);
+e(171,133,65,73,C.ink,5);e(177,139,54,62,C.skin,2);
+s([[178,150],[174,135],[183,120],[202,116],[222,127],[235,148],[225,150],[212,135],[193,134],[181,146]],C.ink,17);
+s([[181,158],[192,153],[201,157],[214,153],[226,155]],C.ink,4);e(192,157,5,7,C.ink,1);e(216,155,5,7,C.ink,1);
+s([[206,160],[201,176],[210,179]],C.shade,4);s([[192,187],[207,191],[220,184]],C.ink,4);
+// The opponent is a single complete jacketed figure on its own layer.
+run({name:"layer.select",layerId:opponent});run({name:"drawing.mode.set",mode:M});
+s([[77,308],[65,337],[55,365],[44,386]],C.ink,27);s([[77,308],[65,337],[55,365],[44,386]],"#34333A",18);
+s([[111,308],[125,336],[140,360],[154,379]],C.ink,27);s([[111,308],[125,336],[140,360],[154,379]],"#34333A",18);
+s([[44,385],[31,395],[57,398],[68,389]],C.ink,14);s([[150,378],[158,389],[177,392]],C.ink,14);
+s([[65,208],[52,223],[48,263],[57,306],[78,322],[117,320],[137,300],[137,254],[124,218],[100,203],[65,208]],C.ink,42);
+fill(91,260,C.jacket);
+s([[62,223],[82,242],[101,246],[125,224]],C.jacketLight,7,.8);
+s([[75,255],[91,265],[112,261]],"#66616B",5,.7);
+s([[88,279],[103,287],[119,280]],"#66616B",4,.7);
+s([[69,210],[86,235],[98,250],[112,231],[126,213]],C.ink,10);
+s([[98,250],[99,301]],"#AAA4A2",3,.8);
+s([[60,226],[39,235],[23,250],[15,264]],C.ink,27);s([[60,226],[39,235],[23,250],[15,264]],C.jacket,17);
+s([[15,264],[8,271],[12,282],[25,283],[32,273]],C.ink,14);s([[15,264],[8,271],[12,282],[25,283],[32,273]],C.skin,8);
+s([[127,224],[151,235],[165,253],[174,267]],C.ink,27);s([[127,224],[151,235],[165,253],[174,267]],C.jacket,17);
+s([[174,267],[182,271],[189,264],[184,253],[174,254]],C.ink,14);s([[174,267],[182,271],[189,264],[184,253],[174,254]],C.skin,8);
+s([[81,210],[82,193],[89,185],[105,185],[115,197],[115,214]],C.ink,19);s([[81,210],[82,193],[89,185],[105,185],[115,197],[115,214]],C.skin,12);
+e(75,151,58,64,C.ink,5);e(80,157,48,54,C.skin,2);
+s([[80,170],[78,153],[89,140],[107,140],[126,153],[130,170],[119,165],[108,153],[91,156],[83,169]],C.ink,14);
+s([[85,176],[95,173],[102,177],[110,175],[119,177]],C.ink,3);e(95,177,4,5,C.ink,1);e(113,177,4,5,C.ink,1);
+s([[106,179],[102,190],[108,193]],C.shade,3);s([[94,202],[106,205],[117,200]],C.ink,3);
+s([[61,239],[74,249],[84,251]],"#77727A",4,.8);
+const frames=[
+ {duration:100,dx:0,dy:0,rotate:0},
+ {duration:80,dx:-8,dy:-5,rotate:0},
+ {duration:90,dx:-24,dy:-35,rotate:0},
+ {duration:90,dx:-18,dy:-20,rotate:90,scaleY:0.85},
+ {duration:90,dx:0,dy:20,rotate:90},
+ {duration:400,dx:10,dy:50,rotate:90}
 ];
-let previous = null;
-for (let index = 0; index < poses.length; index++) {
-  if (index > 0) run({ name: "animation.frame.duplicate", index: index - 1 });
-  const pose = poses[index];
-  drawOpponent(pose.x, pose.y, pose.a, pose.pose, previous);
-  const layer = runtime.sandbox.layers.find(item => item.id === opponent);
-  const result = run({ name: "animation.frame.set_cel", layerId: opponent, index, pixels: Buffer.from(layer.pixels).toString("base64"), authoringMode: MODE });
-  if (result.blockedPixels) throw new Error("Blocked incompatible Illustration pixels: " + result.blockedPixels);
-  run({ name: "animation.frame.set_duration", index, durationMs: pose.duration });
-  previous = [pose.x, pose.y];
+for(const layerId of [bg,attacker,opponent]){const layer=rt.sandbox.layers.find(item=>item.id===layerId);run({name:"animation.frame.set_cel",layerId,index:0,pixels:Buffer.from(layer.pixels).toString("base64"),authoringMode:MODE});}
+run({name:"animation.set_fps",fps:12});run({name:"animation.set_loop",loop:false});
+let bounds={x:35,y:130,width:150,height:280};
+for(let index=0;index<frames.length;index++){
+ if(index>0)run({name:"animation.frame.duplicate",index:index-1});
+ const frame=frames[index];
+ if(index>0){
+  const transformed=run({name:"canvas.transform_region",...bounds,dx:frame.dx,dy:frame.dy,rotate:frame.rotate,scaleX:frame.scaleX??1,scaleY:frame.scaleY??1,interpolation:"bilinear",authoringMode:MODE});
+  if(transformed.bounds)bounds={x:transformed.bounds.x,y:transformed.bounds.y,width:transformed.bounds.width,height:transformed.bounds.height};
+  const layer=rt.sandbox.layers.find(item=>item.id===opponent);
+  const cel=run({name:"animation.frame.set_cel",layerId:opponent,index,pixels:Buffer.from(layer.pixels).toString("base64"),authoringMode:MODE});
+  if(cel.blockedPixels)throw new Error("Blocked incompatible Illustration pixels: "+cel.blockedPixels);
+ }
+ run({name:"animation.frame.set_duration",index,durationMs:frame.duration});
 }
-
-const summary = run({ name: "animation.get_summary" });
-runtime.createProposal("Animación de impacto dibujada con acciones raster y de timeline nativas de PixelForge Headless en modo Illustration. El atacante permanece estable y el oponente de chaqueta oscura retrocede, vuela, gira y cae.");
-const accepted = runtime.acceptProposal();
-const project = runtime.toJSON();
-project.id = "abd33d81-5480-49a7-90e8-6818d2190460";
-const artifact = createPixelForgeCodeLabPackageZip(project);
-const output = process.argv[2];
-if (!output) throw new Error("Pass the output .codelab package path as argv[2].");
-await writeFile(output, artifact.bytes);
-console.log(JSON.stringify({ summary, accepted, metadata: artifact.metadata, projectId: project.id, allModesIllustration: project.animation.frames.every(frame => frame.authoringMode === MODE && frame.cels.every(cel => (cel.metadata?.authoringMode ?? cel.authoringMode) === MODE)) }, null, 2));
+const summary=run({name:"animation.get_summary"});
+rt.createProposal("Animación de impacto nativa en Illustration: atacante estable en una capa y oponente completo animado mediante transformaciones raster nativas del timeline, con vuelo, giro y caída.");
+const accepted=rt.acceptProposal();
+const project=rt.toJSON();
+project.id="6f9cdb50-55a3-4d78-bd34-9cc95b54a5be";
+if(!project.layers.every(layer=>layer.authoringMode===MODE))throw new Error("Every project layer must remain Illustration.");
+if(!project.animation.frames.every(frame=>frame.authoringMode===MODE&&frame.cels.every(cel=>(cel.metadata?.authoringMode??cel.authoringMode)===MODE)))throw new Error("Every frame and cel must remain Illustration.");
+const artifact=createPixelForgeCodeLabPackageZip(project);
+const output=process.argv[2];
+if(!output)throw new Error("Pass the output .codelab package path as argv[2].");
+await writeFile(output,artifact.bytes);
+console.log(JSON.stringify({summary,accepted,projectId:project.id,canvas:[W,H],allLayersIllustration:true,allFramesAndCelsIllustration:true,metadata:artifact.metadata},null,2));
