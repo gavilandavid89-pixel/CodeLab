@@ -818,4 +818,4 @@ Esta regla permite construir fondos, personajes, elementos, detalles y efectos d
 
 ### Tiled layer sprite-sheet export
 
-The editor exports tiled layers to the existing sprite-sheet ZIP format without converting each layer to a dense full-canvas buffer. It reads each layer in bounded 16-row RGBA strips and places those strips directly into the output PNG. The manifest records `storageMode: "tiled"` and the layer authoring mode; the PNG and manifest remain paired in the ZIP. The export is subject to a 16-megapixel / 16384-pixel output-surface limit.
+The editor exports tiled layers to the existing sprite-sheet ZIP format without converting each layer to a dense full-canvas buffer. It reads each layer in bounded 16-row RGBA strips and places those strips directly into the output PNG. The manifest records `storageMode: "tiled"` and the layer authoring mode; the PNG and manifest remain paired in the ZIP. The export is subject to a 16-megapixel output-surface limit (the shared layout helper additionally caps each side at 8192 pixels and total area at 64 megapixels).
