@@ -310,6 +310,7 @@ function addFrames(project, files) {
         authoringMode: ['illustration', 'pixel-art'].includes(cel.metadata?.authoringMode ?? cel.authoringMode ?? layer.authoringMode)
           ? (cel.metadata?.authoringMode ?? cel.authoringMode ?? layer.authoringMode) : 'pixel-art',
         modeOverrides: structuredClone(cel.metadata?.modeOverrides ?? layer.modeOverrides ?? {}),
+        ownershipTiles: structuredClone(cel.metadata?.ownershipTiles ?? cel.ownershipTiles ?? []),
         pixelsPath, position: { x: Number(layer.x ?? 0), y: Number(layer.y ?? 0) },
         x: Number(layer.x ?? 0), y: Number(layer.y ?? 0), scaleX: Number(layer.scaleX ?? 1), scaleY: Number(layer.scaleY ?? 1),
         rotation: Number(layer.rotation ?? 0), angle: layer.angle ?? 0, opacity: Number(layer.opacity ?? 1),
@@ -663,7 +664,9 @@ export async function importPixelForgeCodeLabPackage(fileOrEntries) {
         contrast: layer.contrast ?? 0, saturation: layer.saturation ?? 0, mask: structuredClone(layer.mask ?? 'inexistente'), clipping: structuredClone(layer.clipping ?? 'inexistente'),
         references: structuredClone(layer.references || []), assets: structuredClone(layer.assets || []), metadata: structuredClone(layer.metadata || {}),
         authoringMode: ['illustration', 'pixel-art'].includes(layer.authoringMode) ? layer.authoringMode : 'pixel-art',
-        modeOverrides: structuredClone(layer.modeOverrides || {}), zIndex: Number(layer.zIndex ?? 0),
+        modeOverrides: structuredClone(layer.modeOverrides || {}),
+        ownershipTiles: structuredClone(layer.ownershipTiles || []),
+        zIndex: Number(layer.zIndex ?? 0),
         pixelsSha256: await sha256(bytes),
       });
     }
