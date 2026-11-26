@@ -34,7 +34,8 @@ function ownershipTilesToPlane(tiles, width, height) {
     const [tileX, tileY] = key.split(':').map(Number);
     const x = tileX * 64, y = tileY * 64;
     const tileWidth = Math.min(64, width - x), tileHeight = Math.min(64, height - y);
-    if (tileWidth < 1 || tileHeight < 1 || !(owners instanceof Uint8Array) ||
+    if (tileWidth < 1 || tileHeight < 1 ||
+        (!(owners instanceof Uint8Array) && !(owners instanceof Uint8ClampedArray)) ||
         owners.byteLength !== tileWidth * tileHeight) {
       throw new TypeError('Animation ownership tile dimensions do not match the cel.');
     }
