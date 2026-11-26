@@ -3505,7 +3505,7 @@ const server = http.createServer(async (req, res) => {
 
       // Apply a single tiled cel delta atomically against the project's current server revision.
       const pixelForgePatchMatch = req.method === 'POST'
-        ? pathname.match(/^\\/api\\/pixelforge\\/projects\\/([A-Za-z0-9_-]{1,100})\\/patches$/) : null;
+        ? pathname.match(/^\/api\/pixelforge\/projects\/([A-Za-z0-9_-]{1,100})\/patches$/) : null;
       if (pixelForgePatchMatch) {
         const user = await getSessionUser(req);
         if (!PIXELFORGE_GUEST_MODE && !user) return sendJson(res, 401, { error: 'not_authenticated' });
