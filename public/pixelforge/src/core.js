@@ -225,7 +225,8 @@ function validateOwnershipTilesForPixels(tiles, pixels, width, height) {
     const x = tileX * TILE_SIZE, y = tileY * TILE_SIZE;
     const tileWidth = Math.min(TILE_SIZE, width - x), tileHeight = Math.min(TILE_SIZE, height - y);
     if (!Number.isInteger(tileX) || !Number.isInteger(tileY) || tileX < 0 || tileY < 0 ||
-        tileWidth < 1 || tileHeight < 1 || !(owners instanceof Uint8Array) ||
+        tileWidth < 1 || tileHeight < 1 ||
+        (!(owners instanceof Uint8Array) && !(owners instanceof Uint8ClampedArray)) ||
         owners.byteLength !== tileWidth * tileHeight) {
       throw new TypeError('Ownership snapshot tile geometry is invalid.');
     }
