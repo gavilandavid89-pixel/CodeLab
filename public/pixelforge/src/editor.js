@@ -4,7 +4,8 @@ import { TiledRasterPointerStrokeController } from './raster-tiled-pointer-contr
 import { fillTiledLayer } from './raster-tiled-fill.mjs';
 import { drawTiledShape } from './raster-tiled-shapes.mjs';
 import { fillTiledGradient } from './raster-tiled-gradient.mjs';
-import { loadMostRecentProject, saveProject, listSavedProjects, loadProjectById, deleteProject } from './persistence.js';
+import { loadMostRecentProject, saveProject, applyCelPatch, listSavedProjects, loadProjectById, deleteProject } from './persistence.js';
+import { createCelPatch } from './cel-patch-diff.mjs';
 
 import { preflightImageFile } from './image-import.js';
 import { createSpriteSheetLayout } from './asset-export.js';
@@ -26,6 +27,10 @@ import { PIXELFORGE_DRAWING_MODES, normalizeDrawingConfiguration, switchDrawingM
 const $ = selector => document.querySelector(selector);
 
 function installDocument(nextDocument) {
+  if (lastConfirmedProjectSnapshot?.id !== nextDocument.id) {
+    lastConfirmedProjectSnapshot = null;
+    pendingCelPatch = null;
+  }
   const previousDocument = doc;
   if (animation instanceof TiledAnimationDocument) {
     for (const frames of tiledAnimationOrphanCels.values()) for (const item of frames) if (item.celId) animation.releaseCelReference(item.celId);
@@ -95,8 +100,13 @@ async function restoreProjectAnimation(snapshot) {
 
 async function restoreProjectDocument(snapshot, { newIdentity = false } = {}) {
   if (snapshot?.format === PIXELFORGE_TILED_PROJECT_FORMAT) {
-    return TiledRasterProjectDocument.fromManifest(snapshot, { newIdentity });
+    const restored = await TiledRasterProjectDocument.fromManifest(snapshot, { newIdentity });
+    lastConfirmedProjectSnapshot = newIdentity ? null : structuredClone(snapshot);
+    pendingCelPatch = null;
+    return restored;
   }
+  lastConfirmedProjectSnapshot = null;
+  pendingCelPatch = null;
   return RasterDocument.fromJSON(snapshot, { newIdentity });
 }
 
@@ -136,6 +146,9 @@ let shapeGesture = null, gradientGesture = null, symmetryMode = 0;
 let cursorMode = false, cursorGesturePointerId = null, cursorGestureLast = null, cursorGestureOrigin = null, cursorGestureStartedOnControl = false, cursorGestureControlTarget = null, cursorGestureSuppressClick = false, cursorDrawPointerId = null;
 let virtualCursorPointerId = null, virtualCursorScreen = null, virtualCursorPoint = null, virtualCursorVisible = false, virtualCursorCanDraw = false;
 let panning = false, panStart = null, autosaveTimer = null, autosaveInFlight = Promise.resolve(), flushInProgress = false, flushPromise = null, renderQueued = false, previewReady = false;
+// Incremental persistence is anchored to the last server-confirmed snapshot.
+// Keep an uncertain patch intact so retries reuse its operationId (idempotency).
+let lastConfirmedProjectSnapshot = null, pendingCelPatch = null;
 
 let referenceCenterUI = null;
 let vectorStudio = null;
@@ -897,6 +910,43 @@ function moveVirtualCursorBy(dx, dy) {
   virtualCursorPoint = { x: Math.max(0, Math.min(doc.width - 1, point.x)), y: Math.max(0, Math.min(doc.height - 1, point.y)), inside: true };
   virtualCursorVisible = true; render();
 }
+async function persistEditorSnapshot(snapshot, targetDoc) {
+  const canPatch = targetDoc === doc && targetDoc.isTiled &&
+    snapshot?.format === PIXELFORGE_TILED_PROJECT_FORMAT &&
+    snapshot.animation?.format === PIXELFORGE_TILED_ANIMATION_FORMAT &&
+    lastConfirmedProjectSnapshot?.id === snapshot.id &&
+    Number.isInteger(snapshot.serverRevision);
+
+  if (canPatch && pendingCelPatch) {
+    // A previous request may have committed while its response was lost.
+    // Replaying the exact operationId lets the server return its durable receipt.
+    await applyCelPatch(pendingCelPatch.snapshot, pendingCelPatch.patch);
+    targetDoc.serverRevision = pendingCelPatch.snapshot.serverRevision;
+    lastConfirmedProjectSnapshot = structuredClone(pendingCelPatch.snapshot);
+    pendingCelPatch = null;
+  }
+
+  if (canPatch && lastConfirmedProjectSnapshot?.id === snapshot.id) {
+    const patch = createCelPatch(lastConfirmedProjectSnapshot, snapshot);
+    if (patch) {
+      pendingCelPatch = { patch, snapshot: structuredClone(snapshot) };
+      await applyCelPatch(pendingCelPatch.snapshot, patch);
+      targetDoc.serverRevision = pendingCelPatch.snapshot.serverRevision;
+      lastConfirmedProjectSnapshot = structuredClone(pendingCelPatch.snapshot);
+      pendingCelPatch = null;
+      return { serverRevision: targetDoc.serverRevision, incremental: true };
+    }
+  }
+
+  const saved = await saveProject(snapshot);
+  if (Number.isInteger(saved?.serverRevision)) targetDoc.serverRevision = saved.serverRevision;
+  if (targetDoc.isTiled && snapshot?.format === PIXELFORGE_TILED_PROJECT_FORMAT) {
+    lastConfirmedProjectSnapshot = structuredClone(snapshot);
+    pendingCelPatch = null;
+  }
+  return saved;
+}
+
 function scheduleAutosave() {
   clearTimeout(autosaveTimer); autosaveTimer = null;
   status('Unsaved changes', 'warning');
@@ -910,7 +960,7 @@ function scheduleAutosave() {
     const operation = autosaveInFlight.catch(() => {}).then(async () => {
       if (doc !== savingDoc) return;
       const version = savingDoc.saveVersion, snapshot = await buildProjectSnapshot(savingDoc);
-      const saved = await saveProject(snapshot);
+      const saved = await persistEditorSnapshot(snapshot, savingDoc);
       if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
       savingDoc.dirty = savingDoc.saveVersion !== version;
       if (doc === savingDoc) {
@@ -940,7 +990,7 @@ async function flushAutosave({ force = false } = {}) {
       if (!savingDoc.dirty && !pending && !force) return;
       while (doc === savingDoc) {
         const version = savingDoc.saveVersion, snapshot = await buildProjectSnapshot(savingDoc);
-        const saved = await saveProject(snapshot);
+        const saved = await persistEditorSnapshot(snapshot, savingDoc);
         if (Number.isInteger(saved?.serverRevision)) savingDoc.serverRevision = saved.serverRevision;
         if (savingDoc.saveVersion === version) { savingDoc.dirty = false; break; }
         savingDoc.dirty = true;
