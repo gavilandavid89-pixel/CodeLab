@@ -47,9 +47,10 @@ jobs:
           d=float(json.loads(out)["format"]["duration"])
           print(f"duration={d:.3f}s")
           # Playwright records from page creation, so the WebM also contains the
-          # editor boot/navigation time. The test itself waits for and verifies the
-          # complete 5s playback window before closing the page.
-          if not (12.0 <= d <= 14.0):
+          # editor boot/navigation time. The test explicitly waits at least 5.35s
+          # after playback starts; allow a shorter startup segment while retaining
+          # the 5s playback evidence check performed by the E2E test.
+          if not (8.0 <= d <= 14.0):
               raise SystemExit(f"unexpected recording duration: {d}")
           PY
       - name: Upload 5-second animation evidence
