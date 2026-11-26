@@ -26,6 +26,7 @@ const sourceProject = snapshot.project;
 const sourceFrameCount = sourceProject.animation?.frames?.length || 0;
 if (sourceFrameCount < 2 || sourceProject.layers?.length !== 3) throw new Error("Unexpected source project structure.");
 delete process.env.CODELAB_AGENT_BRIDGE_CONTROL_SECRET;
+delete process.env.BRIDGE_TOKEN;
 
 const W = sourceProject.width, H = sourceProject.height;
 if (W !== 240 || H !== 426) throw new Error("Unexpected canvas dimensions; review before editing.");
