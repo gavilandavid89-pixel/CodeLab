@@ -227,3 +227,18 @@ test('per-frame tiled stroke history remains isolated when the active cel refere
   animation.dispose();
   project.dispose();
 });
+
+
+test('tiled animation restore refuses to discard ownership without an exact snapshot', async () => {
+  const animation = new PixelForgeAnimation({ width: 32, height: 32, layerIds: ['ink'] });
+  const tiled = await TiledAnimationDocument.fromAnimation(animation, { tileSize: 32 });
+  await tiled.writeRegion(0, 'ink', { x: 0, y: 0, width: 1, height: 1 },
+    new Uint8ClampedArray([20, 40, 60, 255]), { authoringMode: 'illustration' });
+  await assert.rejects(
+    () => tiled.writeRegion(0, 'ink', { x: 0, y: 0, width: 1, height: 1 }, new Uint8Array(4), { restore: true }),
+    /exact owner snapshot/
+  );
+  assert.deepEqual([...tiled.readRegion(0, 'ink', { x: 0, y: 0, width: 1, height: 1 })], [20, 40, 60, 255]);
+  assert.deepEqual([...tiled.readOwnershipRegion(0, 'ink', { x: 0, y: 0, width: 1, height: 1 })], [1]);
+  tiled.dispose();
+});

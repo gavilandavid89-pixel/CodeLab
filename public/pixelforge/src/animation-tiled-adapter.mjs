@@ -368,6 +368,10 @@ export class TiledAnimationDocument {
     const previousCelId = this.#cel(frame, layerId);
     let result;
     if (restore) {
+      if (!(ownerSnapshot instanceof Uint8Array) &&
+          this.#store.readOwnershipRegion(previousCelId, region).some(owner => owner !== 0)) {
+        throw new TypeError('Restoring an owned animation cel region requires its exact owner snapshot.');
+      }
       result = ownerSnapshot instanceof Uint8Array
         ? await this.#store.writeRegionWithOwnership(previousCelId, region, pixels, ownerSnapshot)
         : await this.#store.writeRegion(previousCelId, region, pixels);

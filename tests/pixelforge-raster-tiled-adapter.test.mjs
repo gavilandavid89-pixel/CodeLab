@@ -310,3 +310,23 @@ test('tiled document exposes bounded editor state, layer operations and shared s
   restored.dispose();
   tiled.dispose();
 });
+
+
+test('restore paths refuse to change owned pixels without exact owner snapshots', async () => {
+  const source = new RasterDocument(32, 32, 'Owned restore guard');
+  const tiled = await TiledRasterProjectDocument.fromDocument(source, { tileSize: 32 });
+  const layerId = tiled.activeLayerId;
+  await tiled.writeRegion(layerId, { x: 0, y: 0, width: 1, height: 1 },
+    new Uint8ClampedArray([20, 40, 60, 255]), { authoringMode: 'illustration' });
+  await assert.rejects(
+    () => tiled.writeRegion(layerId, { x: 0, y: 0, width: 1, height: 1 }, new Uint8Array(4), { restore: true }),
+    /exact owner snapshot/
+  );
+  await assert.rejects(
+    () => tiled.writeTileBatch(layerId, [{ x: 0, y: 0, pixels: new Uint8Array(32 * 32 * 4) }], { restore: true }),
+    /exact owner snapshot/
+  );
+  assert.deepEqual([...tiled.readRegion(layerId, { x: 0, y: 0, width: 1, height: 1 })], [20, 40, 60, 255]);
+  assert.deepEqual([...tiled.readOwnershipRegion(layerId, { x: 0, y: 0, width: 1, height: 1 })], [1]);
+  tiled.dispose();
+});

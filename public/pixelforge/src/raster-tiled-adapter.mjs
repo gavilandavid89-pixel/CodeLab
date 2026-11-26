@@ -492,6 +492,14 @@ export class TiledRasterProjectDocument {
     if (restore) {
       const previousCelId = layer.celId;
       if (!patches.some(patch => patch.owners instanceof Uint8Array)) {
+        for (const patch of patches) {
+          const width = Math.min(tileSize, this.#width - patch.x);
+          const height = Math.min(tileSize, this.#height - patch.y);
+          const owners = this.#store.readOwnershipRegion(previousCelId, { x: patch.x, y: patch.y, width, height });
+          if (owners.some(owner => owner !== 0)) {
+            throw new TypeError('Restoring an owned tile requires an exact owner snapshot for every affected tile.');
+          }
+        }
         const result = await this.#store.writeTileBatch(previousCelId, patches, options);
         if (result.changed) { layer.celId = result.celId; this.#markChanged(); this.#store.releaseCel(previousCelId); }
         return { changed: result.changed, changedTiles: result.changedTiles, removedTiles: result.removedTiles, celId: result.celId, blockedPixels: 0 };
@@ -538,6 +546,10 @@ export class TiledRasterProjectDocument {
     if (layer.locked) throw new Error('The target layer is locked.');
     const previousCelId = layer.celId;
     if (restore) {
+      if (!(ownerSnapshot instanceof Uint8Array) &&
+          this.#store.readOwnershipRegion(previousCelId, region).some(owner => owner !== 0)) {
+        throw new TypeError('Restoring an owned region requires its exact owner snapshot.');
+      }
       const result = ownerSnapshot instanceof Uint8Array
         ? await this.#store.writeRegionWithOwnership(previousCelId, region, pixels, ownerSnapshot)
         : await this.#store.writeRegion(previousCelId, region, pixels);

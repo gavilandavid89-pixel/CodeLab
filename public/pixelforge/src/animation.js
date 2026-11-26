@@ -114,6 +114,7 @@ function createModel(timeline, document) {
 function frameContext(model, document, index, layerId) {
   const safeIndex = Math.max(0, Math.min(model.frameCount - 1, Number.isInteger(index) ? index : model.activeFrameIndex));
   const frame = model.getFrame(safeIndex);
+  const frameMetadata = model.getLayerMetadata(safeIndex, layerId ?? document.activeLayerId ?? model.layerIds[0]);
   const layerIds = [...model.layerIds];
   const selectedLayerId = layerId ?? document.activeLayerId ?? layerIds[0];
   if (!layerIds.includes(selectedLayerId)) throw new Error('Animation context layer was not found.');
@@ -122,14 +123,25 @@ function frameContext(model, document, index, layerId) {
   const previousIndex = safeIndex > 0 ? safeIndex - 1 : null;
   const previousFrame = previousIndex === null ? null : model.getFrame(previousIndex);
   const previousCel = previousIndex === null ? null : model.getLayerPixels(previousIndex, selectedLayerId);
+  const layerMetadata = model.getLayerMetadata(safeIndex, selectedLayerId);
+  const previousLayerMetadata = previousIndex === null ? null : model.getLayerMetadata(previousIndex, selectedLayerId);
   const changed = previousCel && compareRawPixels(previousCel, cel, model.width, model.height);
   return {
-    frame: { index: safeIndex, id: frame.id, name: frame.name || 'Frame ' + (safeIndex + 1), durationMs: frame.durationMs },
-    layer: { id: selectedLayerId, name: document.layers.find(layer => layer.id === selectedLayerId)?.name || selectedLayerId },
+    frame: {
+      index: safeIndex, id: frame.id, name: frame.name || 'Frame ' + (safeIndex + 1),
+      durationMs: frame.durationMs, authoringMode: frame.authoringMode,
+    },
+    layer: {
+      id: selectedLayerId, name: document.layers.find(layer => layer.id === selectedLayerId)?.name || selectedLayerId,
+      authoringMode: layerMetadata.authoringMode,
+      ownershipTiles: layerMetadata.ownershipTiles || [],
+    },
     previous: previousFrame ? {
       index: previousIndex,
       id: previousFrame.id,
       name: previousFrame.name || 'Frame ' + (previousIndex + 1),
+      authoringMode: previousFrame.authoringMode,
+      ownershipTiles: previousLayerMetadata?.ownershipTiles || [],
       cel: encodeBase64(previousCel),
       composite: encodeBase64(model.compositeFrame(previousIndex, document.layers.map(layer => ({ id: layer.id, visible: layer.visible, opacity: layer.opacity })))),
     } : null,
@@ -137,7 +149,7 @@ function frameContext(model, document, index, layerId) {
     visual: { format: 'rgba-base64', width: model.width, height: model.height, previousFrameIndex: previousIndex },
     change: changed,
     guidance: {
-      rule: 'Use the returned previous frame/cel as the visual and structural source of truth. Do not infer hidden pixels, anatomy, proportions, palette, or layer contents.',
+      rule: 'Use the returned previous frame/cel as the visual and structural source of truth. Do not infer hidden pixels, anatomy, proportions, palette, or layer contents. Respect authoringMode and ownershipTiles; never overwrite pixels owned by the other style.',
       requestMoreContextAction: 'animation.frame.get_context',
       availableLayerIds: layerIds,
     },
