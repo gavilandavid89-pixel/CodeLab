@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createCelPatch } from '../public/pixelforge/src/cel-patch-diff.mjs';
 import chromium from '@sparticuz/chromium';
 import { chromium as playwrightChromium } from 'playwright-core';
 
@@ -681,10 +682,19 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await drawAt(incrementalPoint);
   await assertVisibleColor(incrementalPoint, '#f0c674', 'tiled/incremental-patch/local-draw');
   await page.waitForTimeout(1800);
+  const fullSaveFallback = fullSnapshotSaveCount > fullSaveCountBeforeIncrementalDraw;
+  const capturedPatch = fullSaveFallback && savedProjectSnapshots.length >= 2
+    ? createCelPatch(savedProjectSnapshots.at(-2), savedProjectSnapshots.at(-1), { operationId: 'diagnostic-op' })
+    : null;
   assert.ok(receivedCelPatches.length > patchCountBeforeIncrementalDraw,
     'a one-cel drawing edit must reach POST /projects/:id/patches through editor autosave ' +
     JSON.stringify({ patchesBefore: patchCountBeforeIncrementalDraw, patchesAfter: receivedCelPatches.length,
       fullPutsBefore: fullSaveCountBeforeIncrementalDraw, fullPutsAfter: fullSnapshotSaveCount,
+      capturedSnapshotWouldPatch: Boolean(capturedPatch),
+      previousServerRevision: savedProjectSnapshots.at(-2)?.serverRevision,
+      latestServerRevision: savedProjectSnapshots.at(-1)?.serverRevision,
+      latestDrawingConfiguration: savedProjectSnapshots.at(-1)?.drawingConfiguration,
+      latestLayerMode: savedProjectSnapshots.at(-1)?.layers?.[0]?.authoringMode,
       status: await page.locator('#status').textContent().catch(() => 'status-unavailable') }));
   assert.equal(fullSnapshotSaveCount, fullSaveCountBeforeIncrementalDraw,
     'an eligible single-cel edit must not fall back to a full-project PUT');
