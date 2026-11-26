@@ -6,6 +6,9 @@ on:
     paths:
       - ".github/workflows/pixelforge-tiled-package-roundtrip.yml"
       - "public/pixelforge/src/editor.js"
+      - "public/pixelforge/video-composer.js"
+      - "public/pixelforge/src/video-capture-layout.mjs"
+      - "public/pixelforge/src/video-webm-encoder.mjs"
       - "public/pixelforge/src/codelab-package.js"
       - "public/pixelforge/src/raster-tiled-adapter.mjs"
       - "public/pixelforge/src/animation-tiled-adapter.mjs"
