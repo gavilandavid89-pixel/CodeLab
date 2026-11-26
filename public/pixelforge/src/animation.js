@@ -1,4 +1,5 @@
 import { PixelForgeAnimation, MAX_ANIMATION_BYTES, MAX_ANIMATION_FRAMES } from './animation.mjs';
+import { guardStyleOwnedPixels } from './raster-style-ownership.mjs';
 
 const FORMAT = 'pixelforge-animation';
 const VERSION = 1;
@@ -26,6 +27,45 @@ function decodeBase64(value, expectedBytes) {
   return pixels;
 }
 function layerIdsFrom(document) { return document.layers.map(layer => layer.id); }
+
+function ownershipTilesToPlane(tiles, width, height) {
+  const plane = new Uint8Array(width * height);
+  for (const [key, owners] of tiles) {
+    const [tileX, tileY] = key.split(':').map(Number);
+    const x = tileX * 64, y = tileY * 64;
+    const tileWidth = Math.min(64, width - x), tileHeight = Math.min(64, height - y);
+    if (tileWidth < 1 || tileHeight < 1 || !(owners instanceof Uint8Array) ||
+        owners.byteLength !== tileWidth * tileHeight) {
+      throw new TypeError('Animation ownership tile dimensions do not match the cel.');
+    }
+    for (let row = 0; row < tileHeight; row++) {
+      plane.set(owners.subarray(row * tileWidth, (row + 1) * tileWidth),
+        (y + row) * width + x);
+    }
+  }
+  return plane;
+}
+
+function ownershipPlaneToTiles(plane, width, height) {
+  if (!(plane instanceof Uint8Array) || plane.byteLength !== width * height) {
+    throw new TypeError('Animation ownership plane does not match the cel dimensions.');
+  }
+  const tiles = [];
+  for (let y = 0; y < height; y += 64) {
+    for (let x = 0; x < width; x += 64) {
+      const tileWidth = Math.min(64, width - x), tileHeight = Math.min(64, height - y);
+      const owners = new Uint8Array(tileWidth * tileHeight);
+      let nonzero = false;
+      for (let row = 0; row < tileHeight; row++) {
+        const source = plane.subarray((y + row) * width + x, (y + row) * width + x + tileWidth);
+        owners.set(source, row * tileWidth);
+        if (!nonzero && source.some(value => value !== 0)) nonzero = true;
+      }
+      if (nonzero) tiles.push({ tileX: x / 64, tileY: y / 64, owners: encodeBase64(owners) });
+    }
+  }
+  return tiles;
+}
 const MIN_PLAYBACK_SPEED = 0.1;
 const MAX_PLAYBACK_SPEED = 4;
 function assertPlaybackSpeed(speed) {
@@ -345,15 +385,40 @@ export function applyAnimationAction(timeline, document, action) {
     case 'animation.frame.get_cel': {
       const index = action.index ?? model.activeFrameIndex;
       const pixels = model.getLayerPixels(index, action.layerId);
-      result = { frameId: model.getFrame(index).id, layerId: action.layerId, width: model.width, height: model.height, pixels: encodeBase64(pixels) };
+      const metadata = model.getLayerMetadata(index, action.layerId);
+      result = {
+        frameId: model.getFrame(index).id, layerId: action.layerId,
+        width: model.width, height: model.height, pixels: encodeBase64(pixels),
+        authoringMode: metadata.authoringMode,
+        ownershipTiles: metadata.ownershipTiles,
+      };
       break;
     }
     case 'animation.frame.set_cel': {
       const index = action.index ?? model.activeFrameIndex;
       const layerId = action.layerId;
       const pixels = decodeBase64(action.pixels, model.width * model.height * 4);
-      model.setLayerPixels(index, layerId, pixels);
-      result = { frameId: model.getFrame(index).id, layerId, changed: true };
+      const metadata = model.getLayerMetadata(index, layerId);
+      const authoringMode = action.authoringMode ?? metadata.authoringMode ?? model.getFrame(index).authoringMode;
+      if (!['illustration', 'pixel-art'].includes(authoringMode)) {
+        throw new TypeError('animation.frame.set_cel requires a valid authoringMode.');
+      }
+      const before = model.getLayerPixels(index, layerId);
+      const owners = ownershipTilesToPlane(model.getLayerOwnershipTiles(index, layerId), model.width, model.height);
+      const guarded = guardStyleOwnedPixels({
+        before, after: pixels, owners, authoringMode, operation: 'draw',
+      });
+      model.setLayerPixels(index, layerId, guarded.pixels);
+      model.setFrameAuthoringMode(index, authoringMode);
+      model.setLayerMetadata(index, layerId, {
+        ...metadata, authoringMode,
+        ownershipTiles: ownershipPlaneToTiles(guarded.owners, model.width, model.height),
+      });
+      result = {
+        frameId: model.getFrame(index).id, layerId, changed: true,
+        authoringMode, blockedPixels: guarded.blockedPixels,
+        changedPixels: guarded.changedPixels,
+      };
       break;
     }
     case 'animation.frame.get_onion_skin':

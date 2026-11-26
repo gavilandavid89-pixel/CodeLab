@@ -52,9 +52,11 @@ Do not enable mixed-style editing as a supported feature until every test in the
 - [x] Dense/tiled brush, eraser, bucket fill, gradient, shape, transform, selection paste, color replacement, batch layer replacement and reference package copy/restore routed through ownership checks.
 - [x] RGBA + owner snapshots captured/restored by dense and tiled stroke/tile-operation undo/redo.
 - [x] Dense and tiled animation frame clone/switch/JSON or manifest paths preserve owner tiles; tiled animation region writes are guarded.
-- [ ] Audit direct tile-store writers and remaining headless animation-cel/scripted write entry points; isolated dense AI clones and accepted batch commits are guarded, but the complete agent surface is not yet audited.
-- [ ] Extend remote cel patch protocol to include owner tile put/remove operations.
-- [ ] Verify all autosave/recovery/ZIP flows use ownership-bearing tiled manifests; document legacy RGBA export limitation.
+- [x] Headless `animation.frame.set_cel` now applies the shared ownership guard, stamps the explicit authoring mode, returns ownership metadata to agents, and reports blocked pixels. Animation proposal diffs now include owner-plane and mode-only changes.
+- [x] Remote cel patch v2 receiver already applies `ownership.put`/`ownership.remove` atomically with RGBA operations; receiver and server project validation now reject owner bytes attached to transparent/missing RGBA pixels.
+- [x] Full-snapshot persistence and ZIP package paths preserve cel metadata/ownership tiles because they retain the native animation/project manifests. The persistence size estimator includes ownership metadata in its JSON envelope; dedicated package round-trip tests cover owner metadata.
+- [x] Added regression coverage for Headless full-cel writes, invalid modes, remote ownership patches, transparent-owner rejection, and RGBA-removal stale-owner rejection.
+- [ ] Audit every direct low-level `SparseTileCelStore` call site to distinguish privileged restore/migration writes from user/agent mutations; raw store methods remain internal primitives and must not be exposed as unguarded authoring APIs.
 - [ ] Run and pass the complete CI suite on the final implementation commit.
 
-Do not enable or advertise the complete feature until every unchecked release gate is closed.
+Legacy RGBA-only export intentionally has no ownership channel. Re-importing such an export treats its pixels as unowned; native tiled project/animation manifests and CodeLab ZIP packages are the ownership-preserving paths. Do not advertise the complete feature as released until the direct-writer audit and CI gates are closed.

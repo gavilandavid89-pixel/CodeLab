@@ -80,9 +80,10 @@ A UI warning or a disabled toolbar button is not sufficient protection.
 ### Still incomplete — do not mark the feature fully released
 
 - Dense animation frame restore now carries ownership; the remaining animation mutation APIs and every AI/headless/scripted write entry point still need a full audit.
-- Server/remote cel patch generation (`createPatch`) currently diffs RGBA tiles only; ownership tile deltas are not yet represented in that patch protocol.
-- Legacy RGBA export intentionally has no ownership channel. Re-importing such an export treats its pixels as unowned; native tiled manifest/animation manifest round-trips are the ownership-preserving paths.
-- Selection cut/paste, transform, and any direct tile-store callers must be audited to prove they route through the guarded boundary or use a privileged, explicit restore path.
-- CI for the latest changes is still running; the implementation is not CI-verified until the workflows finish successfully.
+- Remote cel patch v2 generation and application both carry `ownership.put`/`ownership.remove` operations. The server patch receiver validates SHA-256, coordinates, duplicate operations and owner values; it now also rejects nonzero ownership for missing or fully transparent RGBA pixels.
+- Legacy RGBA export intentionally has no ownership channel. Re-importing such an export treats its pixels as unowned; native tiled manifest/animation manifest and CodeLab ZIP round-trips preserve ownership.
+- Full-snapshot autosave and resumable chunk uploads serialize the complete native project object, including animation cel metadata. The size estimator removes only RGBA base64 payloads from its metadata pass; owner metadata remains counted. ZIP export/import retains the ownership-bearing native manifests.
+- Headless `animation.frame.set_cel` uses the shared pixel ownership guard, takes the active mode (or an explicit valid mode), stamps frame/cel mode metadata, and returns the ownership plane in `animation.frame.get_cel`. Proposal diffs detect owner-plane and authoring-mode changes.
+- Low-level sparse-store writes remain privileged storage primitives. The release audit must confirm all user/agent write entry points route through guarded project/animation adapters, and that restore paths carry exact owner snapshots.
 
-Mixed-style protection is now implemented across the dense and tiled raster brush, eraser, fill, gradient, shape, transform, selection-paste, color-replacement and batch layer-write paths, plus dense/tiled animation frame ownership. It is **not yet complete across every direct store, AI/headless, remote-patch, autosave/recovery, and legacy export path**. Do not advertise the whole feature as finished until those remaining gates and the CI suite pass.
+Mixed-style protection now covers the raster tool adapters, dense/tiled animation frame ownership, Headless full-cel replacement and remote patch v2. Do not call the feature fully released until the direct low-level store call-site audit and final CI suite pass.

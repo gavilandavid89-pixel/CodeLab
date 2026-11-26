@@ -133,19 +133,28 @@ function diffAnimationTimelines(before, after) {
       const nextCel = next?.cels.find(cel => cel.layerId === layerId);
       const previousPixels = previousCel?.pixels ?? null;
       const nextPixels = nextCel?.pixels ?? null;
-      if (previousPixels === nextPixels && Boolean(previousCel) === Boolean(nextCel)) continue;
+      const previousMetadata = previousCel?.metadata ?? previous?.layerMetadata?.find(item => item.id === layerId) ?? {};
+      const nextMetadata = nextCel?.metadata ?? next?.layerMetadata?.find(item => item.id === layerId) ?? {};
+      const ownershipChanged = JSON.stringify(previousMetadata.ownershipTiles || []) !== JSON.stringify(nextMetadata.ownershipTiles || []);
+      const authoringModeChanged = previousMetadata.authoringMode !== nextMetadata.authoringMode;
+      if (previousPixels === nextPixels && Boolean(previousCel) === Boolean(nextCel) && !ownershipChanged && !authoringModeChanged) continue;
       const pixelDiff = compareCelPixels(previousPixels, nextPixels, after.width, after.height);
       cels.push({
         layerId,
         change: !previousCel ? 'added' : !nextCel ? 'removed' : 'updated',
         changedPixels: pixelDiff.changedPixels,
         bounds: pixelDiff.bounds,
+        ownershipChanged,
+        authoringModeChanged,
+        authoringMode: nextMetadata.authoringMode ?? null,
       });
       changedPixels += pixelDiff.changedPixels;
     }
     const reordered = Boolean(previousEntry && nextEntry && beforeSharedOrder.indexOf(id) !== afterSharedOrder.indexOf(id));
     const durationChanged = Boolean(previous && next && previous.durationMs !== next.durationMs);
-    const frameMetadataChanged = Boolean(previous && next && durationChanged);
+    const frameModeChanged = Boolean(previous && next &&
+      (previous.authoringMode || 'pixel-art') !== (next.authoringMode || 'pixel-art'));
+    const frameMetadataChanged = Boolean(previous && next && (durationChanged || frameModeChanged));
     if (cels.length || reordered || frameMetadataChanged || !previousEntry || !nextEntry) {
       changedCelCount += cels.length;
       frames.push({
@@ -156,6 +165,9 @@ function diffAnimationTimelines(before, after) {
         change: !previousEntry ? 'added' : !nextEntry ? 'removed' : reordered && !cels.length && !frameMetadataChanged ? 'reordered' : frameMetadataChanged && !cels.length ? 'timing-updated' : 'updated',
         reordered,
         durationChanged,
+        frameModeChanged,
+        previousAuthoringMode: previous?.authoringMode ?? null,
+        authoringMode: next?.authoringMode ?? null,
         previousDurationMs: previous?.durationMs ?? null,
         durationMs: next?.durationMs ?? null,
         cels,
@@ -621,7 +633,10 @@ export class HeadlessEditorRuntime {
           return { ok: true, action: action.name, result: { changed: true, summary: summarizeAnimationTimeline(this.#sandboxAnimation) } };
         }
         const before = JSON.parse(JSON.stringify(this.#sandboxAnimation));
-        const outcome = applyAnimationAction(this.#sandboxAnimation, this.#workspace.sandbox, action);
+        const animationAction = action.name === 'animation.frame.set_cel' && action.authoringMode === undefined
+          ? { ...action, authoringMode: this.#drawingConfiguration.activeMode }
+          : action;
+        const outcome = applyAnimationAction(this.#sandboxAnimation, this.#workspace.sandbox, animationAction);
         const changed = JSON.stringify(before) !== JSON.stringify(outcome.timeline);
         if (changed) {
           this.#clearAnimationFuture();

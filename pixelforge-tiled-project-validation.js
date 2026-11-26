@@ -33,6 +33,7 @@ function validateCel(cel, width, height, state) {
   const rows = Math.ceil(height / cel.tileSize);
   if (cel.tiles.length > columns * rows) return false;
   const seen = new Set();
+  const rgbaByCoordinate = new Map();
 
   for (const tile of cel.tiles) {
     if (!tile || typeof tile !== 'object' || Array.isArray(tile) ||
@@ -51,6 +52,7 @@ function validateCel(cel, width, height, state) {
     if (!bytes || typeof tile.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(tile.sha256)) return false;
     const hash = crypto.createHash('sha256').update(bytes).digest('hex');
     if (hash !== tile.sha256) return false;
+    rgbaByCoordinate.set(key, bytes);
     // Sparse cels omit fully-zero tiles; accepting them would let clients
     // consume quota with data that has no visual contribution.
     let hasAnyByte = false;
@@ -83,11 +85,17 @@ function validateCel(cel, width, height, state) {
     const hash = crypto.createHash('sha256').update(owners).digest('hex');
     if (hash !== tile.sha256) return false;
     let hasOwner = false;
-    for (const owner of owners) {
+    const rgba = rgbaByCoordinate.get(key);
+    for (let index = 0; index < owners.length; index++) {
+      const owner = owners[index];
       if (owner > 2) return false;
-      if (owner !== 0) hasOwner = true;
+      if (owner !== 0) {
+        hasOwner = true;
+        if (!rgba || rgba[index * 4 + 3] === 0) return false;
+      }
     }
-    // Ownership is sparse too: all-zero owner tiles are omitted.
+    // Ownership is sparse too: all-zero owner tiles are omitted, and every
+    // owned pixel must remain visible in its corresponding RGBA tile.
     if (!hasOwner) return false;
   }
   return true;

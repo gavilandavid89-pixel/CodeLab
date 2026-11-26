@@ -49,3 +49,15 @@ test('rejects invalid ownership values',()=>{
  const p={...patch(),operations:[{type:'ownership.put',x:0,y:0,width:32,height:32,sha256:hash(owners),owners:owners.toString('base64')}]};
  assert.throws(()=>patchStore.applyPixelForgeCelPatch(project,p),e=>e.code==='invalid_pixelforge_patch');
 });
+
+test('rejects ownership patches that claim fully transparent pixels',()=>{
+ const project=fixture(),owners=Buffer.alloc(32*32);owners[1]=1;
+ const p={...patch(),operations:[{type:'ownership.put',x:0,y:0,width:32,height:32,sha256:hash(owners),owners:owners.toString('base64')}]};
+ assert.throws(()=>patchStore.applyPixelForgeCelPatch(project,p),e=>e.code==='invalid_pixelforge_patch');
+});
+test('rejects RGBA removal that would leave stale ownership behind',()=>{
+ const project=fixture(),owners=Buffer.alloc(32*32);owners[0]=1;
+ project.animation.frames[0].cels[0].cel.ownershipTiles=[{x:0,y:0,width:32,height:32,sha256:hash(owners),owners:owners.toString('base64')}];
+ const p={...patch('tile.remove'),operations:[{type:'tile.remove',x:0,y:0}]};
+ assert.throws(()=>patchStore.applyPixelForgeCelPatch(project,p),e=>e.code==='invalid_pixelforge_patch');
+});
