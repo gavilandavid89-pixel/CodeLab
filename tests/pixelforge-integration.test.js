@@ -286,10 +286,16 @@ async function main() {
       [bridgeState.workspaceId, persisted.rows[0].project_id]
     );
     if (begin.importRequestId) {
+      // Artifact rows reference the import request. Remove the dependent rows
+      // first so PostgreSQL cleanup does not emit a foreign-key violation.
+      await testSessionPool.query(
+        'DELETE FROM public.codelab_project_artifacts WHERE import_request_id=$1',
+        [begin.importRequestId]
+      );
       await testSessionPool.query(
         'DELETE FROM public.codelab_project_import_requests WHERE import_request_id=$1',
         [begin.importRequestId]
-      ).catch(() => {});
+      );
     }
   }
 
