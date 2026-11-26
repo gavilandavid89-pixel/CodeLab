@@ -674,13 +674,10 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await setValue('#brush-hardness', 100);
   await setValue('#brush-opacity', 100);
   const incrementalPoint = { x: 900, y: 900 };
+  const patchCountBeforeIncrementalDraw = receivedCelPatches.length;
   await drawAt(incrementalPoint);
-  await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('Saved to your CodeLab account'), null, { timeout: 15000 }).catch(() => {});
-  await page.waitForFunction(() => window.__pixelforgePatchTestCount > 0, null, { timeout: 1000 }).catch(() => {});
-  // The in-process server records the real request; poll through a test-only
-  // endpoint rather than exposing mutable test state on the browser window.
-  await page.waitForTimeout(1200);
-  assert.ok(receivedCelPatches.length >= 1,
+  await page.waitForTimeout(1300);
+  assert.ok(receivedCelPatches.length > patchCountBeforeIncrementalDraw,
     'a one-cel drawing edit must reach POST /projects/:id/patches through editor autosave');
   const incrementalPatch = receivedCelPatches.at(-1);
   assert.equal(incrementalPatch.format, 'pixelforge-cel-patch');
