@@ -425,7 +425,9 @@ El parser valida manifiesto, dimensiones y frame count, carga el JSON .pforge, v
 
 **Limitación actual que no debe ocultarse:** este ZIP no incluye el marcador project.codelab-pixelforge, integrity.json, frames/frames.tscn ni reference.center/reference.center. Por eso no es el paquete CodeLab estructurado v2 y su parser no es el instalador estructurado. Sus PNG son composiciones de previsualización, no cels independientes editables. El documento .pforge sí contiene el modelo nativo serializado, sujeto a lo que HeadlessEditorRuntime.toJSON() preserve.
 
-Hasta que ambos flujos se integren explícitamente, no afirmar que un ZIP de Video Composer ha pasado el ciclo completo del paquete CodeLab .codelab-pixelforge.
+**Integración nativa disponible:** Video Composer también reconoce directamente el paquete estructurado CodeLab v2 `.codelab-pixelforge` (marcador raíz `project.codelab-pixelforge`). Para este formato, valida el paquete mediante `importPixelForgeCodeLabPackage()` y compone los cels del timeline nativo. Si el cel es `pixelforge-tiled-cel` v2, dibuja cada tile RGBA en la superficie de su capa; no requiere `cel.pixels` ni materializa un buffer RGBA completo por capa. Conserva `authoringMode` por frame/cel y usa sampling suave para Illustration y pixel-perfect para Pixel Art. El paquete legacy `pixelforge-video-package` sigue siendo un formato separado basado en PNG compuestos + manifiesto.
+
+**Límite actual para tiled:** el paquete estructurado conserva proyecto sparse, animación tiled y recursos declarados, pero la ruta tiled no incluye todavía los cinco manifiestos de Scene Workspaces ni el Reference Center. El exportador reporta cero secciones/refs en ese caso; no inventa ni aplana esos datos.
 
 ## 9. Flujo de importación/edición/guardado y aceptación
 
@@ -441,7 +443,9 @@ Para el paquete estructurado v2, el comportamiento esperado es:
 8. Exportar el paquete de nuevo, regenerando hashes y manifiestos.
 9. Importar otra vez y comparar la semántica editable: capas, píxeles, IDs/referencias internas, animación, partes, metadatos y recursos.
 
-Prueba de aceptación obligatoria: **exportar → importar → editar una capa/parte → guardar → exportar → importar otra vez**. Comparar datos nativos, no solo el aspecto de los PNG.
+Prueba de aceptación obligatoria: **exportar → importar → editar una capa/parte → guardar → exportar → importar otra vez**. Comparar datos nativos, no solo el aspecto de los PNG. Para la integración Video Composer, añadir además **paquete nativo → Video Composer → WebM** y verificar dimensiones, duración, sampling por modo y ausencia de deformación.
+
+**Evidencia tiled (2026-11-26):** `tests/pixelforge-editor-visual-modes.e2e.test.mjs` cubre el flujo real de exportación ZIP desde un documento tiled 1024×1024, importación de vuelta al editor y posterior importación del mismo paquete en `video-composer.html`, donde verifica el píxel renderizado, Pixel Art sampling y descarga de un WebM VP8. El workflow `pixelforge-tiled-package-roundtrip` (run `45774472214`) pasó con 1 test y 0 fallos.
 
 ## 10. Código fuente y pruebas que son fuente de verdad
 
@@ -455,7 +459,7 @@ Prueba de aceptación obligatoria: **exportar → importar → editar una capa/p
 | UI del Reference Center | public/pixelforge/src/reference-center-ui.js |
 | Exportador estructurado CodeLab v2 (Node) | pixelforge-codelab-package.mjs, tests/pixelforge-codelab-package.test.mjs |
 | Importador/exportador real de la UI PixelForge | public/pixelforge/src/codelab-package.js, tests/pixelforge-codelab-package-browser.test.mjs |
-| ZIP de agente/Video Composer | pixelforge-agent-zip.mjs, tests/pixelforge-agent-zip.test.mjs |
+| ZIP de agente/Video Composer | pixelforge-agent-zip.mjs, tests/pixelforge-agent-zip.test.mjs, public/pixelforge/video-composer.js |
 | ZIP de bajo nivel | public/pixelforge/src/zip-export.js, public/pixelforge/src/video-composer-core.mjs |
 
 El exportador de referencia de Node se implementa en pixelforge-codelab-package.mjs. La interfaz PixelForge usa public/pixelforge/src/codelab-package.js: export-project genera .codelab-pixelforge e import-file reconoce el marcador raíz, valida integridad, reconstruye frames y referencias y guarda el documento con saveProject. El ZIP de Video Composer sigue siendo un formato separado para secuencias PNG de vídeo.
