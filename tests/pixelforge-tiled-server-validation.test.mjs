@@ -88,15 +88,29 @@ test('server enforces aggregate decoded tile bytes independently of canvas area'
   assert.equal(result.status, 413);
 });
 
-test('server enforces the serialized project cap and refuses mixed raster-animation manifests', () => {
+test('server enforces the serialized project cap and accepts a valid tiled animation envelope', () => {
   const project = manifest();
   const tooLarge = validation.validatePixelForgeTiledProjectPayload(project, JSON.stringify(project), { maxProjectBytes: 10 });
   assert.equal(tooLarge.error, 'pixelforge_project_too_large');
   assert.equal(tooLarge.status, 413);
 
-  const mixed = manifest();
-  mixed.animation = { version: 1 };
-  assert.equal(validation.validatePixelForgeTiledProjectPayload(mixed).error, 'invalid_pixelforge_project');
+  project.animation = {
+    format: 'pixelforge-tiled-animation', version: 1, width: project.width, height: project.height,
+    fps: 12, layerIds: ['layer-1'], activeFrameIndex: 0,
+    frames: [{ id: 'frame-1', durationMs: 100, authoringMode: 'pixel-art', cels: [{
+      layerId: 'layer-1', cel: structuredClone(project.layers[0].cel),
+      metadata: { authoringMode: 'pixel-art' }
+    }]}]
+  };
+  assert.equal(validation.validatePixelForgeTiledProjectPayload(project).error, undefined);
+
+  const invalid = structuredClone(project);
+  invalid.animation.frames[0].cels[0].layerId = 'missing-layer';
+  assert.equal(validation.validatePixelForgeTiledProjectPayload(invalid).error, 'invalid_pixelforge_project');
+
+  const badMode = structuredClone(project);
+  badMode.animation.frames[0].cels[0].metadata.authoringMode = 'unknown';
+  assert.equal(validation.validatePixelForgeTiledProjectPayload(badMode).error, 'invalid_pixelforge_project');
 });
 
 test('server rejects invalid layer metadata and active-layer references', () => {
