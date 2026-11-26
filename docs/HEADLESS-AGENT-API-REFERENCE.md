@@ -65,6 +65,30 @@ Métodos:
 
 **No existe guardado remoto en esta API.** `acceptProposal()` acepta en memoria; `toJSON()` serializa. La persistencia autenticada y la transferencia ocurren fuera del Headless.
 
+### Crear el paquete .codelab-pixelforge desde el artefacto del agente
+
+El runtime Headless no contiene un método `exportCodelab()`. La distribución oficial del agente incluye además `pixelforge-codelab-package.mjs` en la raíz del artefacto. Su función `createPixelForgeCodeLabPackageZip(project)` recibe el JSON aceptado por `runtime.toJSON()` y devuelve:
+
+- `bytes`: ZIP nativo estructurado de CodeLab/PixelForge.
+- `filename`: nombre sugerido con extensión `.codelab-pixelforge`.
+- `metadata`: formato, ID/nombre, dimensiones, capas, frames, FPS y cantidad de entradas.
+
+Ejemplo de cierre de tarea (la escritura del archivo la realiza el agente en su propio entorno):
+
+```js
+import { createHeadlessRuntime } from './public/pixelforge/src/headless.js';
+import { createPixelForgeCodeLabPackageZip } from './pixelforge-codelab-package.mjs';
+import { writeFile } from 'node:fs/promises';
+
+const runtime = createHeadlessRuntime({ width: 640, height: 360, name: 'Scene' });
+// ...editar, crear propuesta, revisar diff y aceptar...
+const acceptedProject = runtime.toJSON();
+const artifact = createPixelForgeCodeLabPackageZip(acceptedProject);
+await writeFile(artifact.filename, artifact.bytes);
+```
+
+El helper del paquete forma parte de la distribución del agente, pero no es un método de `HeadlessEditorRuntime`. Después de crear el ZIP, el agente sale del contexto Headless y realiza la transferencia HTTPS siguiendo `docs/inline-artifact-bridge.md`.
+
 ## 2. Ciclo obligatorio de edición
 
 1. Cargar el artefacto Headless instalado en el entorno del agente.
