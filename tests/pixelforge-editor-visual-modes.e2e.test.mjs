@@ -675,9 +675,8 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await setMode('pixel-art');
   await setSymmetry(0);
   await setColor('#f0c674');
-  await setValue('#brush-size', 5);
-  await setValue('#brush-hardness', 100);
-  await setValue('#brush-opacity', 100);
+  // Keep the persisted brush profile unchanged here: this isolates the cel
+  // pixel delta from the separate modeOverrides metadata-save path.
   const incrementalPoint = { x: 900, y: 900 };
   const patchCountBeforeIncrementalDraw = receivedCelPatches.length;
   const fullSaveCountBeforeIncrementalDraw = fullSnapshotSaveCount;
