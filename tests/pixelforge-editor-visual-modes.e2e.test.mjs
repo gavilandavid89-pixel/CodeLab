@@ -39,6 +39,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
 }, async t => {
   await fs.promises.mkdir(artifactDir, { recursive: true });
   const savedProjectSnapshots = [];
+  let fullSnapshotSaveCount = 0;
   const receivedCelPatches = [];
   const appliedPatchReceipts = new Map();
   const server = http.createServer(async (request, response) => {
@@ -50,6 +51,7 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
     }
     if (url.pathname === '/api/pixelforge/projects') {
       if (request.method === 'PUT') {
+        fullSnapshotSaveCount++;
         let body = '';
         for await (const chunk of request) body += chunk;
         let project = {};
@@ -675,10 +677,13 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   await setValue('#brush-opacity', 100);
   const incrementalPoint = { x: 900, y: 900 };
   const patchCountBeforeIncrementalDraw = receivedCelPatches.length;
+  const fullSaveCountBeforeIncrementalDraw = fullSnapshotSaveCount;
   await drawAt(incrementalPoint);
   await page.waitForTimeout(1300);
   assert.ok(receivedCelPatches.length > patchCountBeforeIncrementalDraw,
     'a one-cel drawing edit must reach POST /projects/:id/patches through editor autosave');
+  assert.equal(fullSnapshotSaveCount, fullSaveCountBeforeIncrementalDraw,
+    'an eligible single-cel edit must not fall back to a full-project PUT');
   const incrementalPatch = receivedCelPatches.at(-1);
   assert.equal(incrementalPatch.format, 'pixelforge-cel-patch');
   assert.equal(incrementalPatch.frameId, savedProjectSnapshots.at(-1).animation.frames[0].id);
