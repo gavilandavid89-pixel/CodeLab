@@ -738,9 +738,9 @@ test('PixelForge visible editor renders mixed-mode brush/symmetry combinations a
   assert.equal(packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).authoringMode, 'pixel-art',
     'native package must retain per-cel authoring mode metadata');
   const packageMode = packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).authoringMode;
-  const packageOwnershipTileCount = packageAnimation.getLayerMetadata(0, incrementalPatch.layerId).ownershipTiles.length;
+  const packageOwnershipTileCount = tiledPackage.project.animation.frames[0].cels[0].cel.ownershipTiles.length;
   assert.ok(packageOwnershipTileCount > 0,
-    'native package must retain the sparse mixed-style ownership plane');
+    'native package must retain the sparse mixed-style ownership plane in the cel manifest');
   packageAnimation.dispose();
   packageDocument.dispose();
 
