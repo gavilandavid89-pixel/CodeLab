@@ -111,6 +111,7 @@ jobs:
           node --check pixelforge-patch-store.js
           node --check server.js
           node --check tests/pixelforge-integration.test.js
+      # Editor autosave uses this same builder and retries uncertain operations by stable operationId.
       - name: Test conservative cel patch diff builder
         run: node --test tests/pixelforge-cel-patch-diff.test.mjs
       - name: Test sparse tiled project server validation
