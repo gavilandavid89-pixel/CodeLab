@@ -16,7 +16,7 @@ El resultado visual es una reinterpretación animada de la escena, no una edici�
 - Canvas: 128 × 192 px, con el contenido ajustado manteniendo la proporción y margen blanco.
 - Timeline: 16 frames.
 - Velocidad: 8 FPS.
-- Duración: 2.000 ms (16 × 120 ms).
+- Duración: 2.000 ms (16 × 125 ms tras configurar 8 FPS).
 - Loop: desactivado.
 - Capas: una capa raster con la escena completa.
 - Modo activo en Headless: `illustration`.
@@ -30,10 +30,10 @@ La prueba usa una capa aplanada para validar el flujo de animación primero. No 
 3. Se asignó `authoringMode: illustration` explícitamente a cada operación `animation.frame.set_cel`.
 4. Se verificaron los 16 contextos de frame y capa: todos devuelven `illustration`.
 5. También se verificó el modo de autoría de la capa base del proyecto y de las 16 entradas de capa del paquete: todos son `illustration`.
-5. Se verificó que las operaciones no bloquearon píxeles (`blockedPixels: 0`).
-6. Se creó y aceptó la propuesta Headless antes de serializar el proyecto.
-7. Se generó el paquete nativo y se comprobó la integridad ZIP: 43 entradas, sin errores de compresión.
-8. El manifiesto identifica un proyecto PixelForge v2 con 16 frames, 8 FPS y un canvas de 128 × 192.
+6. Se verificó que las operaciones no bloquearon píxeles (`blockedPixels: 0`).
+7. Se creó y aceptó la propuesta Headless antes de serializar el proyecto.
+8. Se generó el paquete nativo y se comprobó la integridad ZIP: 43 entradas, sin errores de compresión.
+9. El manifiesto identifica un proyecto PixelForge v2 con 16 frames, 8 FPS y un canvas de 128 × 192.
 
 ## CI y workflows
 
