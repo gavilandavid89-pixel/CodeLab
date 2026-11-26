@@ -917,7 +917,7 @@ async function persistEditorSnapshot(snapshot, targetDoc) {
     lastConfirmedProjectSnapshot?.id === snapshot.id &&
     Number.isInteger(snapshot.serverRevision);
 
-  if (canPatch && pendingCelPatch) {
+  if (pendingCelPatch && pendingCelPatch.snapshot.id === snapshot.id) {
     // A previous request may have committed while its response was lost.
     // Replaying the exact operationId lets the server return its durable receipt.
     await applyCelPatch(pendingCelPatch.snapshot, pendingCelPatch.patch);
