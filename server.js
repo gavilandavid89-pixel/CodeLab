@@ -4142,6 +4142,29 @@ server.listen(PORT, () => {
         throw new Error('storage_or_server_environment_not_ready');
       }
       console.log('[PixelForge Project Folder] ready', JSON.stringify({ storageConfigured: true, serverConfigured: true }));
+      if (String(process.env.CODELAB_PROJECT_FOLDER_SELF_TEST || '') === '1') {
+        const token = String(process.env.CODELAB_PROJECT_FOLDER_SECRET || '');
+        if (!token) throw new Error('project_folder_self_test_secret_missing');
+        const target = new URL('/upload', base);
+        target.searchParams.set('filename', 'codelab-backdoor-smoke-test.codelab');
+        const testUpload = await fetch(target, {
+          method: 'POST',
+          headers: {
+            'x-codelab-project-folder-token': token,
+            'x-codelab-project-folder-self-test': '1',
+            'content-type': 'application/octet-stream'
+          },
+          body: Buffer.from('C', 'utf8'),
+          signal: AbortSignal.timeout(15000)
+        });
+        const testResult = await testUpload.json().catch(() => ({}));
+        if (!testUpload.ok || testResult.status !== 'uploaded') {
+          throw new Error('project_folder_self_test_upload_failed_' + testUpload.status);
+        }
+        console.log('[PixelForge Project Folder] self-test object uploaded', JSON.stringify({
+          objectKey: testResult.objectKey, sizeBytes: testResult.sizeBytes, sha256: testResult.sha256
+        }));
+      }
     } catch (error) {
       console.warn('[PixelForge Project Folder] not ready:', String(error.message || error).slice(0, 180));
     }
