@@ -4131,6 +4131,21 @@ server.listen(PORT, () => {
   void runInlineArtifactSmokeTest().catch(error => {
     console.error('[Inline Artifact Smoke] FAIL', error.message || error);
   });
+  void (async () => {
+    const functionUrl = String(process.env.CODELAB_PROJECT_FOLDER_FUNCTION_URL || '').trim();
+    if (!functionUrl) return;
+    try {
+      const base = new URL(functionUrl);
+      const response = await fetch(new URL('/health', base), { signal: AbortSignal.timeout(15000) });
+      const health = await response.json();
+      if (!response.ok || !health.ok || !health.storageConfigured || !health.serverConfigured) {
+        throw new Error('storage_or_server_environment_not_ready');
+      }
+      console.log('[PixelForge Project Folder] ready', JSON.stringify({ storageConfigured: true, serverConfigured: true }));
+    } catch (error) {
+      console.warn('[PixelForge Project Folder] not ready:', String(error.message || error).slice(0, 180));
+    }
+  })();
   console.log('[CodeLab Native Bridge] Neon wake listener ready; worker starts only when a queued command arrives.');
   console.log('CodeLab XD Studio Pro v' + APP_VERSION + ' — puerto ' + PORT);
   console.log('Data dir: ' + DATA_DIR);
