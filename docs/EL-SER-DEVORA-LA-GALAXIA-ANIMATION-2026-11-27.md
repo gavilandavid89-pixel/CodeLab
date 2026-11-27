@@ -1,16 +1,19 @@
 # PixelForge — El ser devora la galaxia (27-11-2026)
 
-**Estado:** proyecto animado generado y validado por el Headless distribuido; paquete local preparado. La importación en el workspace ADMIN y la verificación de lectura de vuelta siguen pendientes.
+**Estado creativo:** animación editable de 60 fotogramas construida y validada con el Headless distribuido; vista previa WebM reproducida e inspeccionada bajo Xvfb.  
+**Estado de entrega:** el paquete está preparado localmente, pero todavía no se ha importado ni leído de vuelta desde el workspace ADMIN. El vídeo A/B del Video Composer real queda pendiente hasta completar esa importación.
 
 ## Objetivo visual
 
-Partir exclusivamente de la ilustración central de la captura del usuario, excluyendo toda la interfaz de TikTok. El ser conserva su silueta y orientación hacia la derecha. La galaxia se aproxima, es atraída hacia la boca y desaparece en una sola acción continua. La mandíbula permanece abierta durante la absorción: no hay ciclo de masticación.
+Partir del frame 0 original de la captura del usuario, recortando exclusivamente la ilustración central y descartando toda la interfaz de TikTok. El ser conserva su diseño y la boca permanece abierta. La galaxia entra desde la derecha, se acelera hacia la boca, se comprime y desaparece dentro de ella. No hay movimiento de masticación ni ciclo de cierre de mandíbula.
 
-## Fuente y recursos
+## Recursos y dibujo
 
-- Imagen original: recorte central de la captura del 26-11-2026; se descartaron las barras, iconos y navegación de TikTok.
-- Referencia auxiliar generada: storyboard de 8×8 entregado durante la sesión. El archivo disponible en el entorno era una previsualización compacta de 150×144 px, por lo que se incorporó como recurso de referencia/atmósfera y no se fingió que fueran 64 imágenes de resolución completa.
-- La secuencia final conserva la ilustración del usuario como base. El movimiento de la galaxia, el flujo de estrellas, el resplandor y el pequeño avance de cámara se componen sobre esa base.
+- Frame 0: recorte cuadrado de la ilustración central de la captura del 26-11-2026, redimensionado a 384 × 384 px.
+- Textura auxiliar: se tomó únicamente el disco galáctico de una de las referencias generadas en la sesión anterior; no se sustituyó la criatura del usuario por la criatura generada.
+- Dibujo Headless: se añadieron brazos espirales y estrellas con las acciones raster documentadas `canvas.draw_shape` y `canvas.draw_stroke`. La textura generada y el dibujo raster se combinaron como el sprite de galaxia que se mueve en los cels posteriores.
+- Movimiento de cámara: avance progresivo de aproximadamente 5,5 % alrededor de la boca para dar sensación de que el ser colosal se impulsa hacia delante.
+- La galaxia comienza completamente dentro del lienzo; la primera prueba se corrigió porque el sprite quedaba cortado por el borde derecho.
 
 ## Timeline implementado
 
@@ -23,37 +26,60 @@ Partir exclusivamente de la ilustración central de la captura del usuario, excl
 | Duración por fotograma | 125 ms |
 | Capas | 1 |
 | Loop | Desactivado |
-| Formato | PixelForge / CodeLab v2 estructurado |
+| Memoria raster reportada | 35.389.440 bytes |
+| Formato | PixelForge / CodeLab v2 |
 
-La secuencia se organiza en tres tramos: atracción inicial, absorción progresiva y desaparición de la galaxia con resplandor residual. El archivo mantiene 60 cels RGBA independientes; no se limita a cambiar el FPS ni a duplicar una imagen fija.
+Los 60 fotogramas tienen IDs únicos y cels RGBA independientes. La secuencia cubre atracción, aproximación/absorción y desaparición con resplandor residual. El frame 0 conserva la ilustración original sin galaxia añadida.
 
-## Headless y validación realizada
+## Headless y validación
 
-Se descargó el artefacto oficial de GitHub Actions `agent-headless-32f79646950eb57b60c6cf7c810d82488ddcd7af` (run `45128253959`, SHA-256 `8af59de24bb3bb6a7484db68f7cc41f01567cc139acf9faa4d8e571457e42bfe`). Se extrajo e inició `HeadlessEditorRuntime` desde ese artefacto.
+Se utilizó el artefacto oficial `agent-headless-latest` del workflow de empaquetado y se extrajo el runtime distribuido junto con el exportador canónico `pixelforge-codelab-package.mjs`.
 
-El runtime aceptó el documento y su round-trip conservó:
-- 60 fotogramas;
-- 8 FPS;
-- 7.500 ms de duración;
-- un cel por fotograma y la capa de origen.
+- El artefacto del runtime se inició con `createHeadlessRuntime`.
+- El dibujo auxiliar de la galaxia se realizó con las acciones raster de PixelForge Headless.
+- El frame 0 se convirtió en la base de la timeline; los cels de los 59 fotogramas siguientes contienen el movimiento de la galaxia y el avance de cámara.
+- La propuesta de revisión de la timeline fue aceptada por Headless.
+- La reapertura del proyecto en Headless validó 60 fotogramas, 8 FPS, 7.500 ms y 35.389.440 bytes de memoria raster.
+- El exportador canónico produjo un paquete CodeLab v2 con 131 entradas.
+- `unzip -t` terminó sin errores de estructura/CRC.
 
-El paquete ZIP contiene 133 entradas. `unzip -t` no detectó errores de estructura/CRC y las 129 entradas cubiertas por `integrity.json` coinciden en tamaño y SHA-256.
+## Vídeo de vista previa e inspección visual
 
-## Limitación detectada y no ocultada
+Se generó una vista previa local para inspección, no como sustituto del A/B final:
 
-El artefacto descargado es válido para ejecutar `HeadlessEditorRuntime`, pero corresponde al commit del 23-11-2026 y no incluye `pixelforge-codelab-package.mjs` ni `drawing-mode-config.mjs`, aunque el workflow actual declara que debe empaquetarlos. Por eso el exportador canónico no estaba dentro de ese artefacto.
+- Archivo: `el-ser-devora-la-galaxia-preview.webm`
+- Códec: VP9
+- Resolución: 384 × 384 px
+- Frecuencia: 8 FPS
+- Duración: 7,500 s
+- Tamaño: 93.603 bytes
+- SHA-256: `1c1cc270cafc29fe9533dc12d1ff1c0f30b2db20623009072898306512ec1584`
 
-Se armó el ZIP siguiendo el contrato estructurado v2 descrito por el exportador del repositorio (`project.codelab-pixelforge`, `manifest.json`, `project.json`, `integrity.json`, `Frames/frames.tscn`, frame JSON y cels RGBA). Aunque pasó las comprobaciones de ZIP e integridad, **todavía no se ha ejecutado el importador real de CodeLab sobre este paquete**. No afirmar que está persistido en ADMIN ni que el importador lo aceptó hasta completar ese paso.
+La reproducción se abrió con FFplay bajo Xvfb y se inspeccionaron capturas intermedias y tardías, además de una hoja de contacto con muestras distribuidas por la timeline. Se comprobó que la galaxia se desplaza hacia la boca, entra y desaparece; la mandíbula permanece abierta. Durante la revisión se corrigió el recorte inicial del sprite en el borde derecho. La captura de Chromium sobre `file://` y localhost quedó bloqueada por la política del navegador del entorno; la reproducción visual bajo Xvfb se realizó con FFplay.
 
-## Entrega y siguiente paso
+Esta vista previa es evidencia visual local de la composición actual. **No es todavía el WebM exportado por el Video Composer A/B de CodeLab**, por lo que no se debe etiquetar como entrega A/B final.
 
-Archivo preparado: `el-ser-devora-la-galaxia.codelab` (37.322.293 bytes).
+## Paquete editable preparado
 
-Para terminar la persistencia, subir ese archivo en el panel ADMIN de la carpeta de proyectos:
-`https://codelab-qedi.onrender.com/admin/project-folder`
+- Archivo: `el-ser-devora-la-galaxia-final.codelab`
+- Tamaño: 36.285.228 bytes
+- SHA-256: `151f6dcbd0bdc0017afc9407822d9eb9b3e886b7dcb5b932d43218e1862b9f60`
+- Project ID: `ceded9dd-3738-4a2e-ae86-fd09d3e7bc4a`
 
-Después se debe esperar el estado terminal `succeeded`, comprobar que el proyecto aparece en `ws_local_admin`, leerlo de vuelta y revisar la timeline en PixelForge. La aceptación visual final requiere reproducir la secuencia completa y comprobar que la galaxia entra en la boca sin que el ser mastique.
+El paquete usa el formato CodeLab v2: `project.codelab-pixelforge`, `manifest.json`, `project.json`, `integrity.json`, `Frames/frames.tscn`, JSON de fotogramas y cels RGBA.
 
-## Regla de conservación
+## Bloqueo de importación y siguiente paso
 
-La captura original y el storyboard auxiliar se conservan como recursos del paquete. No se modifica ni elimina ningún proyecto preexistente. El proyecto se crea con una identidad nueva: `ceded9dd-3738-4a2e-ae86-fd09d3e7bc4a`.
+El paquete todavía no está persistido en `ws_local_admin`. El destino previsto sigue siendo la carpeta privada de Neon Object Storage:
+
+- Bucket: `codelab-agent-projects`
+- Prefijo: `incoming/`
+- Panel alternativo de importación ADMIN: https://codelab-qedi.onrender.com/admin/project-folder
+
+En esta sesión el entorno de trabajo no dispone de una operación de subida binaria HTTP PUT hacia la URL firmada de Neon, y el acceso de red saliente desde el contenedor no resuelve DNS. El panel alternativo exige una sesión ADMIN del navegador que no está disponible en este runtime. Por tanto, no se ha podido depositar el paquete ni disparar el importador real.
+
+Cuando el paquete se cargue, el cierre obligatorio es: esperar estado terminal `succeeded`, comprobar el proyecto en `ws_local_admin`, leerlo de vuelta y verificar revisión/hash; después iniciar el workflow A/B independiente para que A exporte el proyecto ADMIN real mediante el Video Composer y B reciba/verifique el WebM. El agente debe inspeccionar ese mismo WebM bajo Xvfb, corregir el proyecto si encuentra defectos y repetir A/B antes de entregar el vídeo final.
+
+## Conservación
+
+No se modificó ni eliminó ningún proyecto preexistente. La captura original y las referencias generadas se conservaron en el entorno de trabajo; el paquete editable contiene la imagen de base y los cels finales. La importación debe crear una identidad nueva con el Project ID indicado arriba.
