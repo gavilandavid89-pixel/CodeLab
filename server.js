@@ -2229,6 +2229,10 @@ const server = http.createServer(async (req, res) => {
     return serveStatic(req, res, '/admin-storage-migration.html');
   }
 
+  if (pathname === '/admin/project-folder' || pathname === '/admin/project-folder/') {
+    return serveStatic(req, res, '/admin-project-folder.html');
+  }
+
   if (pathname.startsWith('/api/')) {
     // Admin accounts are exempt from the app-wide API request cap. Keep the
     // exemption tied to a validated local admin session, never a client header
@@ -2243,6 +2247,53 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 429, { error: 'rate_limited', message: 'Demasiadas peticiones.' });
     }
     try {
+      // Durable PixelForge project-folder upload. The browser never receives the
+      // Neon Function token; only a validated local ADMIN session can proxy a package.
+      if (req.method === 'POST' && pathname === '/api/admin/project-folder/upload') {
+        if (!isAdminSession) return sendJson(res, 403, { error: 'admin_required' });
+        const functionUrl = String(process.env.CODELAB_PROJECT_FOLDER_FUNCTION_URL || '').trim();
+        const folderToken = String(process.env.CODELAB_PROJECT_FOLDER_SECRET || '').trim();
+        if (!functionUrl || !folderToken) {
+          return sendJson(res, 503, { error: 'project_folder_not_configured' });
+        }
+        let functionBase;
+        try {
+          functionBase = new URL(functionUrl);
+          if (functionBase.protocol !== 'https:' ||
+              !functionBase.hostname.endsWith('.compute.c-9.us-east-2.aws.neon.tech') ||
+              functionBase.username || functionBase.password) throw new Error('invalid_function_origin');
+        } catch (_) {
+          return sendJson(res, 503, { error: 'project_folder_function_url_invalid' });
+        }
+        const requestedFilename = String(req.headers['x-file-name'] || searchParams.get('filename') || 'project.codelab');
+        const filename = path.basename(requestedFilename).slice(0, 180);
+        if (!filename || filename !== requestedFilename || !/^[A-Za-z0-9][A-Za-z0-9._ -]{0,170}\\.codelab$/i.test(filename)) {
+          return sendJson(res, 400, { error: 'invalid_project_package_filename' });
+        }
+        try {
+          const bytes = await readBinaryBody(req, AGENT_INLINE_ARTIFACT_MAX_BYTES);
+          if (!bytes.length) return sendJson(res, 400, { error: 'empty_project_package' });
+          const target = new URL('/upload', functionBase);
+          target.searchParams.set('filename', filename);
+          const uploaded = await fetch(target, {
+            method: 'POST',
+            headers: {
+              'x-codelab-project-folder-token': folderToken,
+              'content-type': 'application/octet-stream'
+            },
+            body: bytes,
+            signal: AbortSignal.timeout(120000)
+          });
+          let payload;
+          try { payload = await uploaded.json(); }
+          catch (_) { payload = { error: 'project_folder_upstream_invalid_response' }; }
+          return sendJson(res, uploaded.status, payload);
+        } catch (error) {
+          console.error('[PixelForge Project Folder] upload proxy failed:', String(error.message || error).slice(0, 240));
+          return sendJson(res, 502, { error: 'project_folder_upload_failed' });
+        }
+      }
+
       // One-time, local-admin-only migration of the two CodeLab proof captures.
       // Signed URLs stay server-side in Render environment variables and are never
       // returned to the browser or written to logs.
@@ -2578,7 +2629,10 @@ const server = http.createServer(async (req, res) => {
         const acceptedBridgeToken = String(process.env.AGENT_INLINE_ARTIFACT_SMOKE_TEST || '') === '1' && process.env.AGENT_BRIDGE_CONTROL_SECRET_TEST
           ? String(process.env.AGENT_BRIDGE_CONTROL_SECRET_TEST)
           : AGENT_BRIDGE_CONTROL_SECRET || String(process.env.AGENT_BRIDGE_CONTROL_SECRET_TEST || '');
-        if (!acceptedBridgeToken || !safeTokenEqual(supplied, acceptedBridgeToken)) {
+        const acceptedProjectFolderToken = String(process.env.CODELAB_PROJECT_FOLDER_SECRET || '');
+        const bridgeAuthorized = acceptedBridgeToken && safeTokenEqual(supplied, acceptedBridgeToken);
+        const projectFolderAuthorized = acceptedProjectFolderToken && safeTokenEqual(supplied, acceptedProjectFolderToken);
+        if (!bridgeAuthorized && !projectFolderAuthorized) {
           return sendJson(res, 401, { error: 'agent_bridge_unauthorized' });
         }
         if (!accountPool) return sendJson(res, 503, { error: 'database_not_configured' });
