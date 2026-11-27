@@ -5,10 +5,10 @@ import path from 'node:path';
 const repo = process.env.GITHUB_REPOSITORY;
 const issueNumber = Number(process.env.ISSUE_NUMBER);
 const token = process.env.GITHUB_TOKEN;
-const targetUrl = new URL(process.env.TARGET_URL || 'https://codelab-pbw9.onrender.com/');
+const targetUrl = new URL(process.env.TARGET_URL || 'https://codelab-qedi.onrender.com/');
 const commandSource = process.env.COMMAND_SOURCE || 'issue';
 
-if (targetUrl.origin !== 'https://codelab-pbw9.onrender.com') {
+if (targetUrl.origin !== 'https://codelab-qedi.onrender.com') {
   throw new Error('Target origin is not allowlisted.');
 }
 
