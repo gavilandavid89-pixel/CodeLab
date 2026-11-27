@@ -299,3 +299,25 @@ Usarlo principalmente cuando:
 Cuando un proyecto pequeño ya dispone de datos de transferencia normales, completos y válidos, conservar el flujo habitual. Evitar duplicar una importación por inbox que no aporta valor.
 
 En síntesis: **flujo habitual si la transferencia existe y es suficiente; inbox si el tamaño del proyecto o la ausencia/insuficiencia de datos de transferencia lo justifican**. En ambos caminos se debe verificar la persistencia real en ADMIN antes de ejecutar A/B.
+
+
+## 11. Puerta trasera — importación directa desde la carpeta del servidor
+
+**Definición oficial del término en CodeLab:** «puerta trasera» es el mecanismo de entrada directa del servidor que inspecciona una carpeta reservada para proyectos, detecta los archivos/proyectos compatibles que se encuentran allí y los importa al workspace de destino. El nombre es una denominación interna y coloquial de este flujo de importación; no implica una vulnerabilidad, acceso no autenticado ni una puerta trasera de seguridad.
+
+### Comportamiento esperado
+
+1. Los proyectos se depositan en la carpeta de entrada reservada del servidor.
+2. El propio servidor lee/escanea esa carpeta y reconoce los paquetes compatibles.
+3. El servidor importa cada proyecto detectado al workspace configurado, conservando la identidad y los recursos del proyecto.
+4. La finalización se confirma comprobando el estado terminal de la importación y leyendo el proyecto desde el workspace destino. Detectar un archivo o iniciar una tarea no equivale a importarlo correctamente.
+
+### Diferencia frente al inbox Git
+
+La puerta trasera **no es** `projects/animation-inbox/`, ni depende de que se haga un commit para activar GitHub Actions. El inbox Git es un mecanismo alternativo basado en el repositorio y su workflow; la puerta trasera es el flujo en el que el servidor consume directamente los archivos de su propia carpeta de entrada.
+
+### Regla operativa
+
+Cuando se solicite usar la puerta trasera, primero se debe levantar/asegurar que el servicio CodeLab esté activo y comprobar que el lector/sincronizador de la carpeta esté ejecutándose. Después se espera la detección e importación automática y se verifica el resultado en el workspace. No reconstruir ni volver a subir manualmente un proyecto que ya esté depositado en esa carpeta. No confundir «servicio live», «archivo detectado», «importación encolada» e «importación completada».
+
+**Nota de implementación:** esta sección fija la definición y el comportamiento esperado del término. La ruta física exacta de la carpeta, el nombre del lector/sincronizador y su estado de despliegue deben documentarse únicamente después de verificarlos en el código/configuración del servidor; no se debe inferir que el workflow de inbox Git los implementa.
