@@ -7,7 +7,7 @@ Use GitHub as an auditable command mailbox between ChatGPT's connected GitHub to
 ## Current architecture and boundaries
 
 - Repository: `gavilandavid89-pixel/CodeLab`
-- Target: `https://codelab-pbw9.onrender.com/`
+- Target: `https://codelab-qedi.onrender.com/`
 - Commands may be sent by opening an issue titled `[CodeLab Bridge] ...` or, after the mailbox workflow is enabled, by posting a command as a new comment on an existing issue with that title.
 - Only commands authored by the repository owner are executed. Bot-generated result comments do not trigger commands.
 - Comment-triggered commands are the preferred mailbox for CodeLab UI and project QA. They support bounded browser interactions and allowlisted project/design operations; irreversible project deletion and branch merge/undo-merge remain unavailable from comments.
