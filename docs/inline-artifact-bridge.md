@@ -329,3 +329,28 @@ La definición anterior está documentada, pero **no debe interpretarse como pru
 En la verificación de Render del 2026-11-27, el servicio `codelab` estaba `live`, pero su plan era `free`, no tenía eventos de disco persistente y los logs advertían que `CODELAB_DATA_DIR` no estaba configurado y que los archivos locales usan disco efímero. Los buckets privados Neon `codelab-agent-projects` y `codelab-artifacts` existían, pero el primero no contenía objetos. La búsqueda de registros de PixelForge, órdenes y artefactos para «El ser devora la galaxia» no encontró importación.
 
 **Conclusión:** a esa fecha la puerta trasera está definida como comportamiento deseado, pero no está verificada como funcional ni hay evidencia de que esté implementada en el servidor desplegado. No decir «sincronizado» por el mero hecho de que Render esté live. Para hacerla operativa hace falta implementar/configurar el lector de la carpeta de entrada, definir dónde vive esa carpeta y garantizar almacenamiento duradero para sus archivos (por ejemplo, un volumen persistente compatible o un almacenamiento privado integrado). Después se requiere una prueba real con un paquete y lectura de vuelta en el workspace ADMIN.
+
+
+### 11.2. Implementación Neon-backed de la carpeta reservada — 2026-11-27
+
+Se implementó la carpeta reservada como un prefijo privado y duradero de Neon Object Storage, para no depender del filesystem efímero del servicio Render Free ni requerir un disco de pago:
+
+- **Bucket:** `codelab-agent-projects` (privado).
+- **Carpeta/prefijo de entrada:** `incoming/`.
+- **Panel ADMIN de carga:** `/admin/project-folder` en CodeLab.
+- **API de carga:** `POST /api/admin/project-folder/upload`, protegida por sesión local ADMIN. El navegador envía el paquete a CodeLab; el servidor lo reenvía a la Function sin revelar el token.
+- **Function:** `pfprojectfolder`, Node.js 24, en la misma región que Neon.
+- **Trigger:** `pixelforge-project-folder-import`, tipo `storage_object_created`, bucket `codelab-agent-projects`, prefijo `incoming/`, ruta `/on-upload`.
+- **Destino:** workspace PixelForge ADMIN (`ws_local_admin`).
+
+Flujo: carga autenticada → objeto privado bajo `incoming/<timestamp>-<uuid>/<archivo>.codelab` → trigger de Neon → descarga e integridad SHA-256 en la Function → transporte por bloques de 1 MiB a las rutas oficiales de CodeLab (`/api/agent/bridge/artifacts`) → commit del artefacto → orden `codelab_project_import` → worker existente → persistencia y lectura de vuelta en ADMIN. El paquete fuente se conserva en Object Storage; no se borra después de importar.
+
+La Function valida el encabezado de entrega de Neon y el identificador de invocación, restringe el bucket/prefijo y el nombre de archivo, y solo acepta el origen HTTPS de CodeLab configurado. El token compartido vive únicamente en variables de entorno de Render y Neon; nunca se guarda en el repositorio ni se devuelve al navegador. La ruta de carga y la página ADMIN no publican credenciales.
+
+**Despliegues realizados:**
+- Function `pfprojectfolder`, deployment 1, estado `completed`.
+- Trigger `trigger-4e19414d-4829-4de6-91ea-740f5cf37315`, habilitado.
+- Render recibió `CODELAB_PROJECT_FOLDER_FUNCTION_URL` y `CODELAB_PROJECT_FOLDER_SECRET` mediante actualización de variables (sin reemplazar las demás variables existentes).
+- El servidor incorpora una comprobación de salud de la Function al iniciar y una ruta de diagnóstico ADMIN `GET /api/admin/project-folder/health`.
+
+**Límite de verificación:** la infraestructura y el flujo de importación quedaron conectados, pero la importación real de «El ser devora la galaxia» aún no está demostrada: el bucket estaba vacío al configurarse y el archivo fuente no está disponible en el almacenamiento conectado de esta sesión. La carga de un paquete real debe mostrar primero `uploaded` y luego `queued`; solo se declara completada cuando el comando alcanza `succeeded` y el proyecto puede leerse de vuelta desde ADMIN. No confundir esos estados intermedios con una importación exitosa.
