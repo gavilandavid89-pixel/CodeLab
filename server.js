@@ -2294,6 +2294,24 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
+      if (req.method === 'GET' && pathname === '/api/admin/project-folder/health') {
+        if (!isAdminSession) return sendJson(res, 403, { error: 'admin_required' });
+        const functionUrl = String(process.env.CODELAB_PROJECT_FOLDER_FUNCTION_URL || '').trim();
+        if (!functionUrl) return sendJson(res, 503, { error: 'project_folder_not_configured' });
+        try {
+          const base = new URL(functionUrl);
+          if (base.protocol !== 'https:' || !base.hostname.endsWith('.compute.c-9.us-east-2.aws.neon.tech')) {
+            return sendJson(res, 503, { error: 'project_folder_function_url_invalid' });
+          }
+          const response = await fetch(new URL('/health', base), { signal: AbortSignal.timeout(15000) });
+          const health = await response.json();
+          return sendJson(res, response.ok ? 200 : 502, health);
+        } catch (error) {
+          console.warn('[PixelForge Project Folder] health check failed:', String(error.message || error).slice(0, 180));
+          return sendJson(res, 502, { error: 'project_folder_health_unavailable' });
+        }
+      }
+
       // One-time, local-admin-only migration of the two CodeLab proof captures.
       // Signed URLs stay server-side in Render environment variables and are never
       // returned to the browser or written to logs.
