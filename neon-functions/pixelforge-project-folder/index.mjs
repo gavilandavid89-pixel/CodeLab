@@ -90,7 +90,8 @@ async function upload(request, url) {
   const filename = filenameOnly(url.searchParams.get("filename"));
   const bytes = new Uint8Array(await request.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_BYTES) return json({ error: "project_package_size_invalid" }, 413);
-  const objectKey = PREFIX + Date.now() + "-" + randomUUID() + "/" + filename;
+  const selfTest = request.headers.get("x-codelab-project-folder-self-test") === "1";
+  const objectKey = PREFIX + (selfTest ? "_self-test/" : "") + Date.now() + "-" + randomUUID() + "/" + filename;
   await putObject(objectKey, bytes);
   return json({
     ok: true, status: "uploaded", bucket: BUCKET, objectKey,
@@ -109,6 +110,7 @@ async function processUpload(request) {
     return json({ error: "invalid_trigger_delivery" }, 401);
   }
   const filename = filenameOnly(key.split("/").pop());
+  const selfTest = key.startsWith(PREFIX + "_self-test/");
   const bytes = await getObject(key);
   const digest = sha256(bytes);
   const server = new URL(env("CODELAB_SERVER_URL"));
@@ -126,6 +128,7 @@ async function processUpload(request) {
       target_workspace_id: "ws_local_admin", source_project_id: null,
       import_request_id: importRequestId, filename,
       project_name: filename.replace(/\.codelab$/i, ""),
+      self_test: selfTest,
       total_bytes: bytes.length, total_chunks: chunks, sha256: digest
     }),
     signal: AbortSignal.timeout(60000)
