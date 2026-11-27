@@ -193,3 +193,23 @@ The 46,067,737-byte archive and the 9,103,655-byte compressed archive contain th
 - Entries: 43
 
 A read-only Neon check after the repair still found no project, import command or staged artifact for this project ID/name. Therefore the import remains pending; no success is claimed until the actual inline transfer and read-back are complete.
+
+
+## Exact remaining transfer boundary in this ChatGPT session
+
+After repairing the stale UI bridge target, the documented ADMIN browser mailbox was successfully exercised. The remaining issue is specifically binary transport, not account identity:
+
+- The GitHub connector exposes repository reads and Git Data blob/tree/commit writes. Its `create_blob` contract accepts a Base64 **string**, not a local filesystem path or file handle.
+- The GitHub `fetch` action is GET-only and explicitly does not support binary downloads/uploads.
+- The Agent Space comment mailbox supports bounded browser/UI actions, but its allowlist does not contain an artifact manifest/chunk/commit upload action or a file-input upload action.
+- The connected Neon MCP actions expose SQL and metadata operations, but there is no action in this session that invokes the CodeLab inline HTTP routes with a local binary body. Direct SQL inserts into `codelab_agent_artifacts` or `codelab_agent_artifact_chunks` are expressly prohibited by the project policy.
+- The connected Render actions expose service/deploy/workflow metadata and configuration, but this session has no Render Sandbox create/exec/file-transfer action. The local container also has no outbound DNS/network route to the CodeLab host, and its environment does not contain the assistant-side `DATABASE_URL` or a Render API key.
+- The documented assistant-side `createAssistantHeadlessClient().importPixelForgeZip(bytes)` requires a `DATABASE_URL` in the assistant runtime secret store and uses `stageNativeArtifact`. That runtime secret store/client action is not exposed through the current tool surface. Do not call `get_connection_string` merely to reveal a privileged password into the model context; do not give it to Headless.
+
+Therefore the following are verified separately:
+
+1. **ADMIN/UI bridge:** repaired and verified against the active Render host; run `45942129812` succeeded with exact ADMIN identity and `ws_local_admin`.
+2. **Inline artifact transport:** not yet invoked for this animation. No manifest, chunks, commit, import command or staged artifact for this package exists in Neon.
+3. **Final import:** not yet persisted or read back in PixelForge ADMIN.
+
+A future agent must first discover an authorized binary-capable action/proxy or the assistant runtime's documented native-client capability. Once available, use the normal inline route for this complete 9.1 MB package (within the 256 MiB limit), keeping the bridge secret on the service side. Do not choose the inbox merely to hide this missing capability, do not ask the user for credentials, and do not bypass the bridge with direct SQL writes.
