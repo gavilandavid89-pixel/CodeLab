@@ -392,3 +392,8 @@ No se debe enviar todo proyecto automáticamente al inbox. La ruta del repositor
 - No iniciar A/B hasta confirmar que el proyecto está persistido y visible en ADMIN, independientemente del método de entrada.
 
 El inbox resuelve el transporte/importación del proyecto; no cambia la función de A ni de B.
+
+
+## Implementaciones de animación registradas
+
+- [PixelForge — El ser devora la galaxia (27-11-2026)](EL-SER-DEVORA-LA-GALAXIA-ANIMATION-2026-11-27.md): proyecto de 60 fotogramas a 8 FPS, con estado explícito de validación e importación.
