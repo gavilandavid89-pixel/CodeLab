@@ -25,13 +25,17 @@ small{color:#8e9bb0}
 <label for="package">Paquete del proyecto</label>
 <input id="package" type="file" accept=".codelab,application/zip">
 <button id="upload" disabled>Depositar proyecto</button>
-<div id="status" role="status">Selecciona un archivo .codelab para comenzar.</div>
+<div id="status" role="status">Comprobando el servicio de importación…</div>
 <p><small>La carga aceptada no equivale a importación terminada. La verificación final requiere que el worker confirme la orden y que el proyecto pueda leerse de vuelta en ADMIN. El paquete original se conserva en la carpeta.</small></p>
 </main>
 <script>
 const picker=document.getElementById('package');
 const button=document.getElementById('upload');
 const status=document.getElementById('status');
+fetch('/api/admin/project-folder/health',{cache:'no-store'}).then(async r=>({ok:r.ok,data:await r.json()})).then(({ok,data})=>{
+ if(!ok||!data.ok||!data.storageConfigured||!data.serverConfigured)throw new Error(data.error||'servicio_no_listo');
+ status.textContent='Conexión lista: Neon Storage y CodeLab están configurados. Selecciona un paquete .codelab.';
+}).catch(()=>{status.textContent='No se pudo verificar el importador. Inicia sesión como ADMIN y revisa la configuración del servicio.';});
 picker.addEventListener('change',()=>{
  const file=picker.files&&picker.files[0];
  button.disabled=!file||!file.name.toLowerCase().endsWith('.codelab');
