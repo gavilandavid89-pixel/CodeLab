@@ -1,4 +1,4 @@
-name: CodeLab A/B real ADMIN Soldier Walk export
+name: CodeLab A/B real ADMIN Illustration impact export
 
 on:
   push:
@@ -15,15 +15,19 @@ on:
         default: '30'
         type: string
       project_id:
-        description: 'Persisted ADMIN PixelForge project'
+        description: 'Persisted ADMIN PixelForge project; A pins the latest saved revision and content hash'
         required: false
-        default: 'soldier-walk-60f-20261124'
+        default: '6f9cdb50-55a3-4d78-bd34-9cc95b54a5be'
         type: string
 
 permissions:
   actions: write
   contents: read
   issues: write
+
+concurrency:
+  group: codelab-ab-animation-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   request-and-verify:
@@ -43,7 +47,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           SESSION_MINUTES: ${{ inputs.session_minutes || '30' }}
-          PROJECT_ID: ${{ inputs.project_id || 'soldier-walk-60f-20261124' }}
+          PROJECT_ID: ${{ inputs.project_id || '6f9cdb50-55a3-4d78-bd34-9cc95b54a5be' }}
         run: |
           set -euo pipefail
           session_id="ab-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -51,6 +55,7 @@ jobs:
           echo "CODELAB_A_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           gh workflow run ".github/workflows/codelab-independent-session-a.yml" \
             --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME" \
             -f issue_number=492 \
             -f session_id="$session_id" \
             -f minutes="$SESSION_MINUTES" \
@@ -89,6 +94,7 @@ jobs:
           CODELAB_A_READY_SINCE: ${{ env.CODELAB_A_READY_SINCE }}
           CODELAB_SESSION_TIMEOUT_MS: "1200000"
           CODELAB_AB_OUTPUT_DIR: ${{ runner.temp }}/codelab-ab-video
+          CODELAB_REQUESTED_PROJECT_ID: ${{ inputs.project_id || '6f9cdb50-55a3-4d78-bd34-9cc95b54a5be' }}
         run: node scripts/codelab-ab-session-request.mjs
       - name: Verify A remains alive after B has finished
         if: always()
@@ -106,7 +112,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: codelab-soldier-walk-webm-${{ github.run_id }}
+          name: codelab-impact-illustration-webm-${{ github.run_id }}
           path: ${{ runner.temp }}/codelab-ab-video
           if-no-files-found: warn
           retention-days: 14

@@ -350,7 +350,7 @@ Nunca:
 
 ## Catálogo de proyectos de repositorio para A/B
 
-Para proyectos preparados en `projects/animation-inbox/<slug>/project.codelab`, usar el workflow `.github/workflows/pixelforge-project-inbox.yml` para importarlos al workspace ADMIN antes de iniciar A/B. El workflow de catálogo es externo a A/B: lee el repositorio y usa el bridge inline; no cambia las responsabilidades de los agentes.
+Para proyectos preparados en `projects/animation-inbox/<slug>/`, usar el workflow `.github/workflows/pixelforge-project-inbox.yml` para importarlos al workspace ADMIN antes de iniciar A/B. El inbox admite un paquete ya preparado `project.codelab` o un builder reproducible `build-project.mjs` que ejecute las acciones Headless nativas y genere el paquete durante el workflow. El workflow de catálogo es externo a A/B: lee el repositorio y usa el bridge inline; no cambia las responsabilidades de los agentes.
 
 - A no lee el repositorio; ejecuta la web real y cumple la operación concreta que B le envía.
 - B elige el proyecto y formula la orden, la envía a A y después recibe/verifica el WebM. B no crea la animación.
@@ -361,7 +361,7 @@ Ver [guía del inbox](../projects/animation-inbox/README.md), [contrato A/B](./C
 
 ## Catálogo de proyectos PixelForge: importación y uso con A/B
 
-El inbox `projects/animation-inbox/<slug>/project.codelab` permite versionar paquetes PixelForge nativos y preparar una copia de trabajo en el workspace ADMIN. El workflow `pixelforge-project-inbox.yml` valida el ZIP/manifiesto, lo transfiere por el bridge inline y encola la importación. Un estado `queued` no confirma que el worker haya terminado: comprobar que el proyecto aparece en PixelForge antes de arrancar A/B.
+El inbox `projects/animation-inbox/<slug>/` permite versionar paquetes PixelForge nativos o un `build-project.mjs` reproducible que ejecute el runtime Headless oficial y genere el paquete. El workflow `pixelforge-project-inbox.yml` valida el ZIP/manifiesto, lo transfiere por el bridge inline y encola la importación. Un estado `queued` no confirma que el worker haya terminado: comprobar que el proyecto aparece en PixelForge antes de arrancar A/B.
 
 Después de importar, iniciar A con el ID interno `project.json.id` como `project_id` y B con el mismo ID. A ejecuta la web real; B elige el proyecto, envía la orden y recibe/verifica el WebM. El slug del inbox no reemplaza al ID interno. A no lee el repositorio y B no genera animaciones.
 

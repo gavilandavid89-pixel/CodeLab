@@ -41,13 +41,25 @@ async function postComment(body) {
   await gh(['api', '-X', 'POST', `repos/${repository}/issues/${issueNumber}/comments`, '-f', 'body=' + body]);
 }
 async function bridgeGet(pathname) {
-  const response = await fetch(baseUrl + pathname, {
-    headers: { 'x-codelab-agent-bridge-token': bridgeToken, accept: 'application/json' },
-    signal: AbortSignal.timeout(120000)
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error('ADMIN bridge HTTP ' + response.status + ': ' + String(body.error || 'request_failed'));
-  return body;
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const response = await fetch(baseUrl + pathname, {
+        headers: { 'x-codelab-agent-bridge-token': bridgeToken, accept: 'application/json' },
+        signal: AbortSignal.timeout(120000)
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok) return body;
+      const error = new Error('ADMIN bridge HTTP ' + response.status + ': ' + String(body.error || 'request_failed'));
+      if (![502, 503, 504].includes(response.status) || attempt === 4) throw error;
+      lastError = error;
+    } catch (error) {
+      if (attempt === 4 || !/fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|aborted/i.test(String(error.message || error))) throw error;
+      lastError = error;
+    }
+    await new Promise(resolve => setTimeout(resolve, Math.min(8000, 1000 * (2 ** attempt))));
+  }
+  throw lastError || new Error('ADMIN bridge request failed after retries.');
 }
 async function bridgePost(pathname, payload = {}) {
   const response = await fetch(baseUrl + pathname, {
@@ -72,6 +84,7 @@ const snapshot = await bridgeGet('/api/agent/bridge/pixelforge/projects/' + enco
 const project = snapshot.project;
 const frameCount = Array.isArray(project?.animation?.frames) ? project.animation.frames.length : 0;
 const fps = Number.isInteger(project?.animation?.fps) ? project.animation.fps : 12;
+const durationMs = Array.isArray(project?.animation?.frames) ? project.animation.frames.reduce((sum, frame) => sum + Math.max(1, Number(frame.durationMs || Math.round(1000 / fps))), 0) : 0;
 if (snapshot.workspaceId !== 'ws_local_admin') throw new Error('ADMIN bridge returned an unexpected workspace.');
 if (snapshot.projectId !== projectId || project?.id !== projectId) throw new Error('ADMIN bridge returned a different project identity.');
 if (project.name !== snapshot.name || frameCount < 2 || !Array.isArray(project.layers) || project.layers.length < 1) {
@@ -88,6 +101,7 @@ const pinned = {
   contentSha256: snapshot.contentSha256,
   frameCount,
   fps,
+  durationMs,
   width: Number(project.width),
   height: Number(project.height),
   project
@@ -143,7 +157,7 @@ const expiresAt = new Date(Date.now() + maxMinutes * 60000).toISOString();
 await postComment('[CodeLab A Ready]\n' + JSON.stringify({
   sessionId, runId: process.env.GITHUB_RUN_ID || null, status: 'ready', expiresAt, projectId, projectName: pinned.projectName,
   workspaceId: pinned.workspaceId, serverRevision: pinned.serverRevision,
-  contentSha256: pinned.contentSha256, frameCount: pinned.frameCount, fps: pinned.fps,
+  contentSha256: pinned.contentSha256, frameCount: pinned.frameCount, fps: pinned.fps, durationMs: pinned.durationMs,
   width: pinned.width, height: pinned.height, composerUrl
 }));
 console.log('[CodeLab A Ready]', JSON.stringify({ sessionId, expiresAt, projectId, serverRevision: pinned.serverRevision }));
@@ -217,7 +231,7 @@ async function processRequest(request) {
       sessionId, requestId: request.requestId, status: 'succeeded',
       projectId, projectName: pinned.projectName, workspaceId: pinned.workspaceId,
       serverRevision: pinned.serverRevision, contentSha256: pinned.contentSha256,
-      frameCount: videoExport.package.frameCount, fps: videoExport.package.fps,
+      frameCount: videoExport.package.frameCount, fps: videoExport.package.fps, durationMs: pinned.durationMs,
       videoFormat: videoExport.video.format, videoBytes: videoBytes.length,
       videoSha256, filename: videoExport.video.suggestedFilename,
       composerUrl: videoExport.composerUrl, method: videoExport.method,

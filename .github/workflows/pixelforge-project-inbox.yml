@@ -29,6 +29,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install Node for native Headless package builders
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.17.0'
+
       - name: Find changed project folders
         id: projects
         shell: bash
@@ -60,19 +65,40 @@ jobs:
             cat "$RUNNER_TEMP/project-slugs/list"
           fi
 
+      - name: Ensure ADMIN native bridge is awake
+        shell: bash
+        env:
+          BRIDGE_TOKEN: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$BRIDGE_TOKEN" || { echo "::error::Missing bridge control secret"; exit 1; }
+          curl --fail-with-body -sS -X POST "https://codelab-qedi.onrender.com/api/agent/bridge/ensure" -H "x-codelab-agent-bridge-token: $BRIDGE_TOKEN" -H 'content-type: application/json' --data '{}' > "$RUNNER_TEMP/bridge-ensure.json"
+          jq '{ok,operation,message,bridge}' "$RUNNER_TEMP/bridge-ensure.json"
       - name: Import each project into PixelForge ADMIN
         if: steps.projects.outputs.has_projects == 'true'
         shell: bash
         env:
           BRIDGE_TOKEN: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          CODELAB_AGENT_BRIDGE_CONTROL_SECRET: ${{ secrets.CODELAB_AGENT_BRIDGE_CONTROL_SECRET }}
+          CODELAB_PUBLIC_URL: https://codelab-qedi.onrender.com
         run: |
           set -euo pipefail
           test -n "$BRIDGE_TOKEN" || { echo "::error::Missing CODELAB_AGENT_BRIDGE_CONTROL_SECRET"; exit 1; }
           while IFS= read -r SLUG; do
             [[ -n "$SLUG" ]] || continue
             [[ "$SLUG" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || { echo "::error::Invalid project folder: $SLUG"; exit 1; }
-            PACKAGE="projects/animation-inbox/$SLUG/project.codelab"
-            test -f "$PACKAGE" || { echo "::error::Missing $PACKAGE"; exit 1; }
+            PROJECT_DIR="projects/animation-inbox/$SLUG"
+            PACKAGE="$RUNNER_TEMP/$SLUG.codelab"
+            if [[ -f "$PROJECT_DIR/project.codelab" ]]; then
+              PACKAGE="$PROJECT_DIR/project.codelab"
+            elif [[ -f "$PROJECT_DIR/build-project.mjs" ]]; then
+              echo "Building native PixelForge package through the project's documented Headless actions: $SLUG"
+              node "$PROJECT_DIR/build-project.mjs" "$PACKAGE"
+            else
+              echo "::error::Missing project.codelab or build-project.mjs in $PROJECT_DIR"
+              exit 1
+            fi
+            test -s "$PACKAGE"
             unzip -tq "$PACKAGE"
             ROOT="$RUNNER_TEMP/pixelforge-inbox-$SLUG"
             rm -rf "$ROOT" && mkdir -p "$ROOT"

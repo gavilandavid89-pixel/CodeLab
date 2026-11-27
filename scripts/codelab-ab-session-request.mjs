@@ -58,7 +58,7 @@ if (!ready) throw new Error('A session was not READY before B timeout.');
 if (ready.projectId !== requestedProjectId || ready.workspaceId !== 'ws_local_admin') {
   throw new Error('A READY session is not pinned to the ADMIN project requested by B. Start A with the same project_id input.');
 }
-if (!Number.isInteger(ready.serverRevision) || !/^[a-f0-9]{64}$/i.test(ready.contentSha256 || '') || ready.frameCount < 2) {
+if (!Number.isInteger(ready.serverRevision) || !/^[a-f0-9]{64}$/i.test(ready.contentSha256 || '') || ready.frameCount < 2 || !Number.isFinite(Number(ready.durationMs)) || Number(ready.durationMs) <= 0) {
   throw new Error('A READY metadata is missing the pinned project revision/hash/timeline.');
 }
 
@@ -108,7 +108,8 @@ if (videoBytes.length !== result.videoBytes || videoBytes.length < 1000 || video
   throw new Error('B received invalid WebM bytes or size.');
 }
 if (result.projectId !== ready.projectId || result.serverRevision !== ready.serverRevision ||
-    result.contentSha256 !== ready.contentSha256 || result.frameCount !== ready.frameCount || result.fps !== ready.fps) {
+    result.contentSha256 !== ready.contentSha256 || result.frameCount !== ready.frameCount || result.fps !== ready.fps ||
+    Number(result.durationMs) !== Number(ready.durationMs)) {
   throw new Error('A export metadata does not match the pinned ADMIN project revision.');
 }
 
@@ -165,7 +166,8 @@ try {
 } finally {
   await browser.close().catch(() => {});
 }
-const expectedDuration = result.frameCount / result.fps;
+const expectedDuration = Number(ready.durationMs) / 1000;
+console.log('[B] Chromium decode metadata:', JSON.stringify({ decoded, expectedDuration, expectedDurationMs: ready.durationMs }));
 if (!decoded || decoded.decodedSamples < 4 || decoded.width < 1 || decoded.height < 1 ||
     !Number.isFinite(expectedDuration) || Math.abs(decoded.duration - expectedDuration) > 0.15) {
   throw new Error('Chromium did not decode enough frames from the delivered WebM.');
@@ -180,7 +182,7 @@ const verification = {
   serverRevision: result.serverRevision, contentSha256: result.contentSha256,
   frameCount: result.frameCount, fps: result.fps,
   videoPath, videoBytes: videoBytes.length, videoSha256: sha256,
-  decoded, method: 'Chromium HTMLVideoElement decode; no FFmpeg and no video generation in B',
+  decoded, expectedDurationMs: ready.durationMs, method: 'Chromium HTMLVideoElement decode; no FFmpeg and no video generation in B',
   verifiedAt: new Date().toISOString()
 };
 await fs.writeFile(path.join(outputDir, 'verification.json'), JSON.stringify(verification, null, 2));

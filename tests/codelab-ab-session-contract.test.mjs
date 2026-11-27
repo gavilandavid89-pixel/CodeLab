@@ -39,6 +39,7 @@ test('A receives only the trusted ADMIN bridge and pins the persisted project sn
   assert.match(a, /persist_evidence: false/);
   assert.match(a, /browser,\s*context/);
   assert.match(a, /CodeLab A Ready/);
+  assert.match(a, /durationMs/);
   assert.match(a, /since=\$\{encodeURIComponent\(sessionStartedAt\)\}/);
   assert.doesNotMatch(a, /DATABASE_URL|NEON_API_KEY|NEON_STORAGE_HOST|R2_SECRET_ACCESS_KEY/);
 });
@@ -48,6 +49,8 @@ test('B is a request-only receiver and verifies the WebM with Chromium without c
   assert.match(b, /CodeLab B Request/);
   assert.match(b, /CODELAB_REQUESTED_PROJECT_ID/);
   assert.match(b, /ready\.projectId !== requestedProjectId/);
+  assert.match(b, /ready\.durationMs/);
+  assert.match(b, /expectedDuration = Number\(ready\.durationMs\)/);
   assert.match(b, /comments\(readySince\)/);
   assert.match(b, /comments\(requestStartedAt\)/);
   assert.match(b, /CodeLab A Video Chunk/);
