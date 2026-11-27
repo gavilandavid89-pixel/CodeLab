@@ -77,7 +77,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          TARGET_URL: https://codelab-pbw9.onrender.com/
+          TARGET_URL: https://codelab-qedi.onrender.com/
           CODELAB_ADMIN_USERNAME: ${{ secrets.CODELAB_ADMIN_USERNAME }}
           CODELAB_ADMIN_PASSWORD: ${{ secrets.CODELAB_ADMIN_PASSWORD }}
         run: node .github/scripts/codelab-bridge.mjs
