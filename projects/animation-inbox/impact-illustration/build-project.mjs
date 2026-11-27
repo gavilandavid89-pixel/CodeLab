@@ -216,6 +216,44 @@ for(let index=1;index<poses.length;index++){
   run({name:"animation.frame.set_duration",index,durationMs:pose.duration});
 }
 run({name:"animation.frame.set_duration",index:0,durationMs:poses[0].duration});
+// Cinematic shot cuts: the viewpoint changes instantaneously at selected frames.
+// Do not tween these camera changes; each cut establishes a new composition.
+// In this Headless-only project the cut is represented by a coordinated transform
+// of the scene layers at a key frame, preserving the authored Illustration cels.
+const shotCuts = new Map([
+  [2, {dx:-12, dy:-18, scaleX:1.10, scaleY:1.10}],
+  [5, {dx:22, dy:12, scaleX:0.86, scaleY:0.86}],
+  [7, {dx:-10, dy:-8, scaleX:1.08, scaleY:1.08}]
+]);
+const sceneBounds = new Map([
+  [background.id, {x:0,y:0,width:W,height:H}],
+  [attacker.id, {x:0,y:90,width:W,height:320}],
+  [opponent.id, {x:0,y:90,width:W,height:320}]
+]);
+for (const [cutIndex, cut] of shotCuts) {
+  if (cutIndex >= poses.length) continue;
+  run({name:"animation.frame.set_active",index:cutIndex});
+  for (const id of [background.id, attacker.id, opponent.id]) {
+    select(id);
+    const b = sceneBounds.get(id);
+    const transformed = run({
+      name:"canvas.transform_region", ...b,
+      dx:cut.dx, dy:cut.dy, rotate:0,
+      skewY:0, scaleX:cut.scaleX, scaleY:cut.scaleY,
+      interpolation:"bilinear", authoringMode:MODE
+    });
+    if (transformed.bounds) {
+      sceneBounds.set(id, {
+        x:Math.max(0,Math.floor(transformed.bounds.x)),
+        y:Math.max(0,Math.floor(transformed.bounds.y)),
+        width:Math.min(W-Math.max(0,Math.floor(transformed.bounds.x)),Math.ceil(transformed.bounds.width)),
+        height:Math.min(H-Math.max(0,Math.floor(transformed.bounds.y)),Math.ceil(transformed.bounds.height))
+      });
+    }
+    stampCel(id,cutIndex);
+  }
+}
+
 const summary=run({name:"animation.get_summary"});
 rt.createProposal("Segunda pasada de pulido incremental de la animación de impacto: anatomía más clara y diez poses con anticipación, impacto, retroceso, vuelo, giro y caída, conservando proyecto ADMIN y modo Illustration.");
 const diff=rt.getDiff();
