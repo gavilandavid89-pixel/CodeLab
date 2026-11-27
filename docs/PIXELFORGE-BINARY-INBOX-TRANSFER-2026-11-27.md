@@ -103,3 +103,93 @@ The local package is present and its ZIP integrity and SHA-256 were checked. The
 - `docs/inline-artifact-bridge.md` — inline bridge API and §10 Git inbox.
 - `docs/ADMIN-AUTH-AND-BRIDGE-RECOVERY.md` — ADMIN identity and bridge recovery.
 - `projects/animation-inbox/README.md` — inbox package conventions.
+
+
+## 2026-11-27 recovery: stale Agent Space target URL
+
+### Symptom
+
+The documented CodeLab Agent Space comment mailbox command `connections_status` failed at `admin_authentication` with a 20-second timeout on:
+
+`POST https://codelab-pbw9.onrender.com/api/auth/login`
+
+The first diagnostic was not an inline-artifact token rejection. It was the separate browser/UI bridge trying to log in to an obsolete Render hostname. Do not conflate this failure with the inline artifact endpoint's `x-codelab-agent-bridge-token` authentication.
+
+### Evidence and root cause
+
+The connected Render service metadata for service `srv-dc1tnvmq1p3s73b6sok0` identifies:
+
+- Service name: `codelab`
+- Current slug: `codelab-qedi`
+- Current URL: `https://codelab-qedi.onrender.com`
+- State: `not_suspended`
+- Last updated: `2026-11-27T04:34:11Z`
+
+The repository's Agent Space browser bridge still hard-coded `https://codelab-pbw9.onrender.com` in both its script origin allowlist and the workflow's `TARGET_URL`. Its documentation repeated the stale URL.
+
+The PixelForge inbox importer already targeted `https://codelab-qedi.onrender.com`; that confirmed the active application host used by the documented transfer workflow.
+
+### Repair applied
+
+Updated these three files on `main`:
+
+1. `.github/scripts/codelab-bridge.mjs`
+   - Changed the default browser bridge URL to `https://codelab-qedi.onrender.com/`.
+   - Changed the strict origin allowlist to `https://codelab-qedi.onrender.com`.
+2. `.github/workflows/codelab-command-bridge.yml`
+   - Changed `TARGET_URL` to `https://codelab-qedi.onrender.com/`.
+3. `docs/agent-space-github-bridge.md`
+   - Updated the documented current target URL.
+
+Commits:
+- Script: `0f5bf489176c23ef69d0af088950b39a78a13086`
+- Workflow: `c2c26a6b07b5a4281468d2cb7e4f26f7e7842b50`
+- Documentation: `7f77c3de15002b4228cdd8479b8d92532ffaae59`
+
+No Render environment variables, GitHub secrets, Neon credentials, passwords, cookies or tokens were read or changed.
+
+### Verification after repair
+
+Reused the existing dedicated CodeLab Bridge issue mailbox and posted a fresh read-only `connections_status` command with a valid future expiry. The first command attempt had expired before the runner reached it; it was not counted as a successful check. The fresh command ran against the corrected hostname and returned:
+
+- Command ID: `connections-20261127-qedi-check`
+- GitHub Actions run: [45942129812](https://github.com/gavilandavid89-pixel/CodeLab/actions/runs/45942129812)
+- Workflow result: `completed / success`
+- CodeLab page: `https://codelab-qedi.onrender.com/`
+- App version: `2.7.0`
+- API health: HTTP 200, `ok: true`
+- Authenticated browser session: `true`
+- Account context: `ADMIN`, local provider, role `admin`
+- Destination workspace: `ws_local_admin`
+- `identityVerified: true`, `workspaceVerified: true`
+
+The returned connection diagnostics did not expose any secret. The result proves the Agent Space browser bridge now reaches the active CodeLab service and can authenticate the configured ADMIN session.
+
+### Important boundary: what this repair did not do
+
+This repaired the Agent Space browser/UI command bridge. It did **not** transfer the PixelForge package and did **not** authenticate a request to `/api/agent/bridge/artifacts`. The UI bridge's allowlist does not include a binary artifact upload action.
+
+The native package still requires the separate documented transfer:
+
+1. Agent-side authorized inline transport action/proxy, or the documented inbox workflow when its binary source is available in the repository.
+2. Manifest → 1 MiB chunks → commit, using the existing server-side secret without revealing it.
+3. Worker terminal `succeeded`.
+4. Project read-back from `ws_local_admin`.
+
+The normal CodeLab UI bridge being healthy is not evidence that the inline artifact HTTP token route was exercised. Keep these capabilities and acceptance criteria separate.
+
+### Canonical compact package verified
+
+The 46,067,737-byte archive and the 9,103,655-byte compressed archive contain the same 43 paths and every corresponding entry has identical bytes. The compressed archive is therefore a byte-equivalent ZIP-content package with a different compression level:
+
+- File: `el-ser-devora-la-galaxia-compressed.codelab`
+- Size: 9,103,655 bytes
+- SHA-256: `d365a295afc0b9ccb617839277c2a2469f3d0aee8d334352dace52078f8e3325`
+- ZIP integrity: passed
+- Project ID: `281043f5-295c-4a88-832e-534e3f12e0ef`
+- Project name: `El ser devora la galaxia`
+- Canvas: 691 × 721
+- Animation manifest: 16 frame paths, 12 FPS
+- Entries: 43
+
+A read-only Neon check after the repair still found no project, import command or staged artifact for this project ID/name. Therefore the import remains pending; no success is claimed until the actual inline transfer and read-back are complete.
