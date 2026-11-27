@@ -12,7 +12,7 @@ Partir del frame 0 original de la captura del usuario, recortando exclusivamente
 - Frame 0: recorte cuadrado de la ilustración central de la captura del 26-11-2026, redimensionado a 384 × 384 px.
 - Textura auxiliar: se tomó únicamente el disco galáctico de una de las referencias generadas en la sesión anterior; no se sustituyó la criatura del usuario por la criatura generada.
 - Dibujo Headless: se añadieron brazos espirales y estrellas con las acciones raster documentadas `canvas.draw_shape` y `canvas.draw_stroke`. La textura generada y el dibujo raster se combinaron como el sprite de galaxia que se mueve en los cels posteriores.
-- Movimiento de cámara: avance progresivo de aproximadamente 5,5 % alrededor de la boca para dar sensación de que el ser colosal se impulsa hacia delante.
+- Movimiento de cámara: avance progresivo de aproximadamente 5,5 % y una traslación de 8 px hacia delante alrededor de la boca para dar sensación de que el ser colosal se impulsa hacia la galaxia.
 - La galaxia comienza completamente dentro del lienzo; la primera prueba se corrigió porque el sprite quedaba cortado por el borde derecho.
 
 ## Timeline implementado
@@ -52,8 +52,8 @@ Se generó una vista previa local para inspección, no como sustituto del A/B fi
 - Resolución: 384 × 384 px
 - Frecuencia: 8 FPS
 - Duración: 7,500 s
-- Tamaño: 93.603 bytes
-- SHA-256: `1c1cc270cafc29fe9533dc12d1ff1c0f30b2db20623009072898306512ec1584`
+- Tamaño: 95.663 bytes
+- SHA-256: `a5e52cb4465be7b715cfab21baf547c1a6a0b0ad2fd0e812c05a67d27652847c`
 
 La reproducción se abrió con FFplay bajo Xvfb y se inspeccionaron capturas intermedias y tardías, además de una hoja de contacto con muestras distribuidas por la timeline. Se comprobó que la galaxia se desplaza hacia la boca, entra y desaparece; la mandíbula permanece abierta. Durante la revisión se corrigió el recorte inicial del sprite en el borde derecho. La captura de Chromium sobre `file://` y localhost quedó bloqueada por la política del navegador del entorno; la reproducción visual bajo Xvfb se realizó con FFplay.
 
@@ -63,7 +63,7 @@ Esta vista previa es evidencia visual local de la composición actual. **No es t
 
 - Archivo: `el-ser-devora-la-galaxia-final.codelab`
 - Tamaño: 36.285.228 bytes
-- SHA-256: `151f6dcbd0bdc0017afc9407822d9eb9b3e886b7dcb5b932d43218e1862b9f60`
+- SHA-256: `cd0bf1bdb5b1505477b3706d6555c1eeed8970daebe5bb1cb1718de88fd6b11f`
 - Project ID: `ceded9dd-3738-4a2e-ae86-fd09d3e7bc4a`
 
 El paquete usa el formato CodeLab v2: `project.codelab-pixelforge`, `manifest.json`, `project.json`, `integrity.json`, `Frames/frames.tscn`, JSON de fotogramas y cels RGBA.
