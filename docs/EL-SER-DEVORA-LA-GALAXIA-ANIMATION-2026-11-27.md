@@ -59,6 +59,17 @@ La reproducción se abrió con FFplay bajo Xvfb y se inspeccionaron capturas int
 
 Esta vista previa es evidencia visual local de la composición actual. **No es todavía el WebM exportado por el Video Composer A/B de CodeLab**, por lo que no se debe etiquetar como entrega A/B final.
 
+También se generó una copia MP4 H.264 para reproducción móvil:
+
+- Archivo: `el-ser-devora-la-galaxia-preview.mp4`
+- Códec: H.264
+- Resolución: 384 × 384 px
+- Frecuencia: 8 FPS
+- Duración: 7,500 s
+- Tamaño: 170.331 bytes
+- SHA-256: `7c3c26d42223e97ec2e52cf2af20e9538838df7cd61a6ac7d9c6169403c5598c`
+
+
 ## Paquete editable preparado
 
 - Archivo: `el-ser-devora-la-galaxia-final.codelab`
