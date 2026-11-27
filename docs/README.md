@@ -31,6 +31,7 @@ Leer en este orden:
 | Necesidad | Documento principal | Qué resuelve |
 |---|---|---|
 | Crear o editar dibujo/animación | [Flujo autónomo de animación](ANIMATION-AUTONOMOUS-WORKFLOW.md) | Preparación, ejecución, espera, verificación, inspección visual y aceptación. |
+| Animación «El ser devora la galaxia» (27-11-2026) | [Informe de implementación](EL-SER-DEVORA-LA-GALAXIA-ANIMATION-2026-11-27.md) | 60 fotogramas a 8 FPS, referencia original, paquete estructurado y estado de importación. |
 | Instalar/ejecutar Headless del agente | [Headless Agent Runtime](HEADLESS-AGENT-RUNTIME.md) | Artefacto real, instalación en entorno local/efímero, ejecución y exportación. |
 | Usar la API Headless desde un agente | [API Headless para agentes](HEADLESS-AGENT-API-REFERENCE.md) | Inicialización, métodos, acciones, argumentos principales, modos mixtos, errores y límites. |
 | Consultar todas las capacidades de Headless | [Referencia completa de Headless](HEADLESS-CAPABILITIES-REFERENCE.md) | Explicación funcional de raster, capas, selección, referencias, vector, animación, propuestas y restricciones. |
