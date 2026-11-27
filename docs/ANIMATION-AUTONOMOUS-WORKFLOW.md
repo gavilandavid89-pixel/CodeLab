@@ -78,6 +78,20 @@ No crear polling permanente, bucles de pings ni despertares periódicos. Un ping
 - Corregir y repetir los pasos necesarios hasta alcanzar el objetivo o identificar un bloqueo no resoluble.
 - Para la entrega, comprobar la cantidad de frames, FPS, duración, loop, archivo exportado y reproducción visual real, además de completar la revisión visual obligatoria. La existencia del archivo por sí sola no demuestra que la animación esté bien.
 
+## 5.0.1. Tomas de cámara y cortes de plano
+
+En animación narrativa, un cambio de toma no debe modelarse por defecto como un paneo, travelling o rotación continua de la cámara. Cuando la intención sea mostrar la misma acción desde otra perspectiva, el agente debe preferir **cortes de plano discretos**: una toma termina y la siguiente comienza ya encuadrada desde otra posición, escala o perspectiva.
+
+Reglas operativas:
+
+- Identificar los puntos narrativos donde conviene cambiar de plano: anticipación, impacto, reacción, vuelo, caída, etc.
+- El cambio de encuadre debe ocurrir de forma instantánea entre fotogramas o bloques; no interpolar decenas de fotogramas solo para desplazar la cámara de una posición a otra.
+- El nuevo plano debe tener una composición propia y mantener la acción legible.
+- Revisar continuidad de siluetas, posiciones relativas, anatomía y dirección del movimiento después de cada corte.
+- Un corte de cámara no debe confundirse con mover físicamente a los personajes dentro de la escena.
+- Si el runtime utilizado no dispone de una cámara narrativa nativa, documentar el mecanismo visual equivalente utilizado por el proyecto en lugar de inventar una API de cámara inexistente.
+- La revisión visual debe comprobar específicamente que el corte se percibe como un cambio de toma y no como un movimiento continuo accidental.
+
 ## 5.1. Reparación incremental del proyecto existente
 
 Cuando la inspección detecte defectos, el agente debe intentar corregir el proyecto que ya creó, no descartarlo automáticamente. Headless puede reabrir la última versión editable y aplicar cambios sobre frames, cels, capas, objetos, parámetros y timing existentes.
