@@ -213,3 +213,72 @@ Therefore the following are verified separately:
 3. **Final import:** not yet persisted or read back in PixelForge ADMIN.
 
 A future agent must first discover an authorized binary-capable action/proxy or the assistant runtime's documented native-client capability. Once available, use the normal inline route for this complete 9.1 MB package (within the 256 MiB limit), keeping the bridge secret on the service side. Do not choose the inbox merely to hide this missing capability, do not ask the user for credentials, and do not bypass the bridge with direct SQL writes.
+
+
+## 2026-11-28 follow-up: actual reserved-folder route verified, upload capability still missing
+
+### What was newly verified
+
+The reserved-folder architecture is not merely a proposed design. Its deployed components exist on Neon production:
+
+- Project: `withered-violet-39964819`
+- Branch: `br-sweet-waterfall-bea35bjz` (`production`)
+- Object Storage enabled in `us-east-2`
+- Private bucket: `codelab-agent-projects`
+- Function: `pfprojectfolder`, active deployment status `completed`
+- Trigger: `pixelforge-project-folder-import`, enabled
+- Trigger type: `storage_object_created`
+- Bucket/prefix: `codelab-agent-projects/incoming/`
+- Function path: `/on-upload`
+
+The CodeLab server source confirms:
+- `GET /admin/project-folder` serves `public/admin-project-folder.html`.
+- `GET /api/admin/project-folder/health` checks the Function.
+- `POST /api/admin/project-folder/upload` accepts the raw binary body, checks the local ADMIN session, then forwards it to the Function's `/upload` route using the server-held `CODELAB_PROJECT_FOLDER_SECRET`.
+- The browser page uses a native `<input type="file">` and sends the selected file as `application/octet-stream`.
+
+The CodeLab Agent Space browser mailbox was tested again on 2026-11-28. The ADMIN session and workspace `ws_local_admin` are verified. The current app home page reports CodeLab v2.7.0. This is only a browser-session verification, not an upload.
+
+The private bucket's `incoming/` prefix is empty. Read-only Neon checks found no PixelForge project, import request, agent command or staged artifact matching project ID `281043f5-295c-4a88-832e-534e3f12e0ef`, project name `El ser devora la galaxia`, or the source package SHA-256. No import has occurred.
+
+### Exact current source artifact
+
+The available file in the agent's local working container is:
+
+- `/mnt/data/el-ser-devora-la-galaxia-16-frames.codelab`
+- 46,067,737 bytes
+- SHA-256: `66f63821593b53f85a928f11e0e7e54112b6ef3ba0dca1bd4cb0be58024f9248`
+- ZIP integrity: passed
+- 43 archive entries
+- 16 frames at 12 FPS
+- Project ID: `281043f5-295c-4a88-832e-534e3f12e0ef`
+- Canvas: 691 × 721
+
+Do not substitute the five-frame file `el-ser-devora-la-galaxia-final.codelab` (16,016,952 bytes) for this 16-frame deliverable.
+
+### Why the reserved-folder route cannot yet be executed by this tool session
+
+The transfer requires an actual binary HTTP POST to `https://codelab-qedi.onrender.com/api/admin/project-folder/upload`, or a binary PUT to a short-lived Neon presigned Object Storage URL. The current tool surface exposes:
+- local file access in the agent container;
+- Neon `presign_storage_object` to create a signed URL and required headers;
+- CodeLab Agent Space browser actions limited to DOM read/fill/select/click/sequence;
+- GitHub repository text writes and Git Data blob creation from a Base64 string;
+- Neon metadata, SQL and Function deployment operations.
+
+It does **not** expose a generic HTTP PUT/POST action that accepts bytes from the local container, a Neon Object Storage upload-by-file action, a Playwright `setInputFiles` action, or a Render Sandbox exec/copy-to action in this session. The container has no outbound DNS/network route to the CodeLab/Neon endpoints. The Agent Space runner executes on GitHub Actions and cannot see the agent's `/mnt/data` file. GitHub's exposed `create_blob` action accepts a Base64 string, not a local path or file handle; it is not a binary file-transfer connector.
+
+The ADMIN page's file input cannot be automated by the existing mailbox actions: its `fill` operation is a text fill, not Playwright `setInputFiles`, and the browser runner has no copy of the local package.
+
+### Required next capability
+
+To finish without exposing credentials or bypassing policy, the execution environment must expose one of these documented binary handoffs:
+
+1. Agent-side HTTP client action that can POST the local file bytes to the ADMIN upload endpoint using the authenticated browser/session proxy, or
+2. File-transfer action that can PUT the local file bytes to the presigned Neon Object Storage URL, or
+3. A Render Sandbox SDK/CLI session with `copy_to`/upload enabled so the local package can be staged and a sandbox command can POST it through the supported ADMIN endpoint.
+
+Once one is available, upload the 46,067,737-byte file to the reserved folder, wait for the Neon trigger and Function to complete the official inline-bridge manifest/chunk/commit flow, then wait for the `codelab_project_import` worker command to reach `succeeded`. Finally read the project back from `ws_local_admin` and verify ID, frame count, canvas dimensions and persisted content hash. Do not report success on upload acceptance alone.
+
+### Important correction to the prior note
+
+A previous note referred to a 9,103,655-byte compressed variant and SHA-256 `d365a295afc0b9ccb617839277c2a2469f3d0aee8d334352dace52078f8e3325`. That variant is not present in the current working container and was not re-verified during this follow-up. Do not use that claimed path/hash as the current upload source without retrieving and independently validating the file.
